@@ -15,7 +15,6 @@
 
 ## 🧭 Higher Time Frame (HTF) - Análisis del Entorno Macro
 * **[00:01:04]** Todo análisis comienza en el HTF para comprender el entorno del mercado: dónde está el precio, a dónde quiere ir, cómo llegará y por qué.
-  ![Frame 00:01:04](assets/charter-3/00-01-04.png)
 
 ### Elementos Clave a Analizar en HTF:
 1. **Order Flow (Flujo de Órdenes):** **[00:01:23]** Identifica la dirección prevalente de la entrega del precio y la estructura del mercado.
@@ -59,7 +58,6 @@
 
 ## 🔬 Lower Time Frame (LTF) - Ejecución y Gestión
 * **[00:07:37]** El marco temporal bajo es donde la teoría y el análisis se convierten en acción y ejecución concreta.
-  ![Frame 00:07:37](assets/charter-3/00-07-37.png)
 
 ### Los 4 Pilares de la Ejecución en LTF:
 1. **Time (Alineación Temporal):** **[00:07:52]** Las entradas se deben ejecutar dentro de horas clave fijadas por las *Kill Zones*:
@@ -79,7 +77,6 @@
 
 ### Ejemplo 1: EUR/USD Diario a LTF (Sincronización Completa)
 * **[00:10:32] HTF (Diario):** Order Flow alcista (rechaza bajos, rompe altos). Cierre dentro del rango previo (expectativa alcista). *Draw on liquidity* en el alto de la vela previa. Zona de soporte en FVG u Order Block.
-  ![Frame 00:10:32](assets/charter-3/00-10-32.png)
 * **[00:12:05] ITF:** Vela de Asia (9:00 p.m.) y vela de Londres (1:00 a.m.). Londres no alcanza el nivel clave (bloque de rechazo) pero genera un *Turtle Soup*. Se define la vela CRT. Expectativa: purga del bajo de la vela CRT retesteando el bloque refinado.
   ![Frame 00:12:05](assets/charter-3/00-12-05.png)
 * **[00:13:17] LTF:** El precio purga el bajo a las 5:30 a.m. (fuera de Kill Zone, por lo que no se opera). A las 7:45 a.m. (durante New York Kill Zone), el precio purga el bajo de corto plazo y cierra por encima.
