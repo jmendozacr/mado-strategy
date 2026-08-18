@@ -14,26 +14,20 @@
 
 ## 🧭 ¿Qué es un Modelo de Entrada (Entry Model) y por qué es Crítico?
 * **[00:00:52]** Definición: El modelo de entrada es la herramienta que proporciona el **Punto de Anclaje** (*Anchor Point*) para ingresar al mercado una vez identificado el Candle Range y la atracción de liquidez (*Draw on Liquidity*).
-  ![Frame 00:00:52](assets/charter-2/00-00-52.png)
 * **[00:01:19]** **Importancia del Timing:** En la metodología CRT e ICT, la sincronización en el tiempo lo es todo. Un análisis o modelo perfecto fallará si se entra en el momento equivocado.
-  ![Frame 00:01:19](assets/charter-2/00-01-19.png)
 * **[00:01:37]** Las entradas deben basarse en horas clave durante *Kill Zones* o sesiones específicas refinadas.
-  ![Frame 00:01:37](assets/charter-2/00-01-37.png)
 * **[00:02:15]** El modelo de entrada aporta tres beneficios clave:
   1. **Timing (Tiempo):** Cuándo entrar.
   2. **Clarity (Claridad):** Identifica los *Key Levels* exactos y el CRT específico desde el cual operar.
   3. **Purpose (Propósito):** Define el *porqué* detrás de la operación (¿está respaldada por liquidez de HTF, alineada con un Key Level y con una narrativa de tiempo y precio?). Sin estas respuestas, operar es simple azar.
-  ![Frame 00:02:15](assets/charter-2/00-02-15.png)
 
 ---
 
 ## 🎯 Model-1 Entry: El Modelo de Entrada CRT
 * **[00:03:10]** **Model-1** es el modelo de entrada moderno y práctico adoptado en CRT. Se basa en **confirmación**, ofreciendo un riesgo extremadamente bajo y un alto ratio de beneficio (*Low Risk / High Reward*).
-  ![Frame 00:03:10](assets/charter-2/00-03-10.png)
 
 ### Las 2 Funciones de Model-1 para ser Válido:
 1. **Purga de Liquidez (*Purging Liquidity*):** **[00:03:51]** El precio extrae liquidez al barrer por encima de un Alto o por debajo de un Bajo (ya sean CRT High/Low o viejos Altos/Bajos).
-   ![Frame 00:03:51](assets/charter-2/00-03-51.png)
 2. **Llenado de Liquidez (*Filling Liquidity / Rebalancing*):** **[00:04:06]** El precio llena o testea zonas de desequilibrio (*Fair Value Gaps - FVG*) o rebalances de Order Blocks existentes.
    ![Frame 00:04:06](assets/charter-2/00-04-06.png)
 
@@ -43,9 +37,7 @@
 
 ### A. Model-1 por Purga de Liquidez (CRT Order Block Entry)
 * **[00:04:15]** **Mecanismo:** No es el Order Block convencional de ICT, sino el método avanzado de CRT.
-  ![Frame 00:04:15](assets/charter-2/00-04-15.png)
 * **[00:04:23]** Se identifica una vela (o serie de velas) que penetra (*digs*) por debajo de un Bajo o por encima de un Alto para extraer liquidez.
-  ![Frame 00:04:23](assets/charter-2/00-04-23.png)
 * **[00:04:38]** **Confirmación (Engulf / Envolvente):** Cuando el precio envuelve esa vela específica mediante un **cierre de cuerpo** (*close*) por encima (para compras) o por debajo (para ventas), esa vela que purgó la liquidez se convierte en una vela **Model-1 válida**.
   ![Frame 00:04:38](assets/charter-2/00-04-38.png)
 * **[00:04:47]** **Ejecución:** Se espera el retesteo a esa vela específica que purgó la liquidez para ingresar al mercado.
@@ -53,7 +45,6 @@
 
 ### B. Model-1 por Llenado de Liquidez (Inbalance / FVG Rebalance)
 * **[00:04:54]** Ocurre cuando una vela específica entra a rebalancear un *Fair Value Gap* (FVG).
-  ![Frame 00:04:54](assets/charter-2/00-04-54.png)
 * **[00:05:10]** Cuando el mercado posteriormente **envuelve** esa vela (cerrando por encima o por debajo de ella) y regresa a retestearla, dicha vela se activa como entrada Model-1.
   ![Frame 00:05:10](assets/charter-2/00-05-10.png)
 
@@ -104,7 +95,6 @@
 ## 📏 Reglas de Selección: ¿Cuándo usar la Mecha (Wick) o el Cuerpo (Body / Open)?
 
 * **[00:10:36]** La elección entre usar el precio de Apertura (*Open*) o el extremo de la Mecha (*Wick*) depende del comportamiento exacto de las velas:
-  ![Frame 00:10:36](assets/charter-2/00-10-36.png)
 
 ### Casos para usar el Precio de Apertura (Body / Open):
 1. **[00:11:04]** Si el precio cierra **justo por encima o por debajo del Open** de la vela de purga, se utiliza el cuerpo / precio de apertura.
@@ -114,9 +104,7 @@
 
 ### Casos para usar la Mecha (Wick):
 1. **[00:11:50]** Si la vela envolvente cierra **más allá del Alto o Bajo extremo** de la vela de purga, se marca la mecha (*High/Low*) para la entrada.
-   ![Frame 00:11:50](assets/charter-2/00-11-50.png)
 2. **[00:12:02]** Si la vela de purga tiene un **cuerpo pequeño y una mecha muy larga**, la mecha lleva mayor peso estructural, por lo que el nivel de entrada se coloca en la mecha.
-   ![Frame 00:12:02](assets/charter-2/00-12-02.png)
 
 ---
 
