@@ -18,7 +18,6 @@
 
 ## 💡 Concepto Fundamental: ¿Qué es Candle Range Theory (CRT)?
 * **[00:02:13]** Cada vela en un gráfico (diario, 4H, 1H, etc.) no es una figura geométrica o forma aleatoria: representa un **rango delimitado por el tiempo** (*time-based range*).
-  ![Frame 00:02:13](assets/charter-1/00-02-13.png)
 * **[00:02:34]** Al hacer zoom en temporalidades menores (*lower timeframes*), se observa que dentro de una sola vela existe un rango más pequeño con un Alto (*High*) y un Bajo (*Low*) definidos.
   ![Frame 00:02:34](assets/charter-1/00-02-34.png)
 * **[00:02:49]** Para comprender el mercado, el algoritmo y el dinero inteligente (*smart money*), no se requieren cientos de indicadores ni herramientas complejas. Solo se necesitan tres elementos:
@@ -83,9 +82,7 @@
 ## 🔄 Las 2 Posibles Conductas del Mercado sobre un Candle Range
 * **[00:06:48]** Cuando se establece un Candle Range, solo existen dos escenarios posibles:
   1. **Ruptura Verdadera (*True Break*):** **[00:06:48]** El precio rompe por encima del CRT High o por debajo del CRT Low y continúa de forma expansiva en esa misma dirección.
-     ![Frame 00:06:48](assets/charter-1/00-06-48.png)
   2. **Ruptura Falsa (*False Break / Turtle Soup*):** **[00:07:03]** El precio liquida (*raid / purge*) un extremo del rango (barriendo la liquidez), revierte la dirección e ingresa de nuevo al rango para expandirse rápidamente hacia el extremo opuesto. Este patrón es el núcleo fundamental de CRT.
-     ![Frame 00:07:03](assets/charter-1/00-07-03.png)
 
 ---
 
@@ -96,7 +93,6 @@
 
 ### 1. 3-Candle CRT (Modelo de 3 Velas) - *El modelo preferido*
 * **[00:08:15]** Formado por tres velas secuenciales basadas en el ciclo **AMD** (Accumulation, Manipulation, Distribution):
-  ![Frame 00:08:15](assets/charter-1/00-08-15.png)
   * **Vela 1 (Acumulación / Rango):** **[00:08:22]** Establece los límites del rango (CRT High / CRT Low).
     ![Frame 00:08:22](assets/charter-1/00-08-22.png)
   * **Vela 2 (Manipulación / Purga):** **[00:08:29]** Ejecuta la purga de liquidez (*liquidity purge*), barrido (*raid*) o *Turtle Soup* de un extremo.
@@ -132,7 +128,6 @@
 * **[00:11:48]** Los *Key Levels* son zonas institucionales donde el mercado decide expandirse o revertir (Order Blocks, Fair Value Gaps, Breaker Blocks, Rejection Blocks, o Altos/Bajos mayores).
   ![Frame 00:11:48](assets/charter-1/00-11-48.png)
 * **[00:12:02]** Los setups de CRT más confiables ocurren cuando la manipulación reacciona directamente en un *Key Level* de temporalidad mayor.
-  ![Frame 00:12:02](assets/charter-1/00-12-02.png)
 
 ### Dinámica del Setup Teórico:
 1. **[00:12:34]** El mercado forma un Candle Range justo debajo o arriba de un *Key Level*, acumulando *Buyside Liquidity* por arriba y *Sellside Liquidity* por abajo.
