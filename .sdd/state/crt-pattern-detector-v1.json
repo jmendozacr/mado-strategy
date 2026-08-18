@@ -1,0 +1,17 @@
+{
+  "change_name": "crt-pattern-detector-v1",
+  "triage": "L",
+  "phase": "ready-for-build",
+  "phase_status": "plan-complete",
+  "steward_foresight": "aligned",
+  "spec_status": "signed_v3",
+  "slices": "v4",
+  "plan_verify": "ready-human-ratified-iteration-3",
+  "verify_final": null,
+  "arch_audit": null,
+  "outcome": null,
+  "viz_url": "https://claude.ai/code/artifact/1c7c8dc0-84d9-4447-b1de-956cfd2bdd25",
+  "completed_phases": ["triage", "explore", "propose", "spec", "design"],
+  "open_product_question_pending": false,
+  "updated_at": "2026-08-18"
+}
