@@ -1,5 +1,6 @@
 from fixtures.synthetic import CandleSeriesBuilder
 
+from primitives.fvg import FVG
 from primitives.swing import SwingPoint
 from viz.chart import render_chart
 
@@ -42,3 +43,22 @@ def test_render_chart_adds_one_marker_per_swing(tmp_path):
     ax = fig.axes[0]
     swing_marker_points = sum(len(c.get_offsets()) for c in ax.collections)
     assert swing_marker_points == len(swings)
+
+
+def test_render_chart_adds_one_rectangle_per_fvg(tmp_path):
+    fvgs = [
+        FVG(
+            start_index=0,
+            end_index=2,
+            top=1.0020,
+            bottom=1.0010,
+            direction="bullish",
+            fill_status="open",
+        )
+    ]
+    output_path = tmp_path / "overlay.png"
+
+    fig = render_chart(_series(), [], str(output_path), fvgs=fvgs)
+
+    ax = fig.axes[0]
+    assert len(ax.patches) == len(fvgs)

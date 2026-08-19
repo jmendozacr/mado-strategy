@@ -7,5 +7,11 @@ class SwingConfig:
 
 
 @dataclass(frozen=True)
+class FVGConfig:
+    min_size_atr: float = 0.1
+
+
+@dataclass(frozen=True)
 class DetectorConfig:
     swing: SwingConfig = field(default_factory=SwingConfig)
+    fvg: FVGConfig = field(default_factory=FVGConfig)

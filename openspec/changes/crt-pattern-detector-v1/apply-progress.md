@@ -1,14 +1,15 @@
 # Apply Progress: crt-pattern-detector-v1
 
-**Scope this run**: `skeleton` (S-000 — Walking Skeleton)
+**Scope this run (latest)**: `slice:S-001` (FVG detection)
 **Mode**: Strict TDD
-**Status**: S-000 complete — 8/8 tasks, 19/19 tests passing, import-linter contract KEPT
+**Status**: S-000 + S-001 complete — 26/26 tests passing, import-linter contract KEPT
 
 ## Slices Built This Run
 
 | Slice | Scope tag | Status | Tasks Done |
 |---|---|---|---|
 | S-000 | walking-skeleton | complete | 8/8 |
+| S-001 | happy-path | complete | 1/1 |
 
 ## Files Changed
 
@@ -33,7 +34,36 @@
 | `detector/tests/test_fitness_imports.py` | Created | 1 test — shells out to the real `lint-imports` binary, sanity-checked against an injected violation |
 | `detector/tests/property/test_no_lookahead.py` | Created | 1 hypothesis property test (Swing, k=1), sanity-checked against an injected lookahead bug |
 | `CLAUDE.md` (repo root) | Modified | Added `detector/` subproject section (stack, setup, test/lint/run commands) alongside the existing docs-KB description; corrected the now-inaccurate "no source code" claim with a one-clause exception rather than rewriting the section |
-| `openspec/changes/crt-pattern-detector-v1/slices.md` | Modified | S-000 tasks marked `[x]` |
+| `openspec/changes/crt-pattern-detector-v1/slices.md` | Modified | S-000, S-001 tasks marked `[x]` |
+
+### S-001 — FVG detection
+
+| File | Action | What Was Done |
+|---|---|---|
+| `detector/primitives/fvg.py` | Created | `FVG` dataclass + `detect_fvgs()` — bullish/bearish gap predicate (`candle[i+2].low > candle[i].high` / mirror), ATR(14)-based `min_size_atr` exclusion (SMA of true range, graceful degradation when <14 candles of history exist — undocumented in design, see Deviations), binary open/filled status via cumulative far-edge check |
+| `detector/core/config.py` | Modified | Added `FVGConfig(min_size_atr: float = 0.1)`, wired into `DetectorConfig.fvg` (extends, doesn't replace `SwingConfig`) |
+| `detector/core/results.py` | Unchanged | `DetectionStatus` (CONFIRMED/INVALIDATED/PENDING) does not apply to FVG's binary open/filled status — matches the existing precedent that `SwingPoint` also doesn't use it; FVG's `fill_status` is a `Literal` field on its own dataclass, consistent with `SwingPoint.kind` |
+| `detector/viz/chart.py` | Modified | `render_chart()` gained an additive `fvgs: list[FVG] \| None = None` parameter; new `_plot_fvgs()` draws a shaded `Rectangle` per gap (green=bullish/red=firebrick=bearish, alpha 0.2), legend gains one "Fair Value Gap" swatch when any FVGs are present. Existing Swing-only call sites (`cli.py`, S-000 tests) untouched — parameter is optional and additive |
+| `detector/tests/fixtures/synthetic.py` | Modified | Added `bearish_fvg_fill_setup()` (charter-2 [00:13:19] DXY daily — gap forms, later fully fills via retest) and `bullish_fvg_partial_fill_setup()` (charter-3 [00:14:47]-[00:15:23] — gap partially re-entered, stays open); extends the existing `CandleSeriesBuilder` pattern, no duplication |
+| `detector/tests/test_fvg.py` | Created | 5 tests: grounded bearish-fill (REQ-08.1+REQ-10, outer-loop), bullish top/bottom-match (REQ-08), partial-reentry-stays-open (REQ-10.1 grounded), min-size exclusion (REQ-09.1), custom-config lowers threshold (REQ-25 — proves config is read, not hardcoded) |
+| `detector/tests/test_viz.py` | Modified | Added `test_render_chart_adds_one_rectangle_per_fvg` — asserts `ax.patches` count matches `fvgs` count |
+| `detector/tests/property/test_no_lookahead.py` | Modified | Added `test_fvg_detection_has_no_lookahead` (REQ-26.1, k=3) — see Deviations for the fill_status monotonicity decision; sanity-checked by injecting a lookahead bug into the ATR window (caught it — see TDD evidence) |
+
+## TDD Cycle Evidence — S-001
+
+| Task | Test (file::name) | Layer | RED evidence | GREEN | Triangulated | Refactored |
+|---|---|---|---|---|---|---|
+| fvg (outer-loop) | `test_fvg.py::test_detects_bearish_fvg_and_marks_filled_after_retest` | unit (REQ-08.1+REQ-10 grounded) | `ImportError: cannot import name 'FVGConfig'` → then `NotImplementedError` after stub | ✅ (after fixing an overlapping-gap fixture bug — see Deviations) | n/a — grounded anchor | none needed |
+| fvg | `test_fvg.py::test_bullish_gap_top_bottom_match_candle_one_and_three_extremes` | unit | `NotImplementedError` | ✅ | forced the bullish branch of `_formed_gap` | none needed |
+| fvg | `test_fvg.py::test_partial_reentry_leaves_gap_open` | unit (REQ-10.1 grounded) | `NotImplementedError` | ✅ | n/a — grounded, single case | none needed |
+| fvg | `test_fvg.py::test_gap_narrower_than_default_min_size_is_excluded` | unit (REQ-09.1) | `NotImplementedError` | ✅ (after fixing a fixture arithmetic bug — see Deviations) | forced the ATR/min-size branch | none needed |
+| fvg | `test_fvg.py::test_custom_min_size_atr_config_lowers_exclusion_threshold` | unit (REQ-25) | `NotImplementedError` | ✅ | forced reading `config.min_size_atr` instead of a hardcoded default | none needed |
+| no-lookahead | `property/test_no_lookahead.py::test_fvg_detection_has_no_lookahead` | property (fitness fn, k=3) | n/a — infrastructure test; sanity-checked by injecting a lookahead bug (`_atr(candles, len(candles)-1)` instead of `_atr(candles, i+2)`) — caught it (assertion failure on a hypothesis-shrunk 6-candle example) | ✅ | 100 hypothesis examples | none needed |
+| viz | `test_viz.py::test_render_chart_adds_one_rectangle_per_fvg` | unit | `TypeError: render_chart() got an unexpected keyword argument 'fvgs'` | ✅ | n/a — single case, structural addition | none needed |
+
+## Slice Audit Notes (S-001, post-slice per Step 7c)
+
+Self-audited against `code-audit.md` slice mode (Group 1 subset for REQ-08/09/10/25/26.1, Group 2, Group 3): no `Bug` or `Architecture` findings. Import-linter confirms `primitives`→`core` and `viz`→`primitives` stay within ADR-01's layers; no pandas leak (ADR-04); `FVGConfig` follows ADR-02's single-typed-config pattern; no bare numeric literals outside `config.py` besides the two fixed structural constants noted in Deviations #1 below (matches the precedent set by Swing's fixed fractal window). No scope creep — only files listed in the task's Scope section were touched.
 
 ## TDD Cycle Evidence — S-000
 
@@ -69,6 +99,13 @@ Real end-to-end acceptance also run manually (not a pytest test): `python -m det
 5. **`cli.py` argparse scoped to single-series flags only** (`--csv`, `--symbol`, `--output-dir`) — did not pre-declare `--htf-csv`/`--htf-symbol`/`--from-date`/`--to-date`/`--types` even though slices.md's S-000.5 task line says "full arg parsing per design.md §4.6". Resolved this apparent tension in favour of the orchestrator's explicit instruction: "don't pre-build hooks for capabilities not yet specified." S-005/S-006 will extend the parser when pair mode and filters are actually implemented.
 6. **Environment bootstrap**: the sandbox had neither `uv` nor Python 3.12 installed. Installed `uv` via `pip install --user uv`, then `uv python install 3.12` (uv-managed CPython 3.12.14). Not a design deviation, but worth recording — a fresh clone of this repo needs the same two bootstrap commands before `cd detector && uv sync --extra dev` works.
 
+### S-001 deviations
+
+7. **ATR(14) warm-up: graceful degradation instead of a hard data-sufficiency gate.** Design.md §4.4 specifies "standard 14-period true-range average" but doesn't address what happens when fewer than 14 candles of history exist before the formation candle (unavoidable near series start, and in every small test fixture). Two options: (a) don't flag any FVG until 14+ candles of history exist, consistent with the CLI contract's general note "fewer candles than the largest lookback: not a load error, detectors simply produce nothing until enough data accumulates"; or (b) average over whatever true-range history is available (1..14 candles), which is how ATR warm-up is conventionally handled (e.g. TradingView/MT5) and is still 100% causal (never reads beyond the current index). Chose (b) — implemented in `_atr()` as `sum(TR[max(0,i-13):i+1]) / count`. Reasoning: (a) would make FVG untestable with the project's established small-fixture style (3-5 candles, matching every other detector's test fixtures) since no test would ever have 14+ candles of prior history; (b) is the standard, well-known way real ATR implementations handle the warm-up period and doesn't compromise no-lookahead. This is an implementation-detail decision, not a guess at unspecified *behavior* — REQ-09's specified behavior (exclude gaps narrower than `min_size_atr × ATR(14)`) is unaffected; only how ATR degrades with insufficient history was undecided. `_ATR_PERIOD = 14` is a fixed structural constant in `fvg.py` (not exposed via `FVGConfig`), matching the precedent that Swing's 3-candle fractal window and the FVG 3-candle formation window are also fixed, not configurable — Global facts' config-defaults list only names `FVGConfig.min_size_atr=0.1`, confirming 14 was never meant to be a config field.
+8. **No-lookahead property test: `fill_status` compared by monotonicity, not full equality, at the settled boundary.** Design.md's global comparison semantics state "for indices ≤ n-k-1, full equality including mutable fields (status, fill_status)". For FVG this is only literally satisfiable for the four *formation* fields (`start_index`/`end_index`/`top`/`bottom`/`direction`) — these are a pure function of candles `i..i+2` and are 100% fixed the moment those three candles are visible, so full equality holds and is asserted. `fill_status`, however, is explicitly unbounded per design's own text ("cumulative price action *after* formation" — no deadline, unlike Model-1's `max_retest_lookback=20` or CRT range's `max_lookback=20`, which both have an explicit settling deadline that IS the detector's k). A gap can fill arbitrarily many candles after formation; asserting full equality at `n-k-1` would require the property to know the future, which contradicts the very no-lookahead property being tested. Resolved by asserting `fill_status` **monotonicity** instead: `filled` in a truncated view must also be `filled` in the full series (a real observed fill event can't un-happen with more data); `open` in a truncated view is allowed to differ from `filled` in the full series (more data may yet fill it) — this is the direct extension of the same "status legitimately differing … expected, not a violation" allowance the design text already grants for fields still inside the settling window, applied here because `fill_status`'s settling window is unbounded by construction rather than fixed at k=3. Verified this property is real (not vacuously true) by injecting a lookahead bug and confirming the test fails — see TDD Cycle Evidence. Flagged for review rather than silently choosing an interpretation, since this is a genuine tension in the design's stated semantics, not an invented one.
+9. **`core/results.py` left unchanged.** The task instructions said to add "whatever FVG result type the design calls for, matching the existing `DetectionStatus` enum pattern **if it applies**." `DetectionStatus` (CONFIRMED/INVALIDATED/PENDING) is a 3-state enum for detectors with retest/confirmation lifecycles (Model-1); FVG's fill status is a 2-state `Literal["open","filled"]` field directly on the `FVG` dataclass (per design.md §4.3's pinned data model), matching the precedent that `SwingPoint.kind` is also a `Literal` field on its own primitive's dataclass, not routed through `core/results.py`. The "if it applies" condition doesn't hold here, so `core/results.py` stays untouched — a deliberate no-op, not an oversight.
+10. **Two test fixtures had arithmetic bugs caught during GREEN, not RED** — `bearish_fvg_fill_setup()` initially produced a second, overlapping/unintended FVG at index 1 (the literal per-index formation predicate correctly found it — my constructed numbers were wrong, not the algorithm), and the REQ-09 min-size fixture's "tiny gap" candle had its low set below the reference high, so no gap formed at all (the test was passing for the wrong reason). Both fixed by adjusting the fixture candle values; re-verified GREEN for the right reason. Recorded because a fixture bug that makes a test pass vacuously is exactly the kind of false confidence Strict TDD's banned-pattern list warns against — worth being explicit that these were caught and fixed, not glossed over.
+
 ## Halt / Issues Found
 
 None — no blocking halts. Deviations above are judgment calls made transparent rather than silent.
@@ -77,13 +114,12 @@ None — no blocking halts. Deviations above are judgment calls made transparent
 
 | Metric | Value |
 |---|---|
-| Slices in this scope | 1 |
-| Slices complete | 1 |
-| Slices in progress | 0 |
-| Tasks complete | 8/8 |
-| Tests passing | 19/19 (pytest) |
+| Slices done overall | S-000, S-001 (2/7) |
+| Slices in this run | 1 (S-001) |
+| Tasks complete this run | 1/1 |
+| Tests passing | 26/26 (pytest) — 19 from S-000 unregressed + 7 new (5 unit + 1 property + 1 viz) |
 | Import-linter | 1/1 contracts kept |
 
 ## Next Step
 
-Ready for `/build --scope=happy-path` (or per-slice: S-001, S-002, S-003 can run in parallel per the Build Order in slices.md — all only require S-000).
+S-002 (CRT range) and S-003 (MSS) can run next — both only require S-000, per the Build Order in slices.md (parallelizable with each other, independent of S-001). S-004 (Model-1) additionally requires S-001 + S-002 and is now unblocked on the S-001 side.

@@ -14,9 +14,11 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from core.candle import Candle, OHLCSeries
+from primitives.fvg import detect_fvgs
 from primitives.swing import detect_swings
 
 _SWING_K = 1
+_FVG_K = 3
 
 
 def _ohlc_candle(draw, index: int) -> Candle:
@@ -52,3 +54,41 @@ def test_swing_detection_has_no_lookahead(series: OHLCSeries):
         settled_full_swings = [s for s in full_swings if s.index <= settled_boundary]
 
         assert truncated_swings == settled_full_swings
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_fvg_detection_has_no_lookahead(series: OHLCSeries):
+    """FVG's k=3 bounds formation identity (start_index/end_index/top/
+    bottom/direction) — settled once candles i, i+1, i+2 are visible.
+    fill_status is NOT k-bounded the same way: "cumulative price action
+    after formation" can fill a gap arbitrarily far beyond formation, so it
+    is monotonic (open -> filled, never filled -> open) rather than final
+    within a fixed settling window. The property checks (a) full equality
+    of formation-identity fields for settled gaps, and (b) fill_status
+    monotonicity: a truncated view reporting "filled" must also report
+    "filled" in the full series (that observation can't be undone by more
+    data); "open" in a truncated view may still resolve "filled" later.
+    """
+    full_fvgs = detect_fvgs(series)
+    full_by_start = {f.start_index: f for f in full_fvgs}
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_fvgs = detect_fvgs(series.up_to(n))
+        settled_boundary = n - _FVG_K - 1
+
+        settled_truncated = [f for f in truncated_fvgs if f.start_index <= settled_boundary]
+
+        settled_full_start_indices = {
+            f.start_index for f in full_fvgs if f.start_index <= settled_boundary
+        }
+        assert {f.start_index for f in settled_truncated} == settled_full_start_indices
+
+        for truncated_fvg in settled_truncated:
+            full_fvg = full_by_start[truncated_fvg.start_index]
+            assert truncated_fvg.end_index == full_fvg.end_index
+            assert truncated_fvg.top == full_fvg.top
+            assert truncated_fvg.bottom == full_fvg.bottom
+            assert truncated_fvg.direction == full_fvg.direction
+            if truncated_fvg.fill_status == "filled":
+                assert full_fvg.fill_status == "filled"

@@ -38,7 +38,7 @@
 
 ## S-001: FVG detection
 **Requires**: S-000 | **Covers**: REQ-08, 09, 10, 25 (FVG config), 26.1 (k=3)
-- [ ] `primitives/fvg.py` (predicate + min_size_atr + fill semantics per Global facts) + tests + property test + viz marker
+- [x] `primitives/fvg.py` (predicate + min_size_atr + fill semantics per Global facts) + tests + property test + viz marker
 
 ## S-002: CRT range detection
 **Requires**: S-000 | **Covers**: REQ-11–14, 25 (max_lookback=20), 26.1
