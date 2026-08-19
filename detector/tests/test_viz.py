@@ -1,5 +1,6 @@
 from fixtures.synthetic import CandleSeriesBuilder
 
+from primitives.crt_range import CRTRange
 from primitives.fvg import FVG
 from primitives.swing import SwingPoint
 from viz.chart import render_chart
@@ -62,3 +63,23 @@ def test_render_chart_adds_one_rectangle_per_fvg(tmp_path):
 
     ax = fig.axes[0]
     assert len(ax.patches) == len(fvgs)
+
+
+def test_render_chart_adds_one_label_per_crt_range(tmp_path):
+    crt_ranges = [
+        CRTRange(
+            model="3-candle",
+            high=1.0020,
+            low=0.9995,
+            start_index=0,
+            end_index=2,
+            resolution="true_break",
+            resolved_at_index=2,
+        )
+    ]
+    output_path = tmp_path / "overlay.png"
+
+    fig = render_chart(_series(), [], str(output_path), crt_ranges=crt_ranges)
+
+    ax = fig.axes[0]
+    assert len(ax.texts) == len(crt_ranges)

@@ -7,6 +7,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 
 from core.candle import OHLCSeries
+from primitives.crt_range import CRTRange
 from primitives.fvg import FVG
 from primitives.swing import SwingPoint
 
@@ -19,6 +20,8 @@ _FVG_BULLISH_COLOR = "seagreen"
 _FVG_BEARISH_COLOR = "firebrick"
 _FVG_ALPHA = 0.2
 _FVG_WIDTH_PAD = 0.5
+_CRT_RANGE_COLOR = "purple"
+_CRT_RANGE_LABEL_OFFSET = 0.0008
 
 
 def render_chart(
@@ -26,21 +29,26 @@ def render_chart(
     swings: list[SwingPoint],
     output_path: str,
     fvgs: list[FVG] | None = None,
+    crt_ranges: list[CRTRange] | None = None,
 ) -> Figure:
     fvgs = fvgs or []
+    crt_ranges = crt_ranges or []
     fig, ax = plt.subplots()
 
     _plot_candles(ax, series)
     _plot_swings(ax, series, swings)
     _plot_fvgs(ax, fvgs)
+    _plot_crt_ranges(ax, crt_ranges)
 
     ax.set_title(series.instrument)
-    _add_legend(ax, swings, fvgs)
+    _add_legend(ax, swings, fvgs, crt_ranges)
     fig.savefig(output_path, dpi=_DPI)
     return fig
 
 
-def _add_legend(ax, swings: list[SwingPoint], fvgs: list[FVG]) -> None:
+def _add_legend(
+    ax, swings: list[SwingPoint], fvgs: list[FVG], crt_ranges: list[CRTRange]
+) -> None:
     handles = [
         Line2D([0], [0], color=_UP_BODY_COLOR, linewidth=4, label="Bullish"),
         Line2D([0], [0], color=_DOWN_BODY_COLOR, linewidth=4, label="Bearish"),
@@ -57,7 +65,32 @@ def _add_legend(ax, swings: list[SwingPoint], fvgs: list[FVG]) -> None:
         handles.append(
             Patch(facecolor="gray", alpha=_FVG_ALPHA, label="Fair Value Gap")
         )
+    if crt_ranges:
+        handles.append(
+            Line2D(
+                [0], [0], color=_CRT_RANGE_COLOR, linestyle="--", label="CRT Range"
+            )
+        )
     ax.legend(handles=handles, loc="upper left")
+
+
+def _plot_crt_ranges(ax, crt_ranges: list[CRTRange]) -> None:
+    for crt_range in crt_ranges:
+        for level in (crt_range.high, crt_range.low):
+            ax.plot(
+                [crt_range.start_index, crt_range.end_index],
+                [level, level],
+                color=_CRT_RANGE_COLOR,
+                linestyle="--",
+                linewidth=1,
+            )
+        ax.text(
+            crt_range.start_index,
+            crt_range.high + _CRT_RANGE_LABEL_OFFSET,
+            f"{crt_range.model} ({crt_range.resolution})",
+            color=_CRT_RANGE_COLOR,
+            fontsize=6,
+        )
 
 
 def _plot_fvgs(ax, fvgs: list[FVG]) -> None:

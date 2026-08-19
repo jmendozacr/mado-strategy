@@ -42,7 +42,7 @@
 
 ## S-002: CRT range detection
 **Requires**: S-000 | **Covers**: REQ-11–14, 25 (max_lookback=20), 26.1
-- [ ] `primitives/crt_range.py` (formation + close-based resolution + corrected model classification per design.md §4.4) + tests (4 variants: true-break/false-break/never-resolves-absent/resolves-on-last-candle) + property test + viz marker
+- [x] `primitives/crt_range.py` (formation + close-based resolution + corrected model classification per design.md §4.4) + tests (4 variants: true-break/false-break/never-resolves-absent/resolves-on-last-candle) + property test + viz marker
 
 ## S-003: MSS detection
 **Requires**: S-000 (Swing) | **Covers**: REQ-15, 16, 25 (decisive_close_ratio=0.25), 26.1

@@ -14,11 +14,13 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from core.candle import Candle, OHLCSeries
+from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
 from primitives.swing import detect_swings
 
 _SWING_K = 1
 _FVG_K = 3
+_CRT_RANGE_K = 20
 
 
 def _ohlc_candle(draw, index: int) -> Candle:
@@ -92,3 +94,31 @@ def test_fvg_detection_has_no_lookahead(series: OHLCSeries):
             assert truncated_fvg.direction == full_fvg.direction
             if truncated_fvg.fill_status == "filled":
                 assert full_fvg.fill_status == "filled"
+
+
+@given(series=ohlc_series(max_size=45))
+@settings(max_examples=100)
+def test_crt_range_detection_has_no_lookahead(series: OHLCSeries):
+    """CRT range's k=max_lookback=20 bounds the ENTIRE outcome (emitted or
+    not, and every field) per start_index — unlike FVG's fill_status, a
+    range's resolution always completes (or doesn't) within a bounded
+    lookback, so settled entries need full equality, not monotonicity.
+    """
+    full_ranges = detect_crt_ranges(series)
+    full_by_start = {r.start_index: r for r in full_ranges}
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_ranges = detect_crt_ranges(series.up_to(n))
+        settled_boundary = n - _CRT_RANGE_K - 1
+
+        settled_truncated_starts = {
+            r.start_index for r in truncated_ranges if r.start_index <= settled_boundary
+        }
+        settled_full_starts = {
+            r.start_index for r in full_ranges if r.start_index <= settled_boundary
+        }
+        assert settled_truncated_starts == settled_full_starts
+
+        truncated_by_start = {r.start_index: r for r in truncated_ranges}
+        for start in settled_truncated_starts:
+            assert truncated_by_start[start] == full_by_start[start]
