@@ -27,14 +27,14 @@
 **Acceptance**: GIVEN a single-series MT5 CSV + `--symbol EURUSD`, WHEN run via `python -m detector.cli`, THEN `overlay.png` with Swing markers is produced; `.importlinter` + hypothesis harness pass.
 
 ### Tasks
-- [ ] S-000.1 `core/candle.py`, `core/results.py`, `core/config.py` (empty `SwingConfig` — no fields needed), `detector/pyproject.toml`
-- [ ] S-000.2 `ingestion/loader.py` — MT5 format, `--symbol` flag (REQ-01/02)
-- [ ] S-000.3 `primitives/swing.py` (REQ-06) + `property/test_no_lookahead.py` harness (REQ-07, k=1)
-- [ ] S-000.4 `viz/chart.py` (Swing triangle markers only)
-- [ ] S-000.5 `cli.py` (single-series mode, full arg parsing)
-- [ ] S-000.6 `.importlinter` + `test_fitness_imports.py`
-- [ ] S-000.7 `tests/conftest.py` + `fixtures/synthetic.py` builder pattern, first fixture (charter-2 [00:05:28] shape)
-- [ ] S-000.8 Update repo-root `CLAUDE.md`
+- [x] S-000.1 `core/candle.py`, `core/results.py`, `core/config.py` (empty `SwingConfig` — no fields needed), `detector/pyproject.toml`
+- [x] S-000.2 `ingestion/loader.py` — MT5 format, `--symbol` flag (REQ-01/02)
+- [x] S-000.3 `primitives/swing.py` (REQ-06) + `property/test_no_lookahead.py` harness (REQ-07, k=1)
+- [x] S-000.4 `viz/chart.py` (Swing triangle markers only)
+- [x] S-000.5 `cli.py` (single-series mode, full arg parsing)
+- [x] S-000.6 `.importlinter` + `test_fitness_imports.py`
+- [x] S-000.7 `tests/conftest.py` + `fixtures/synthetic.py` builder pattern, first fixture (charter-2 [00:05:28] shape)
+- [x] S-000.8 Update repo-root `CLAUDE.md`
 
 ## S-001: FVG detection
 **Requires**: S-000 | **Covers**: REQ-08, 09, 10, 25 (FVG config), 26.1 (k=3)

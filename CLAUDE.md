@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Purpose
 
-This is not a software project — there is no source code, build system, package manifest, or test suite. It is a knowledge base of structured notes transcribed from the "CRT 2026 Mentorship" YouTube series by trading educator **Mado**, covering **Candle Range Theory (CRT)**, a price-action trading methodology derived from ICT (Inner Circle Trader) concepts (liquidity, order flow, Fair Value Gaps, Order Blocks, Turtle Soup, etc.).
+Primarily this is not a software project — there is no build system, package manifest, or test suite at the repo root. It is a knowledge base of structured notes transcribed from the "CRT 2026 Mentorship" YouTube series by trading educator **Mado**, covering **Candle Range Theory (CRT)**, a price-action trading methodology derived from ICT (Inner Circle Trader) concepts (liquidity, order flow, Fair Value Gaps, Order Blocks, Turtle Soup, etc.). The one exception is the `detector/` subproject — a small, self-contained Python codebase that encodes the methodology as detection rules — see below.
 
 ## Structure
 
 - `docs/charter-N.md` — one file per mentorship episode, in viewing order. Each new episode transcribed gets the next sequential `charter-N.md`.
+- `detector/` — the CRT/ICT pattern detector subproject (source code; see "`detector/` Subproject" below).
 
 ## File Format Convention
 
@@ -32,7 +33,18 @@ The episodes build cumulatively — later charters assume earlier ones:
 
 When adding new charters, preserve this progression and keep terminology consistent with earlier episodes (e.g., CRT High/Low, BSL/SSL, DOL, Model-1, TSQ phase names) rather than introducing synonyms.
 
+## `detector/` Subproject
+
+A CRT/ICT price-action pattern detector for MetaTrader 5-exported OHLC data, encoding the methodology from `docs/charter-1..5.md` as detection rules (Swing, FVG, CRT range, MSS, Model-1) plus HTF↔LTF alignment, a chart overlay, and a CSV detections table. Layered pure-function pipeline (`core` → `primitives` → `composite`/`entries` → `alignment` → `viz`/`cli`; `ingestion` is a leaf) — full design at `openspec/changes/crt-pattern-detector-v1/design.md`.
+
+- **Stack**: Python 3.12, managed with `uv`. Dependencies: pandas, numpy, matplotlib (runtime); pytest, hypothesis, import-linter (dev).
+- **Setup**: `cd detector && uv sync --extra dev`.
+- **Test command**: `cd detector && uv run pytest`.
+- **Import-layering check**: `cd detector && uv run lint-imports` (enforces `.importlinter`'s ADR-01 layers contract).
+- **Run**: `uv run --project detector python -m detector.cli --csv PATH --symbol SYM --output-dir PATH` (from the repo root).
+- Strict TDD applies to this subproject's implementation work — see the change's slices at `openspec/changes/crt-pattern-detector-v1/slices.md`.
+
 ## Working in This Repo
 
-- There is nothing to build, lint, or test.
-- Edits are prose/content edits to Markdown notes — treat accuracy to the source video (timestamps, terminology) as the main correctness bar.
+- Outside `detector/`, there is nothing to build, lint, or test — edits are prose/content edits to Markdown notes; treat accuracy to the source video (timestamps, terminology) as the main correctness bar.
+- Inside `detector/`, treat it as a normal Python codebase: run tests and the import-linter check before considering a change done (see "`detector/` Subproject" above).

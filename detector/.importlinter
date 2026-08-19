@@ -1,0 +1,15 @@
+[importlinter]
+root_packages =
+    core
+    ingestion
+    primitives
+    viz
+
+[importlinter:contract:layers]
+name = Layered pipeline (ADR-01)
+type = layers
+layers =
+    viz : ingestion
+    primitives
+    core
+
