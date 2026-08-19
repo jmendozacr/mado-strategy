@@ -53,7 +53,7 @@
 
 **Fixtures**: anchor-detection (wick/body priority) isolated from 3 post-anchor state fixtures (CONFIRMED/INVALIDATED/PENDING) + 3 charter-2-behavior-matching examples (purge-engulf [00:05:28]-[00:06:04], delayed-engulf [00:06:35]-[00:07:02], dual purge+FVG-fill [00:07:27]-[00:07:56]).
 
-- [ ] `entries/model1.py` (full state machine + entry-selection rules per design.md §4.4; `purge_target` = CRT High/Low only, NOT arbitrary swings) + tests + property test (k=20) + viz marker
+- [x] `entries/model1.py` (full state machine + entry-selection rules per design.md §4.4; `purge_target` = CRT High/Low only, NOT arbitrary swings) + tests + property test (k=20) + viz marker
 
 ## S-005: HTF↔LTF alignment
 **Requires**: S-002, S-004 | **Covers**: REQ-03, 04, 05, 27, 26.2

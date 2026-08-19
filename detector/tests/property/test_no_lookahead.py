@@ -15,6 +15,7 @@ from hypothesis import strategies as st
 
 from core.candle import Candle, OHLCSeries
 from composite.mss import detect_mss_events
+from entries.model1 import detect_model1_signals
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
 from primitives.swing import detect_swings
@@ -23,6 +24,7 @@ _SWING_K = 1
 _FVG_K = 3
 _CRT_RANGE_K = 20
 _MSS_K = 1
+_MODEL1_K = 20
 
 
 def _ohlc_candle(draw, index: int) -> Candle:
@@ -154,3 +156,43 @@ def test_mss_detection_has_no_lookahead(series: OHLCSeries):
             full_event = full_by_key[key]
             assert truncated_event.index == full_event.index
             assert truncated_event.broken_swing == full_event.broken_swing
+
+
+@given(series=ohlc_series(max_size=40))
+@settings(max_examples=100)
+def test_model1_detection_has_no_lookahead(series: OHLCSeries):
+    """Model-1's k=max_retest_lookback=20 bounds the ENTIRE tracked
+    lifetime (confirmation + retest search) from the anchor's own index —
+    unlike FVG's fill_status or MSS's break search, Model-1's tracking
+    window is a hard budget from anchor_index (v1 does no open-ended
+    live tracking; an anchor that neither confirms nor resolves within the
+    window settles as PENDING, a terminal-for-v1 outcome, not an
+    open-ended "still waiting" state). Settled signals therefore need FULL
+    equality, matching CRT range's treatment, not monotonicity.
+    """
+    full_signals = detect_model1_signals(series)
+    full_by_key = {
+        (s.anchor_index, s.direction, s.confirmation_type): s for s in full_signals
+    }
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_signals = detect_model1_signals(series.up_to(n))
+        settled_boundary = n - _MODEL1_K - 1
+
+        settled_truncated_keys = {
+            (s.anchor_index, s.direction, s.confirmation_type)
+            for s in truncated_signals
+            if s.anchor_index <= settled_boundary
+        }
+        settled_full_keys = {
+            (s.anchor_index, s.direction, s.confirmation_type)
+            for s in full_signals
+            if s.anchor_index <= settled_boundary
+        }
+        assert settled_truncated_keys == settled_full_keys
+
+        truncated_by_key = {
+            (s.anchor_index, s.direction, s.confirmation_type): s for s in truncated_signals
+        }
+        for key in settled_truncated_keys:
+            assert truncated_by_key[key] == full_by_key[key]

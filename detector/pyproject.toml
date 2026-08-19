@@ -21,7 +21,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["core", "primitives", "composite", "ingestion", "viz"]
+packages = ["core", "primitives", "composite", "entries", "ingestion", "viz"]
 include = ["cli.py"]
 
 [tool.pytest.ini_options]

@@ -297,6 +297,166 @@ def mss_no_prior_opposite_swing_setup() -> OHLCSeries:
     )
 
 
+def model1_wick_priority_setup() -> OHLCSeries:
+    """REQ-20.1: candle 1 purges the CRT High (bearish anchor). Candle 2's
+    close (1.0995) goes beyond the anchor's WICK-low extreme (1.1005), not
+    just its body extreme (1.1010) -> Wick used regardless of body size,
+    entry_price = anchor's wick extreme (1.1035, the swept side).
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms beyond wick extreme
+        .build()
+    )
+
+
+def model1_body_tiebreak_big_body_setup() -> OHLCSeries:
+    """REQ-20: anchor candle 1 is a "big beefy candle" (body_ratio=0.767,
+    >= body_ratio_tiebreak=0.6). Candle 2's close (1.1002) clears the
+    anchor's BODY extreme (1.1005) but not its WICK extreme (1.1000) ->
+    middle zone -> tiebreak favors Body (big body): entry_price = anchor's
+    body extreme (1.1005), per charter-2 [00:11:18].
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1005, high=1.1030, low=1.1000, close=1.1028)  # 1 — anchor, big body, purges High
+        .candle(open=1.1005, high=1.1010, low=1.0995, close=1.1002)  # 2 — confirms in middle zone
+        .build()
+    )
+
+
+def model1_body_tiebreak_small_body_setup() -> OHLCSeries:
+    """REQ-20: anchor candle 1 has a small body and long wick (body_ratio=
+    0.044, < body_ratio_tiebreak=0.6). Candle 2's close (1.1000) clears the
+    anchor's BODY extreme (1.1015) but not its WICK extreme (1.0995) ->
+    middle zone -> tiebreak favors Wick (small body): entry_price =
+    anchor's wick extreme (1.1040), per charter-2 [00:12:02].
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1015, high=1.1040, low=1.0995, close=1.1017)  # 1 — anchor, small body, purges High
+        .candle(open=1.1015, high=1.1018, low=1.0998, close=1.1000)  # 2 — confirms in middle zone
+        .build()
+    )
+
+
+def model1_confirmed_setup() -> OHLCSeries:
+    """Dedicated, isolated CONFIRMED fixture (REQ-21): anchor purges the
+    CRT High, confirms via wick-beyond close, then candle 3 both retests
+    (its wick overlaps the anchor's body range) AND closes beyond its own
+    open in the trade direction on the SAME candle -> CONFIRMED. Exercises
+    "any magnitude beyond the retest candle's own open" without needing a
+    separate expansion candle.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1035)
+        .candle(open=1.0995, high=1.1012, low=1.0980, close=1.0990)  # 3 — retest + same-candle close -> CONFIRMED
+        .build()
+    )
+
+
+def model1_invalidated_setup() -> OHLCSeries:
+    """REQ-18/REQ-21: same anchor+confirmation as `model1_confirmed_setup`,
+    but candle 3 CLOSES beyond the anchor's protected extreme (1.1035)
+    before any retest is found -> INVALIDATED (respect_rule_tolerance=0,
+    close-based; a wick breach alone would not invalidate).
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1035)
+        .candle(open=1.0995, high=1.1040, low=1.0990, close=1.1038)  # 3 — closes beyond 1.1035 -> INVALIDATED
+        .build()
+    )
+
+
+def model1_pending_setup() -> OHLCSeries:
+    """REQ-21.1, grounded charter-2 [00:08:29]-[00:08:57]: same anchor +
+    confirmation as `model1_confirmed_setup`, but the series ENDS right
+    after confirmation — no retest found by series end -> PENDING, never
+    dropped (Model-1's "one disadvantage": price can take off without
+    ever returning to retest the purge candle).
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms; series ends, no retest
+        .build()
+    )
+
+
+def model1_purge_engulf_charter2_setup() -> OHLCSeries:
+    """Charter-2 [00:05:28]-[00:06:04], Example 1: candle 1 purges the CRT
+    High ("barre el Alto tomando la liquidez"). Candle 2 closes below the
+    anchor's body ("cierra por debajo del cuerpo") -> confirms, entry=wick
+    (close also clears the anchor's wick extreme). Candle 3 retests and
+    respects the anchor (no breach). Candle 4 expands beyond the retest
+    candle's own open ("fuerte expansión bajista") -> CONFIRMED.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1010, high=1.1035, low=1.1000, close=1.1015)  # 1 — anchor, purges High
+        .candle(open=1.1000, high=1.1005, low=1.0950, close=1.0960)  # 2 — confirms (close beyond wick+body); also resolves range true_break
+        .candle(open=1.0960, high=1.1012, low=1.0955, close=1.0965)  # 3 — retest (overlaps anchor body [1.1010,1.1015])
+        .candle(open=1.0965, high=1.0968, low=1.0900, close=1.0910)  # 4 — expansion, close beyond retest's own open -> CONFIRMED
+        .build()
+    )
+
+
+def model1_delayed_engulf_charter2_setup() -> OHLCSeries:
+    """Charter-2 [00:06:35]-[00:07:02], Example 2: candle 1 purges the CRT
+    Low. The engulfing close does NOT happen on the very next candle —
+    candle 2 stays inside (no breach either way) — it takes until candle 3
+    to close beyond the anchor's body ("toma un par de velas cerrar por
+    encima"). No candle ever closed below the anchor's protected extreme in
+    between ("Regla de Respeto") -> anchor stays valid, confirms on close.
+    Candle 4 retests; candle 5 expands -> CONFIRMED.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.0990, high=1.1000, low=1.0960, close=1.0985)  # 1 — anchor, purges Low
+        .candle(open=1.0985, high=1.0995, low=1.0975, close=1.0980)  # 2 — delay: no confirm, no invalidate
+        .candle(open=1.0980, high=1.1040, low=1.0975, close=1.1030)  # 3 — delayed confirm, entry=wick @1.0960
+        .candle(open=1.1030, high=1.1032, low=1.0987, close=1.1020)  # 4 — retest (overlaps anchor body [1.0985,1.0990])
+        .candle(open=1.1020, high=1.1055, low=1.1015, close=1.1050)  # 5 — expansion, close beyond retest's own open -> CONFIRMED
+        .build()
+    )
+
+
+def model1_dual_purge_and_fvg_fill_charter2_setup() -> OHLCSeries:
+    """Charter-2 [00:07:27]-[00:07:56], Example 3: candle 4 does BOTH jobs
+    at once — purges a short-term CRT Low (from the range formed at candle
+    3) AND fills/rebalances the bullish FVG formed by candles 0-2 — a
+    "high probability" dual-condition setup. Both confirmation types
+    (`purge_engulf` and `fvg_fill`) are independently detected at the same
+    anchor candle. Candle 5 confirms both (and resolves the CRT range as
+    false_break); candle 6 retests; candle 7 expands -> both CONFIRMED.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — FVG candle1 (high=1.1010)
+        .candle(open=1.1010, high=1.1030, low=1.1005, close=1.1020)  # 1 — FVG candle2 (filler)
+        .candle(open=1.1025, high=1.1045, low=1.1020, close=1.1040)  # 2 — FVG candle3 (low=1.1020) -> gap [1.1010,1.1020]
+        .candle(open=1.1040, high=1.1055, low=1.1012, close=1.1045)  # 3 — CRT range: H=1.1055 L=1.1012
+        .candle(open=1.1030, high=1.1035, low=1.1005, close=1.1020)  # 4 — anchor: purges range-low AND fills FVG
+        .candle(open=1.1020, high=1.1042, low=1.1015, close=1.1040)  # 5 — confirms both; resolves range false_break
+        .candle(open=1.1040, high=1.1042, low=1.1025, close=1.1038)  # 6 — retest (overlaps anchor body [1.1020,1.1030])
+        .candle(open=1.1038, high=1.1060, low=1.1035, close=1.1055)  # 7 — expansion -> CONFIRMED
+        .build()
+    )
+
+
 def bearish_purge_setup() -> OHLCSeries:
     """Charter-2 [00:05:28]-[00:06:04]: a swing high forms, then a later
     candle purges it (wicks above, taking the resting liquidity) before the

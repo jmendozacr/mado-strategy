@@ -1,6 +1,8 @@
 from fixtures.synthetic import CandleSeriesBuilder
 
 from composite.mss import MSSEvent
+from core.results import DetectionStatus
+from entries.model1 import Model1Signal
 from primitives.crt_range import CRTRange
 from primitives.fvg import FVG
 from primitives.swing import SwingPoint
@@ -105,3 +107,31 @@ def test_render_chart_adds_one_dashed_vline_per_mss_event(tmp_path):
         if line.get_linestyle() == "--" and len(set(line.get_xdata())) == 1
     ]
     assert len(dashed_vlines) == len(mss_events)
+
+
+def test_render_chart_adds_one_arrow_and_entry_line_per_model1_signal(tmp_path):
+    model1_signals = [
+        Model1Signal(
+            anchor_index=1,
+            direction="bullish",
+            purge_target=0.9990,
+            confirmation_type="purge_engulf",
+            entry_type="wick",
+            entry_price=0.9995,
+            retest_index=2,
+            status=DetectionStatus.CONFIRMED,
+        )
+    ]
+    output_path = tmp_path / "overlay.png"
+
+    fig = render_chart(_series(), [], str(output_path), model1_signals=model1_signals)
+
+    ax = fig.axes[0]
+    arrow_points = sum(len(c.get_offsets()) for c in ax.collections)
+    assert arrow_points == len(model1_signals)
+    entry_lines = [
+        line
+        for line in ax.get_lines()
+        if line.get_linestyle() == "-" and len(set(line.get_ydata())) == 1 and line.get_color() == "navy"
+    ]
+    assert len(entry_lines) == len(model1_signals)

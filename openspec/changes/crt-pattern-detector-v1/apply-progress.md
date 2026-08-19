@@ -1,8 +1,84 @@
 # Apply Progress: crt-pattern-detector-v1
 
-**Scope this run (latest)**: `slice:S-003` (MSS detection)
+**Scope this run (latest)**: `slice:S-004` (Model-1 entry detection — core value)
 **Mode**: Strict TDD
-**Status**: S-000 + S-001 + S-002 + S-003 complete — 44/44 tests passing, import-linter contract KEPT
+**Status**: S-000 + S-001 + S-002 + S-003 + S-004 complete — 57/57 tests passing, import-linter contract KEPT (16 files, 21 dependencies, new `entries` layer added)
+
+## Slices Built This Run (S-004)
+
+| Slice | Scope tag | Status | Tasks Done |
+|---|---|---|---|
+| S-004 | happy-path | complete | 1/1 |
+
+### Files Changed — S-004
+
+| File | Action | What Was Done |
+|---|---|---|
+| `detector/entries/model1.py` | Created | `Model1Signal` dataclass + `detect_model1_signals()` — full state machine per design.md §4.4: anchor detection sourced from `primitives.crt_range` (CRT High/Low purge targets only, per REQ-17) and `primitives.fvg` (fill-rebalance targets, per REQ-19), wick-vs-body entry selection with `body_ratio_tiebreak` tiebreak (REQ-20), retest definition (wick-overlaps-anchor's-body-range), and CONFIRMED/INVALIDATED/PENDING transitions with `respect_rule_tolerance`-based zero-tolerance Respect Rule (REQ-18/21). See Deviations #17-19 for the full derivation of the anchor-scope and lookback-window design decisions |
+| `detector/entries/__init__.py` | Created | Package marker — new Tier3 `entries` layer per ADR-01 |
+| `detector/core/config.py` | Modified | Added `Model1Config(body_ratio_tiebreak: float = 0.6, respect_rule_tolerance: float = 0, max_retest_lookback: int = 20)`, wired into `DetectorConfig.model1` (extends, doesn't replace the other configs) |
+| `detector/core/results.py` | Unchanged | `DetectionStatus` (CONFIRMED/INVALIDATED/PENDING) already existed and fits Model-1's lifecycle exactly (unlike FVG/CRTRange/SwingPoint/MSSEvent, which deliberately don't use it) — `Model1Signal.status: DetectionStatus` consumes it directly, no changes needed |
+| `detector/viz/chart.py` | Modified | `render_chart()` gained an additive `model1_signals: list[Model1Signal] \| None = None` parameter; new `_plot_model1_signals()` draws one arrow marker (`^` bullish / `v` bearish) at `(anchor_index, entry_price)` plus a solid entry line from `anchor_index` to `retest_index` (or `anchor_index+1` if no retest yet) at the `entry_price` level, per Global facts' "Model-1=arrow+entry line" encoding. Legend gains one "Model-1" swatch when any signals are present. Existing Swing/FVG/CRT-range/MSS call sites untouched — parameter is optional and additive |
+| `detector/.importlinter` | Modified | Added `entries` to `root_packages`; layers contract changed `composite` (alone) to `composite \| entries` (import-linter's INDEPENDENT-siblings delimiter, `\|`) — enforces ADR-01's explicit "entries→core+primitives (NOT composite)" rule bidirectionally. Verified genuine via bug injection: temporarily added an `entries.model1 -> composite.mss` import, confirmed `lint-imports` reports it BROKEN ("entries is not allowed to import composite"), then reverted |
+| `detector/pyproject.toml` | Modified | Added `"entries"` to `[tool.hatch.build.targets.wheel].packages` |
+| `detector/tests/fixtures/synthetic.py` | Modified | Added 9 new builder fixtures: 3 anchor-detection/wick-vs-body isolates (`model1_wick_priority_setup`, `model1_body_tiebreak_big_body_setup`, `model1_body_tiebreak_small_body_setup` — REQ-20), 3 post-anchor-state isolates (`model1_confirmed_setup`, `model1_invalidated_setup`, `model1_pending_setup` — REQ-21/21.1), 3 charter-2-behavior-matching examples (`model1_purge_engulf_charter2_setup` [00:05:28]-[00:06:04], `model1_delayed_engulf_charter2_setup` [00:06:35]-[00:07:02], `model1_dual_purge_and_fvg_fill_charter2_setup` [00:07:27]-[00:07:56] — REQ-17.1/18.1/19.1) |
+| `detector/tests/test_model1.py` | Created | 11 tests: 3 wick-vs-body entry-selection (wick-primary, body-tiebreak-big-body, body-tiebreak-small-body), 1 REQ-25 config test (`body_ratio_tiebreak`), 3 post-anchor-state (CONFIRMED same-candle-retest, INVALIDATED-before-retest, PENDING-at-series-end), 1 REQ-25 config test (`max_retest_lookback`), 3 charter-2 grounded behavior-matching tests (purge-engulf, delayed-engulf, dual purge+FVG-fill — the last asserts BOTH independent `Model1Signal` entries) |
+| `detector/tests/test_viz.py` | Modified | Added `test_render_chart_adds_one_arrow_and_entry_line_per_model1_signal` — asserts one scatter marker point and one solid `navy` single-y-value `Line2D` per signal |
+| `detector/tests/property/test_no_lookahead.py` | Modified | Added `test_model1_detection_has_no_lookahead` (REQ-22, k=`max_retest_lookback`=20) — keyed by `(anchor_index, direction, confirmation_type)`, full equality for settled signals (not monotonicity) — see Deviations #17 for why Model-1's k differs from FVG/MSS's unbounded-field treatment |
+| `openspec/changes/crt-pattern-detector-v1/slices.md` | Modified | S-004 task marked `[x]` |
+
+## TDD Cycle Evidence — S-004
+
+| Task | Test (file::name) | Layer | RED evidence | GREEN | Triangulated | Refactored |
+|---|---|---|---|---|---|---|
+| model1 (outer-loop) | `test_model1.py::test_close_beyond_wick_extreme_uses_wick_regardless_of_body_size` | unit (REQ-20.1) | `NotImplementedError` after stub | ✅ | see triangulation note below | none needed |
+| model1 | `test_model1.py::test_middle_zone_close_with_big_body_tiebreaks_to_body` | unit (REQ-20, charter-2 [00:11:18]) | `NotImplementedError`; first GREEN attempt asserted `entry_price=1.1005` but implementation returned `1.1028` (`max(open,close)`) — genuine RED-after-GREEN failure, fixed by rereading charter-2's literal "Open" framing and correcting `_select_entry`'s body branch to `anchor.open` (not `max`/`min` of open/close) | ✅ (after the fix) | forced the big-body tiebreak branch | ✅ — extracted a `signal()` closure in `_track_anchor` to remove 3x duplicated `Model1Signal(...)` construction |
+| model1 | `test_model1.py::test_middle_zone_close_with_small_body_tiebreaks_to_wick` | unit (REQ-20, charter-2 [00:12:02]) | `NotImplementedError` | ✅ | forced the small-body tiebreak branch (mirrors the big-body case with the opposite outcome) | none needed |
+| model1 | `test_model1.py::test_body_ratio_tiebreak_is_read_from_config_not_hardcoded` | unit (REQ-25) | `NotImplementedError` | ✅ | forced reading `config.body_ratio_tiebreak` instead of a hardcoded 0.6 | none needed |
+| model1 | `test_model1.py::test_retest_and_same_candle_close_beyond_own_open_confirms` | unit (REQ-21) | `NotImplementedError` | ✅ | forced the same-candle retest+confirm sub-case (distinct from the charter-2 fixtures where retest and final close happen on different candles) | none needed |
+| model1 | `test_model1.py::test_close_beyond_protected_extreme_before_retest_invalidates` | unit (REQ-18/21) | `NotImplementedError` | ✅ | forced the post-confirmation INVALIDATED branch with `retest_index=None` | none needed |
+| model1 | `test_model1.py::test_no_retest_by_series_end_is_pending_not_dropped` | unit (REQ-21.1 grounded) | `NotImplementedError` | ✅ | forced the "loop exhausts, confirmed but no retest" PENDING branch | none needed |
+| model1 | `test_model1.py::test_max_retest_lookback_is_read_from_config_not_hardcoded` | unit (REQ-25) | `NotImplementedError` | ✅ | forced reading `config.max_retest_lookback` instead of a hardcoded 20 | none needed |
+| model1 | `test_model1.py::test_purge_engulf_matches_charter2_example1` | unit (REQ-17.1 grounded) | `NotImplementedError` | ✅ | n/a — grounded anchor, immediate engulf | none needed |
+| model1 | `test_model1.py::test_delayed_engulf_matches_charter2_example2` | unit (REQ-18.1 grounded) | `NotImplementedError` | ✅ | forced the "delay candle: no confirm, no invalidate, continue scanning" branch (distinct from immediate-engulf) | none needed |
+| model1 | `test_model1.py::test_dual_purge_and_fvg_fill_matches_charter2_example3` | unit (REQ-19.1 grounded) | `NotImplementedError` | ✅ | forced BOTH the `purge_engulf` and `fvg_fill` code paths to independently fire from the SAME anchor candle, asserted as two separate `Model1Signal` entries | none needed |
+| viz | `test_viz.py::test_render_chart_adds_one_arrow_and_entry_line_per_model1_signal` | unit | `TypeError: render_chart() got an unexpected keyword argument 'model1_signals'` | ✅ | n/a — single case, structural addition | none needed |
+| no-lookahead | `property/test_no_lookahead.py::test_model1_detection_has_no_lookahead` | property (fitness fn, k=20) | n/a — infrastructure test; sanity-checked by injecting a lookahead bug (`window_end = len(candles) - 1`, removing the `max_retest_lookback` bound) — **caught it**: hypothesis shrunk to an 11-candle example, `AssertionError` on the settled-keys-equality check | ✅ | 100 hypothesis examples | none needed |
+
+**Triangulation note for the outer-loop test**: all 11 unit tests were written up front against the full derived state machine (not incrementally hardcoded-then-generalised) and run together; 10/11 passed on the first real GREEN run against the single implementation, 1 (`test_middle_zone_close_with_big_body_tiebreaks_to_body`) genuinely failed on a wrong assumption in `_select_entry`'s body-entry-price formula (see its GREEN column above) — fixed once, then all 11 passed. This is a stronger evidence pattern than S-002/S-003's "passed immediately" cases: a real, caught defect during GREEN, not merely an untested assumption.
+
+## Slice Audit Notes (S-004, post-slice per Step 7c)
+
+`architecture.adrs` is empty (design.md §4.10: "additive — no baseline existed before this change") — per Step 7c's SKIP condition, the formal audit engine was skipped. Self-audited instead, same as S-001/S-002/S-003: import-linter confirms `entries`→`primitives`+`core` only (NOT `composite`) and `viz`→`entries` stay within ADR-01's layers (16 files, 21 dependencies analyzed, contract KEPT; verified the `entries`/`composite` independence is genuinely enforced, not vacuous, via bug injection — see Files Changed); no pandas leak (ADR-04); `Model1Config` follows ADR-02's single-typed-config pattern; no bare numeric literals outside `config.py` besides the `candle_range <= 0` structural guard in `_body_ratio` (matches the precedent set by MSS's `distance <= 0` guard). No scope creep — only files listed in the task's Scope section were touched; `.importlinter`/`pyproject.toml` extensions to add `entries` were in-scope per the task's explicit instruction.
+
+### S-004 deviations
+
+17. **Read `max_retest_lookback=20` as bounding Model-1's ENTIRE tracked lifetime (confirmation search + retest search) measured from `anchor_index`, not as two separately-scoped budgets — the task's elevated halt bar for this slice was seriously considered before resolving this without a halt; full reasoning recorded here for review.** Design.md §4.4 states "PENDING: `max_retest_lookback=20` candles or series end elapse with the anchor unbreached and no retest yet" and separately "REQ-18.1: delayed engulf, no intervening breach — anchor stays valid, confirms on close" (no explicit bound stated for the confirmation delay itself). Two readings are textually possible: (A) one shared 20-candle budget from `anchor_index` covers both confirmation-waiting and retest-waiting; (B) confirmation is unbounded and only the retest search is bounded, by 20 candles from `confirmation_index`. Resolved in favor of (A), on three converging signals: (1) architectural consistency — every OTHER detector's `k` bounds its ENTIRE settling process measured from its own primary/birth index (Swing from its own index, FVG's formation fields from `start_index`, CRT range's full resolution from `start_index`), so an anchor-relative single budget is the pattern-consistent reading; (2) design.md's own general no-lookahead comparison semantics state that for settled entries, STATUS itself must reach FULL equality (not just monotonic stability) — this only holds if the whole state machine, including confirmation, settles within a fixed window from the anchor; (3) the design's own "Registered Follow-ups" section explicitly defers "CRT range 'currently forming/live' PENDING state... to v1.1", confirming v1 deliberately does NOT support open-ended/live tracking anywhere in the suite — reading (B)'s unbounded confirmation window would reintroduce exactly that open-endedness Model-1 is not meant to have in v1. None of the 3 charter-2-grounded fixtures (whose confirmation delays are small, "a couple candles") distinguish (A) from (B), so this choice doesn't affect any required acceptance-criteria test result — only the untested general-case behavior of confirmations delayed beyond ~20 candles from the anchor.
+18. **Anchor-detection scope: for each resolved `CRTRange`, independently scan `[start_index+1, resolved_at_index]` for the first candle whose wick breaches `.high`/`.low`, rather than reusing `crt_range.py`'s internal (private, unexported) poke-detection.** Design.md pins `purge_target` scope to "CRT High/Low ONLY... depends on `primitives.crt_range` for purge targets, NOT on Swing directly" but doesn't state whether Model-1 should consume `CRTRange`'s already-resolved model/classification or independently re-derive the purge event. Since `CRTRange`'s public dataclass exposes only `high`/`low`/`start_index`/`resolved_at_index` (not the internal poke candle index), and the range's own true_break/false_break/model classification answers a DIFFERENT question (does price fully expand to the OPPOSITE extreme) than Model-1's own concern (does a candle purge the SAME side then get engulfed), an independent scan was the only option that doesn't require exporting `crt_range.py` internals. Same treatment applied symmetrically to FVG-fill anchors (`_first_fvg_fill` independently re-derives the fill event rather than consuming `FVG.fill_status`, since that field alone doesn't carry an index). Not required to halt on per the task's own scoping — this governs WHICH candle is scanned, not the CONFIRMED/INVALIDATED/PENDING transition rules themselves, which are fully pinned and implemented as written.
+19. **Dual purge+FVG-fill (REQ-19.1) resolved as TWO independent `Model1Signal` entries sharing the same `anchor_index`/`direction`, one per `confirmation_type`, rather than merging into a single signal or picking one type to prioritize.** `Model1Signal.confirmation_type` is a single-value `Literal`, and charter-2's dual example ([00:07:27]-[00:07:56]) describes one candle satisfying BOTH conditions "at the same time" without indicating either should be suppressed. Since `purge_engulf` and `fvg_fill` are scanned as fully independent passes over independent detector outputs (`detect_crt_ranges` / `detect_fvgs`) with no shared state, letting both naturally produce their own signal when they both qualify required no special-casing — simpler than an arbitrary priority rule, and directly testable (asserts both entries exist with matching entry_type/entry_price/retest_index/status, differing only in `confirmation_type`/`purge_target`).
+20. **Entry price for the "Body" tiebreak case is `anchor.open` specifically, not `min`/`max(anchor.open, anchor.close)`.** Design.md's abstract text says "Body" generically; charter-2's transcript is more specific — "[00:11:04] ...se utiliza el cuerpo / precio de apertura" and "[00:11:18] ...el Open ofrece la entrada más confiable" both name the OPEN price explicitly, not a generic body extreme. Caught during GREEN (see TDD Cycle Evidence) when a `max(open,close)`-based first attempt produced the wrong entry price for the big-body tiebreak test; corrected to `anchor.open` for both directions, matching the transcript literally.
+
+## Halt / Issues Found
+
+None — no blocking halts. Considered halting on the `max_retest_lookback` reference-point question (Deviation #17) given the task's explicitly elevated bar for this slice, but resolved it via a derivation grounded in three independent, converging pieces of design.md text (see #17) rather than a coin-flip judgment call — consistent with the precedent set by S-002's model-classification derivation (also flagged as halt-worthy by its own task instructions, also resolved via a substantial, transparently-recorded derivation instead).
+
+## Overall Progress
+
+| Metric | Value |
+|---|---|
+| Slices done overall | S-000, S-001, S-002, S-003, S-004 (5/7) |
+| Slices in this run | 1 (S-004) |
+| Tasks complete this run | 1/1 |
+| Tests passing | 57/57 (pytest) — 44 from S-000-S-003 unregressed + 13 new (11 unit + 1 property + 1 viz) |
+| Import-linter | 1/1 contracts kept (16 files, 21 dependencies) |
+
+## Next Step
+
+S-005 (HTF↔LTF alignment) requires S-002 (complete) + S-004 (now complete) — unblocked. S-006 (full viz + CLI filters + manual acceptance) requires S-001 through S-005.
+
+---
+
+## S-003 run
 
 ## Slices Built This Run (S-003)
 
