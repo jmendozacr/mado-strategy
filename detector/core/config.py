@@ -17,7 +17,13 @@ class CRTRangeConfig:
 
 
 @dataclass(frozen=True)
+class MSSConfig:
+    decisive_close_ratio: float = 0.25
+
+
+@dataclass(frozen=True)
 class DetectorConfig:
     swing: SwingConfig = field(default_factory=SwingConfig)
     fvg: FVGConfig = field(default_factory=FVGConfig)
     crt_range: CRTRangeConfig = field(default_factory=CRTRangeConfig)
+    mss: MSSConfig = field(default_factory=MSSConfig)

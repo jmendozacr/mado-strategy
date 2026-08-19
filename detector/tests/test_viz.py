@@ -1,5 +1,6 @@
 from fixtures.synthetic import CandleSeriesBuilder
 
+from composite.mss import MSSEvent
 from primitives.crt_range import CRTRange
 from primitives.fvg import FVG
 from primitives.swing import SwingPoint
@@ -83,3 +84,24 @@ def test_render_chart_adds_one_label_per_crt_range(tmp_path):
 
     ax = fig.axes[0]
     assert len(ax.texts) == len(crt_ranges)
+
+
+def test_render_chart_adds_one_dashed_vline_per_mss_event(tmp_path):
+    mss_events = [
+        MSSEvent(
+            index=1,
+            direction="bullish",
+            broken_swing=SwingPoint(index=0, price=1.0005, kind="high"),
+        )
+    ]
+    output_path = tmp_path / "overlay.png"
+
+    fig = render_chart(_series(), [], str(output_path), mss_events=mss_events)
+
+    ax = fig.axes[0]
+    dashed_vlines = [
+        line
+        for line in ax.get_lines()
+        if line.get_linestyle() == "--" and len(set(line.get_xdata())) == 1
+    ]
+    assert len(dashed_vlines) == len(mss_events)

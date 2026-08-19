@@ -46,7 +46,7 @@
 
 ## S-003: MSS detection
 **Requires**: S-000 (Swing) | **Covers**: REQ-15, 16, 25 (decisive_close_ratio=0.25), 26.1
-- [ ] `composite/mss.py` (per design.md §4.4's precise predicate) + tests + property test + viz marker (draw-only in v1 — no downstream consumer, deliberate)
+- [x] `composite/mss.py` (per design.md §4.4's precise predicate) + tests + property test + viz marker (draw-only in v1 — no downstream consumer, deliberate)
 
 ## S-004: Model-1 entry detection (core value)
 **Requires**: S-001, S-002 | **Covers**: REQ-17–22, 25 (body_ratio_tiebreak, respect_rule_tolerance, max_retest_lookback)

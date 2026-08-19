@@ -6,6 +6,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 
+from composite.mss import MSSEvent
 from core.candle import OHLCSeries
 from primitives.crt_range import CRTRange
 from primitives.fvg import FVG
@@ -22,6 +23,7 @@ _FVG_ALPHA = 0.2
 _FVG_WIDTH_PAD = 0.5
 _CRT_RANGE_COLOR = "purple"
 _CRT_RANGE_LABEL_OFFSET = 0.0008
+_MSS_COLOR = "darkorange"
 
 
 def render_chart(
@@ -30,24 +32,36 @@ def render_chart(
     output_path: str,
     fvgs: list[FVG] | None = None,
     crt_ranges: list[CRTRange] | None = None,
+    mss_events: list[MSSEvent] | None = None,
 ) -> Figure:
     fvgs = fvgs or []
     crt_ranges = crt_ranges or []
+    mss_events = mss_events or []
     fig, ax = plt.subplots()
 
     _plot_candles(ax, series)
     _plot_swings(ax, series, swings)
     _plot_fvgs(ax, fvgs)
     _plot_crt_ranges(ax, crt_ranges)
+    _plot_mss_events(ax, mss_events)
 
     ax.set_title(series.instrument)
-    _add_legend(ax, swings, fvgs, crt_ranges)
+    _add_legend(ax, swings, fvgs, crt_ranges, mss_events)
     fig.savefig(output_path, dpi=_DPI)
     return fig
 
 
+def _plot_mss_events(ax, mss_events: list[MSSEvent]) -> None:
+    for event in mss_events:
+        ax.axvline(event.index, color=_MSS_COLOR, linestyle="--", linewidth=1)
+
+
 def _add_legend(
-    ax, swings: list[SwingPoint], fvgs: list[FVG], crt_ranges: list[CRTRange]
+    ax,
+    swings: list[SwingPoint],
+    fvgs: list[FVG],
+    crt_ranges: list[CRTRange],
+    mss_events: list[MSSEvent],
 ) -> None:
     handles = [
         Line2D([0], [0], color=_UP_BODY_COLOR, linewidth=4, label="Bullish"),
@@ -70,6 +84,10 @@ def _add_legend(
             Line2D(
                 [0], [0], color=_CRT_RANGE_COLOR, linestyle="--", label="CRT Range"
             )
+        )
+    if mss_events:
+        handles.append(
+            Line2D([0], [0], color=_MSS_COLOR, linestyle="--", label="MSS")
         )
     ax.legend(handles=handles, loc="upper left")
 

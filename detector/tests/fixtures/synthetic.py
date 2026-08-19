@@ -186,6 +186,117 @@ def crt_range_resolves_on_last_candle_setup() -> OHLCSeries:
     )
 
 
+def bullish_mss_setup() -> OHLCSeries:
+    """Charter-3 [00:10:32]-grounded shape (REQ-15.1): a swing low forms
+    (opposite-extreme rejection), then a swing high forms after it, then a
+    later candle CLOSES beyond the swing high by at least
+    `decisive_close_ratio` (default 0.25) of the swing-to-opposite-extreme
+    distance -> bullish MSS flagged at the break candle.
+
+    Swing low @1 (price 1.0950), swing high @3 (price 1.1000). Distance =
+    0.0050; threshold = 1.1000 + 0.25*0.0050 = 1.10125. Candle 5 closes at
+    1.1020, clearing the threshold.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.0985, low=1.0975, close=1.0980)  # 0 — filler
+        .candle(open=1.0960, high=1.0965, low=1.0950, close=1.0955)  # 1 — swing low
+        .candle(open=1.0975, high=1.0990, low=1.0970, close=1.0985)  # 2 — filler
+        .candle(open=1.0985, high=1.1000, low=1.0980, close=1.0995)  # 3 — swing high
+        .candle(open=1.0985, high=1.0995, low=1.0982, close=1.0990)  # 4 — filler
+        .candle(open=1.0995, high=1.1025, low=1.0990, close=1.1020)  # 5 — break, close >= 1.10125
+        .build()
+    )
+
+
+def bearish_mss_setup() -> OHLCSeries:
+    """Mirror of `bullish_mss_setup`: swing high forms first (opposite-
+    extreme rejection), then a swing low forms after it, then a later
+    candle CLOSES beyond the swing low by at least `decisive_close_ratio`
+    of the swing-to-opposite-extreme distance -> bearish MSS.
+
+    Swing high @1 (price 1.1050), swing low @3 (price 1.1000). Distance =
+    0.0050; threshold = 1.1000 - 0.25*0.0050 = 1.09875. Candle 5 closes at
+    1.0980, clearing the threshold.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1020, high=1.1025, low=1.1015, close=1.1020)  # 0 — filler
+        .candle(open=1.1040, high=1.1050, low=1.1035, close=1.1045)  # 1 — swing high
+        .candle(open=1.1025, high=1.1030, low=1.1010, close=1.1015)  # 2 — filler
+        .candle(open=1.1015, high=1.1020, low=1.1000, close=1.1005)  # 3 — swing low
+        .candle(open=1.1010, high=1.1018, low=1.1002, close=1.1008)  # 4 — filler
+        .candle(open=1.1005, high=1.1010, low=1.0975, close=1.0980)  # 5 — break, close <= 1.09875
+        .build()
+    )
+
+
+def mss_ratio_undershoot_setup() -> OHLCSeries:
+    """Same swing structure as `bullish_mss_setup`, but the break candle's
+    close beats the swing high price WITHOUT clearing the decisive-close
+    ratio (1.1005 is only 0.0005 above the 1.1000 swing high, i.e. a 0.10
+    ratio of the 0.0050 distance, short of the default 0.25) -> no MSS.
+    Triangulates the ratio-weighted threshold against a plain "close beyond
+    swing price" implementation.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.0985, low=1.0975, close=1.0980)  # 0 — filler
+        .candle(open=1.0960, high=1.0965, low=1.0950, close=1.0955)  # 1 — swing low
+        .candle(open=1.0975, high=1.0990, low=1.0970, close=1.0985)  # 2 — filler
+        .candle(open=1.0985, high=1.1000, low=1.0980, close=1.0995)  # 3 — swing high
+        .candle(open=1.0985, high=1.0995, low=1.0982, close=1.0990)  # 4 — filler
+        .candle(open=1.0995, high=1.1010, low=1.0990, close=1.1005)  # 5 — close beats swing, ratio undershoot
+        .build()
+    )
+
+
+def mss_uses_most_recent_opposite_swing_setup() -> OHLCSeries:
+    """Triangulates "most recent swing point of the OPPOSITE kind formed
+    BEFORE it" (design.md 4.4) against a plain nearest-by-index-distance
+    selection that ignores before/after: swing low A @1 (price 1.0980)
+    forms BEFORE the swing high @3 (price 1.1000, the broken swing);
+    swing low C @4 (price 1.0985) forms AFTER it and is numerically closer
+    in index (distance 1 vs 2).
+
+    Correct (most-recent-BEFORE) pairing uses low A: distance=0.0020,
+    threshold=1.1000+0.25*0.0020=1.10050. The break candle @6 closes at
+    1.1004 — clears an incorrect nearest-by-index-distance threshold
+    computed from low C (distance=0.0015, threshold=1.100375) but falls
+    short of the correct threshold from low A, so the correct
+    implementation reports NO MSS here.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.0985, high=1.0990, low=1.0985, close=1.0987)  # 0 — filler
+        .candle(open=1.0982, high=1.0987, low=1.0980, close=1.0983)  # 1 — swing low A
+        .candle(open=1.0985, high=1.0993, low=1.0990, close=1.0991)  # 2 — filler
+        .candle(open=1.0990, high=1.1000, low=1.0988, close=1.0995)  # 3 — swing high (broken swing)
+        .candle(open=1.0993, high=1.0997, low=1.0985, close=1.0990)  # 4 — swing low C (after)
+        .candle(open=1.0990, high=1.0996, low=1.0992, close=1.0994)  # 5 — filler
+        .candle(open=1.0994, high=1.1006, low=1.0990, close=1.1004)  # 6 — no MSS (correct threshold not cleared)
+        .build()
+    )
+
+
+def mss_no_prior_opposite_swing_setup() -> OHLCSeries:
+    """REQ-16.1: a swing high forms with NO swing low ever recorded before
+    it (a plain one-directional rise from series start) -> excluded, no
+    MSS, regardless of how decisively the later close clears the swing
+    high. Swing high @1 (price 1.0975); the break candle @3 closes at
+    1.1000, well past any plausible ratio threshold, but must still be
+    excluded for lack of a prior opposite-extreme rejection.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.0950, high=1.0955, low=1.0945, close=1.0950)  # 0 — filler (never a swing candidate, index 0)
+        .candle(open=1.0955, high=1.0975, low=1.0950, close=1.0965)  # 1 — swing high
+        .candle(open=1.0960, high=1.0965, low=1.0955, close=1.0958)  # 2 — filler
+        .candle(open=1.0970, high=1.1010, low=1.0965, close=1.1000)  # 3 — decisively beyond swing high, but excluded
+        .build()
+    )
+
+
 def bearish_purge_setup() -> OHLCSeries:
     """Charter-2 [00:05:28]-[00:06:04]: a swing high forms, then a later
     candle purges it (wicks above, taking the resting liquidity) before the

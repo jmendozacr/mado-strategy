@@ -14,6 +14,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from core.candle import Candle, OHLCSeries
+from composite.mss import detect_mss_events
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
 from primitives.swing import detect_swings
@@ -21,6 +22,7 @@ from primitives.swing import detect_swings
 _SWING_K = 1
 _FVG_K = 3
 _CRT_RANGE_K = 20
+_MSS_K = 1
 
 
 def _ohlc_candle(draw, index: int) -> Candle:
@@ -122,3 +124,33 @@ def test_crt_range_detection_has_no_lookahead(series: OHLCSeries):
         truncated_by_start = {r.start_index: r for r in truncated_ranges}
         for start in settled_truncated_starts:
             assert truncated_by_start[start] == full_by_start[start]
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_mss_detection_has_no_lookahead(series: OHLCSeries):
+    """MSS's k=1 bounds the broken swing's own identity (settled per
+    Swing's k), but the break candle that eventually confirms it can occur
+    arbitrarily far in the future — an unbounded settling window, just like
+    FVG's fill_status. The property checks monotonicity on the
+    (broken_swing.index, direction) identity: an MSS observed in a
+    truncated view for a settled broken swing must also be observed with
+    the same break index in the full series (that observation can't be
+    undone by more data); absence in the truncated view is not asserted
+    (more data may yet trigger it).
+    """
+    full_events = detect_mss_events(series)
+    full_by_key = {(e.broken_swing.index, e.direction): e for e in full_events}
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_mss_events(series.up_to(n))
+        settled_boundary = n - _MSS_K - 1
+
+        for truncated_event in truncated_events:
+            if truncated_event.broken_swing.index > settled_boundary:
+                continue
+            key = (truncated_event.broken_swing.index, truncated_event.direction)
+            assert key in full_by_key
+            full_event = full_by_key[key]
+            assert truncated_event.index == full_event.index
+            assert truncated_event.broken_swing == full_event.broken_swing

@@ -1,14 +1,74 @@
 # Apply Progress: crt-pattern-detector-v1
 
-**Scope this run (latest)**: `slice:S-002` (CRT range detection)
+**Scope this run (latest)**: `slice:S-003` (MSS detection)
 **Mode**: Strict TDD
-**Status**: S-000 + S-001 + S-002 complete — 36/36 tests passing, import-linter contract KEPT
+**Status**: S-000 + S-001 + S-002 + S-003 complete — 44/44 tests passing, import-linter contract KEPT
 
-## Slices Built This Run (S-002)
+## Slices Built This Run (S-003)
 
 | Slice | Scope tag | Status | Tasks Done |
 |---|---|---|---|
-| S-002 | happy-path | complete | 1/1 |
+| S-003 | happy-path | complete | 1/1 |
+
+### Files Changed — S-003
+
+| File | Action | What Was Done |
+|---|---|---|
+| `detector/composite/mss.py` | Created | `MSSEvent` dataclass + `detect_mss_events()` — per-swing independent scan (mirrors `crt_range.py`'s "every candidate tried, no dedup" convention): for each swing point, finds the most recent OPPOSITE-kind swing formed strictly BEFORE it (REQ-16's "prior opposite-extreme rejection"; none found → excluded, REQ-16.1), computes `distance = |broken_swing.price - opposite_swing.price|`, then scans forward for the first candle whose CLOSE clears `broken_swing.price ± decisive_close_ratio * distance` (REQ-15) |
+| `detector/composite/__init__.py` | Created | Package marker — new Tier2 `composite` layer per ADR-01 |
+| `detector/core/config.py` | Modified | Added `MSSConfig(decisive_close_ratio: float = 0.25)`, wired into `DetectorConfig.mss` (extends, doesn't replace the other configs) |
+| `detector/core/results.py` | Unchanged | Same precedent as FVG (deviation #9) and CRT range: `MSSEvent` is a single-shot dataclass with no CONFIRMED/INVALIDATED/PENDING lifecycle, so it lives in its own module (`composite/mss.py`) alongside `SwingPoint`/`FVG`/`CRTRange`'s established pattern, not `results.py` |
+| `detector/viz/chart.py` | Modified | `render_chart()` gained an additive `mss_events: list[MSSEvent] \| None = None` parameter; new `_plot_mss_events()` draws one dashed vertical line (`ax.axvline`) per event at its `index`, per Global facts' "MSS=dashed vline" encoding. Legend gains one "MSS" swatch when any events are present. Existing Swing/FVG/CRT-range call sites untouched — parameter is optional and additive. Draw-only in v1 — no downstream consumer wires it yet (deliberate per slices.md S-003, `cli.py` wiring deferred to S-006) |
+| `detector/.importlinter` | Modified | Added `composite` to `root_packages`; added `composite` to the `layers` contract between `viz`/`ingestion` and `primitives`, per ADR-01 (`composite`→`core`+`primitives`; `viz`→result types from any lower layer) |
+| `detector/pyproject.toml` | Modified | Added `"composite"` to `[tool.hatch.build.targets.wheel].packages` |
+| `detector/tests/fixtures/synthetic.py` | Modified | Added 5 new builder fixtures: `bullish_mss_setup()` (REQ-15.1, charter-3 [00:10:32]-grounded), `bearish_mss_setup()` (mirrors bullish, forces the bearish branch), `mss_ratio_undershoot_setup()` (triangulates the ratio-weighted threshold against a plain "close beyond swing price" check), `mss_uses_most_recent_opposite_swing_setup()` (triangulates "most recent...BEFORE it" against a nearest-by-index-distance implementation that ignores before/after order — see Deviations), `mss_no_prior_opposite_swing_setup()` (REQ-16.1) |
+| `detector/tests/test_mss.py` | Created | 6 tests: grounded bullish MSS (REQ-15.1, outer-loop), bearish mirror, ratio-undershoot exclusion, most-recent-opposite-swing pairing (triangulated against a real injected bug — see Deviations), no-prior-opposite-swing exclusion (REQ-16.1), custom `decisive_close_ratio` config (REQ-25) |
+| `detector/tests/test_viz.py` | Modified | Added `test_render_chart_adds_one_dashed_vline_per_mss_event` — asserts one dashed, single-x-value `Line2D` per MSS event, disambiguated from CRT range's two-x-value dashed bracket lines |
+| `detector/tests/property/test_no_lookahead.py` | Modified | Added `test_mss_detection_has_no_lookahead` (REQ-26.1, k=1) — same monotonicity treatment as FVG's `fill_status` (see Deviations): the broken swing's own identity settles at Swing's k=1, but the confirming break candle is unbounded, so settled entries assert stability of `(broken_swing.index, direction) → (index, broken_swing)`, not full k-windowed equality |
+| `openspec/changes/crt-pattern-detector-v1/slices.md` | Modified | S-003 task marked `[x]` |
+
+## TDD Cycle Evidence — S-003
+
+| Task | Test (file::name) | Layer | RED evidence | GREEN | Triangulated | Refactored |
+|---|---|---|---|---|---|---|
+| mss (outer-loop) | `test_mss.py::test_bullish_mss_flagged_when_close_decisively_beats_swing_high` | unit (REQ-15.1 grounded) | `NotImplementedError` after stub | ✅ | see triangulation notes below | none needed |
+| mss | `test_mss.py::test_bearish_mss_mirrors_bullish_logic` | unit | `NotImplementedError` | ✅ | forced the bearish (`kind=="low"`) branch, not hardcoded from the bullish-only path | none needed |
+| mss | `test_mss.py::test_close_beating_swing_but_under_decisive_ratio_is_not_mss` | unit | `NotImplementedError` | ✅ | forced the ratio-weighted threshold vs. a plain "close beyond swing price" check | none needed |
+| mss | `test_mss.py::test_break_with_no_prior_opposite_swing_excludes_mss` | unit (REQ-16.1) | `NotImplementedError` | ✅ | forced the `opposite_swing is None → continue` exclusion branch | none needed |
+| mss | `test_mss.py::test_decisive_close_ratio_is_read_from_config_not_hardcoded` | unit (REQ-25) | `NotImplementedError` | ✅ | forced reading `config.decisive_close_ratio` instead of a hardcoded 0.25 | none needed |
+| mss | `test_mss.py::test_pairs_broken_swing_with_the_most_recent_opposite_swing_before_it` | unit | passed on first write against the correct implementation (added retroactively to lock in a design-decision area flagged as risk, not from a natural RED) — **verified real** by injecting a nearest-by-index-distance bug (`_most_recent_before` without the `s.index < index` filter) and confirming this specific test fails for the right reason (`AssertionError: assert [MSSEvent(...)] == []`), then reverting; see Deviations | ✅ | genuinely distinguishes "most recent BEFORE" from "nearest by index distance" — see Deviations for the full derivation | none needed |
+| no-lookahead | `property/test_no_lookahead.py::test_mss_detection_has_no_lookahead` | property (fitness fn, k=1) | n/a — infrastructure test; two injected-bug sanity checks attempted (see Deviations), neither caught by the property test itself within 100 examples — the second bug (nearest-by-index-distance pairing) WAS caught by the unit test above, confirming the underlying defect class is real and detectable, just not by this particular property test's random sampling | ✅ | 100 hypothesis examples | none needed |
+| viz | `test_viz.py::test_render_chart_adds_one_dashed_vline_per_mss_event` | unit | `TypeError: render_chart() got an unexpected keyword argument 'mss_events'` | ✅ | n/a — single case, structural addition | none needed |
+
+**Triangulation note for the outer-loop test**: the RED→GREEN cycle for the 5 core behavioral tests (bullish/bearish/ratio-undershoot/no-prior-swing/config-read) all failed cleanly on `NotImplementedError` before implementation and passed together on the first real GREEN run against the same single implementation (not hardcoded-then-generalised) — matching the same evidence pattern S-002 used for most of its branches. The 6th test (most-recent-vs-nearest-by-distance pairing) is flagged separately above since it did not arise from a natural RED (the correct implementation was already written); its value was verified after the fact by deliberate bug injection, consistent with Strict TDD's anti-fabrication principle — documented transparently rather than presented as a clean RED it wasn't.
+
+## Slice Audit Notes (S-003, post-slice per Step 7c)
+
+`architecture.adrs` is empty (design.md §4.10: "additive — no baseline existed before this change") — per Step 7c's SKIP condition, the formal audit engine was skipped. Self-audited instead, same as S-001/S-002: import-linter confirms `composite`→`primitives`+`core` and `viz`→`composite` stay within ADR-01's layers (14 files, 15 dependencies analyzed, contract KEPT); no pandas leak (ADR-04); `MSSConfig` follows ADR-02's single-typed-config pattern; no bare numeric literals outside `config.py` besides the `distance <= 0` structural guard (matches the precedent set by similar defensive checks in `crt_range.py`). No scope creep — only files listed in the task's Scope section were touched; `.importlinter` extension to add `composite` was in-scope per the task's explicit instruction, not incidental.
+
+### S-003 deviations
+
+14. **MSS predicate read as a per-swing independent scan (mirrors CRT range's "every candidate tried, no dedup" convention), not a stateful most-recent-tracking machine — flagged for review, not halted.** Design.md §4.4's MSS text pins the numeric predicate exactly (distance = broken swing to most-recent-opposite-kind-swing-before-it; threshold = swing price ± `decisive_close_ratio` × distance) but is silent on whether every swing of the broken kind is tried independently, or only the single most-recent-unbroken one is tracked as structure evolves. The task's HALT instruction was read as targeting the DECISIVE-CLOSE-RATIO predicate specifically (unambiguous, fully pinned) rather than this separate dedup/scan-shape question — resolved by direct analogy to `crt_range.py`'s explicitly-stated, already-precedented convention in the same design document ("every candidate independently tried... not deduplicated"), applied here for architectural consistency across detectors. Every test in this slice's required scope (REQ-15.1, REQ-16.1, REQ-25) produces identical output under either reading (each fixture has at most one swing of the broken kind), so this choice does not affect any acceptance-criteria-driven test result — only the general-case behavior on data with multiple broken-kind swings, which is untested here and out of this slice's stated scope.
+15. **`_most_recent_before`'s correctness (picks the nearest-by-INDEX opposite-kind swing strictly BEFORE the broken swing, not nearest-by-absolute-index-distance-ignoring-direction) was verified by genuine bug injection**, per Strict TDD's anti-fabrication rule — `mss_uses_most_recent_opposite_swing_setup()` was purpose-built so an opposite-kind swing formed AFTER the broken swing (numerically closer in index) would flip the assertion if picked instead of the correct earlier one; confirmed the test fails for the right reason under the buggy selection, then reverted. Two OTHER bug-injection attempts on the no-lookahead property test (removing the `broken_swing.index + 1` scan-start bound; and this same before/after pairing bug run against the property test's hypothesis-generated data) did NOT get caught by the property test itself within 100 examples — same category of limitation as CRT range's deviation #13 (random OHLC data doesn't reliably exercise the specific structural edge case), recorded transparently rather than treated as proof of coverage the property test doesn't actually provide. The pairing bug's real defect was caught by the dedicated unit test instead, which is the actual coverage for this behavior.
+16. **`core/results.py` left unchanged**, for the same reason as FVG (deviation #9) and CRT range: `MSSEvent` has no `DetectionStatus`-shaped lifecycle (it's a single triggered event, not something that transitions through confirmed/invalidated/pending states), so it stays in `composite/mss.py` alongside its own detector, matching the established per-detector-module pattern.
+
+## Overall Progress
+
+| Metric | Value |
+|---|---|
+| Slices done overall | S-000, S-001, S-002, S-003 (4/7) |
+| Slices in this run | 1 (S-003) |
+| Tasks complete this run | 1/1 |
+| Tests passing | 44/44 (pytest) — 36 from S-000-S-002 unregressed + 8 new (6 unit + 1 property + 1 viz) |
+| Import-linter | 1/1 contracts kept (14 files, 15 dependencies) |
+
+## Next Step
+
+S-004 (Model-1) requires S-001 + S-002 (both complete) and is unblocked — independent of S-003. S-005 (HTF↔LTF alignment) requires S-002 + S-004. Per the Build Order in slices.md, S-003 completing means all three of {S-001, S-002, S-003} (the parallel group after S-000) are now done.
+
+---
+
+## S-002 run
 
 ### Files Changed — S-002
 
