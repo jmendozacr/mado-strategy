@@ -1,8 +1,10 @@
 # Specs: crt-pattern-detector-v1
 
-**Spec version**: V3 | **Status**: signed | **Change**: `crt-pattern-detector-v1`
+**Spec version**: V4 | **Status**: signed | **Change**: `crt-pattern-detector-v1`
 
 **Scope note**: Covers 5 of 7 originally-named setup types (Swing, FVG, CRT range, MSS, Model-1). Standalone Order Block + Breaker Block deliberately deferred (pending change `crt-detector-order-block-breaker`), ratified at the steward foresight gate. See `triage.md` for the full scope contract.
+
+**Changelog**: V4: REQ-23 encoding text corrected to match the shipped chart — MSS triangle marker, CRT-range labels dropped, per the post-manual-acceptance legibility fix.
 
 ---
 
@@ -139,7 +141,7 @@ FVG, CRT range, MSS, and HTF/LTF alignment satisfy the same property as Swing/Mo
 ## Domain: chart-overlay-viz
 
 ### REQ-23: Chart image overlay
-6 distinct encodings (Swing=triangle, FVG=shaded rect, CRT range=bracket+labels, MSS=dashed vline, Model-1=arrow+entry line, alignment=border color). Zero detections → still emits a valid chart, exit 0.
+6 distinct encodings (Swing=triangle, FVG=shaded rect, CRT range=bracket lines without per-instance text labels, MSS=small triangle marker at the broken swing's price level, Model-1=arrow+entry line, alignment=border color). Zero detections → still emits a valid chart, exit 0.
 - **REQ-23.1**: multi-week series, all 6 types — each visually distinct.
 
 ### REQ-24: Companion CSV table

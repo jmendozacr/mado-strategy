@@ -344,6 +344,49 @@ def model1_body_tiebreak_small_body_setup() -> OHLCSeries:
     )
 
 
+def model1_body_tiebreak_aligned_color_setup() -> OHLCSeries:
+    """REQ-20 regression, bearish: anchor candle 1 is a big-body BEARISH-
+    colored candle (close < open) whose direction is ALSO bearish — the
+    color matches the direction, so anchor.open (1.1038) sits on the
+    body's HIGH side, not its low side. Candle 1 itself closes beyond the
+    range high (1.1020, true_break) so the CRT range resolves AND purges
+    High on the same candle. Candle 2's close (1.1021) clears the anchor's
+    BODY extreme (1.1022) but not its WICK extreme (1.1020) -> middle zone
+    -> tiebreak favors Body (body_ratio=0.8 >= 0.6): per charter-2
+    [00:11:04]-[00:11:18], "Body" and "Open" are synonyms — entry_price is
+    always anchor.open (1.1038) regardless of which side of the body it
+    falls on.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1038, high=1.1040, low=1.1020, close=1.1022)  # 1 — anchor, big red body, purges High + resolves range
+        .candle(open=1.1022, high=1.1025, low=1.1015, close=1.1021)  # 2 — confirms in middle zone
+        .build()
+    )
+
+
+def model1_body_tiebreak_aligned_color_bullish_setup() -> OHLCSeries:
+    """REQ-20 regression, bullish mirror of
+    `model1_body_tiebreak_aligned_color_setup`: anchor candle 1 is a
+    big-body BULLISH-colored candle (close > open) whose direction is ALSO
+    bullish — color matches direction, so anchor.open (1.0962) sits on the
+    body's LOW side. Candle 1 itself closes beyond the range low (1.0980,
+    true_break) so the CRT range resolves AND purges Low on the same
+    candle. Candle 2's close (1.0979) clears the anchor's BODY extreme
+    (1.0978) but not its WICK extreme (1.0980) -> middle zone -> tiebreak
+    favors Body (body_ratio=0.8 >= 0.6): entry_price is anchor.open
+    (1.0962).
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.0990, high=1.1020, low=1.0980, close=1.1000)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.0962, high=1.0980, low=1.0960, close=1.0978)  # 1 — anchor, big green body, purges Low + resolves range
+        .candle(open=1.0978, high=1.0982, low=1.0975, close=1.0979)  # 2 — confirms in middle zone
+        .build()
+    )
+
+
 def model1_confirmed_setup() -> OHLCSeries:
     """Dedicated, isolated CONFIRMED fixture (REQ-21): anchor purges the
     CRT High, confirms via wick-beyond close, then candle 3 both retests
@@ -390,6 +433,21 @@ def model1_pending_setup() -> OHLCSeries:
         .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
         .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
         .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms; series ends, no retest
+        .build()
+    )
+
+
+def model1_pre_confirmation_breach_setup() -> OHLCSeries:
+    """REQ-18 regression: anchor purges the CRT High (bearish), but the
+    very next candle CLOSES beyond the anchor's protected extreme (High,
+    1.1035) before any engulfing confirmation ever occurs -> must
+    invalidate immediately (INVALIDATED), not silently drop the anchor.
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
+        .candle(open=1.1015, high=1.1050, low=1.1010, close=1.1040)  # 2 — closes beyond 1.1035, never confirmed -> INVALIDATED
         .build()
     )
 

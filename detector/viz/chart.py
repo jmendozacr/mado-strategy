@@ -99,6 +99,7 @@ def render_chart(
     _add_legend(ax_ltf, swings, fvgs, crt_ranges, mss_events, model1_signals or aligned_signals)
     fig.tight_layout()
     fig.savefig(output_path, dpi=_DPI)
+    plt.close(fig)
     return fig
 
 

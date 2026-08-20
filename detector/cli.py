@@ -14,6 +14,7 @@ from composite.mss import MSSEvent, detect_mss_events
 from core.candle import OHLCSeries
 from core.config import DetectorConfig
 from core.pairing_table import PairingError
+from core.results import DetectionStatus
 from entries.model1 import Model1Signal, detect_model1_signals
 from ingestion.loader import LoadError, load_mt5_csv
 from ingestion.pairing import load_pair
@@ -72,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             htf_series, ltf_series = None, load_mt5_csv(args.csv, symbol=args.symbol)
-    except (LoadError, PairingError) as error:
+    except (LoadError, PairingError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
@@ -82,21 +83,26 @@ def main(argv: list[str] | None = None) -> int:
     detections = _filter_by_types(detections, types)
 
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    render_chart(
-        ltf_series, detections.swings, str(output_dir / "overlay.png"),
-        fvgs=detections.fvgs, crt_ranges=detections.crt_ranges, mss_events=detections.mss_events,
-        model1_signals=detections.model1_signals, aligned_signals=detections.aligned_signals,
-        htf_series=htf_series, htf_crt_ranges=detections.htf_crt_ranges,
-        ltf_index_range=_index_range_for_dates(ltf_series, from_date, to_date),
-        htf_index_range=None if htf_series is None else _index_range_for_dates(htf_series, from_date, to_date),
-    )
-    write_detections_csv(
-        ltf_series, str(output_dir / "detections.csv"),
-        swings=detections.swings, fvgs=detections.fvgs, crt_ranges=detections.crt_ranges,
-        mss_events=detections.mss_events, model1_signals=detections.model1_signals,
-        aligned_signals=detections.aligned_signals,
-    )
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        chartable = _exclude_invalidated_model1(detections)
+        render_chart(
+            ltf_series, detections.swings, str(output_dir / "overlay.png"),
+            fvgs=detections.fvgs, crt_ranges=detections.crt_ranges, mss_events=detections.mss_events,
+            model1_signals=chartable.model1_signals, aligned_signals=chartable.aligned_signals,
+            htf_series=htf_series, htf_crt_ranges=detections.htf_crt_ranges,
+            ltf_index_range=_index_range_for_dates(ltf_series, from_date, to_date),
+            htf_index_range=None if htf_series is None else _index_range_for_dates(htf_series, from_date, to_date),
+        )
+        write_detections_csv(
+            ltf_series, str(output_dir / "detections.csv"),
+            swings=detections.swings, fvgs=detections.fvgs, crt_ranges=detections.crt_ranges,
+            mss_events=detections.mss_events, model1_signals=detections.model1_signals,
+            aligned_signals=detections.aligned_signals,
+        )
+    except OSError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
 
     return 0
 
@@ -197,8 +203,9 @@ def _filter_by_types(detections: _Detections, types: set[str]) -> _Detections:
     """REQ-28.1: e.g. --types fvg,model1 — only those markers/rows appear;
     dependencies (like CRT range feeding Model-1) stay computed internally.
     """
-    model1_signals = detections.model1_signals if "model1" in types else []
-    aligned_signals = detections.aligned_signals if "model1" in types else None
+    include_model1 = "model1" in types or "alignment" in types
+    model1_signals = detections.model1_signals if include_model1 else []
+    aligned_signals = detections.aligned_signals if include_model1 else None
     return replace(
         detections,
         swings=detections.swings if "swing" in types else [],
@@ -207,6 +214,26 @@ def _filter_by_types(detections: _Detections, types: set[str]) -> _Detections:
         mss_events=detections.mss_events if "mss" in types else [],
         model1_signals=model1_signals,
         aligned_signals=aligned_signals,
+    )
+
+
+def _exclude_invalidated_model1(detections: _Detections) -> _Detections:
+    """A dead/INVALIDATED anchor (REQ-18) renders identically to a live
+    PENDING/CONFIRMED one on the chart, which is misleading — excluded
+    from what's plotted only; `detections.csv` keeps every status (chart
+    call site consumes this, `detections` itself stays unfiltered for the
+    CSV writer).
+    """
+    model1_signals = detections.model1_signals
+    aligned_signals = detections.aligned_signals
+    return replace(
+        detections,
+        model1_signals=None if model1_signals is None else [
+            s for s in model1_signals if s.status != DetectionStatus.INVALIDATED
+        ],
+        aligned_signals=None if aligned_signals is None else [
+            t for t in aligned_signals if t.ltf_signal.status != DetectionStatus.INVALIDATED
+        ],
     )
 
 

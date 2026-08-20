@@ -121,7 +121,17 @@ def _track_anchor(
 
         if _breaches_protected_extreme(candle.close, protected_extreme, direction, config.respect_rule_tolerance):
             if not confirmed:
-                return None
+                # REQ-18: a close beyond the anchor's protected extreme
+                # before any confirmation invalidates immediately — the
+                # signal is still emitted, not dropped. `protected_extreme`
+                # doubles as the wick-entry price _select_entry would have
+                # returned (the anchor's swept side), since no confirming
+                # close ever happened to select an entry from.
+                # Pre-confirmation breach: entry_price is the breached
+                # protected extreme, not a planned entry — no
+                # confirmation/engulf ever occurred for this signal.
+                entry_type, entry_price = "wick", protected_extreme
+                return signal(None, DetectionStatus.INVALIDATED)
             return signal(retest_index, DetectionStatus.INVALIDATED)
 
         if not confirmed:

@@ -82,6 +82,113 @@ def test_rejects_csv_missing_high_column(tmp_path):
         load_mt5_csv(str(csv_path), symbol="EURUSD")
 
 
+def test_rejects_blank_ohlc_cell_instead_of_silently_becoming_nan(tmp_path):
+    """A blank OHLC cell is a pandas default NA-sentinel — with `dtype=str`
+    alone (keep_default_na left at its default True), pandas still turns it
+    into NaN before `float(...)` ever sees it, and `float(nan)` succeeds
+    silently, producing a `nan` field with no error (REQ-02: reject
+    malformed input, don't corrupt it silently).
+    """
+    csv_path = tmp_path / "eurusd.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                MT5_HEADER,
+                _row("2026.01.01", "00:00:00", 1.1000, 1.1010, 1.0990, 1.1005),
+                "2026.01.01\t01:00:00\t\t1.1020\t1.1000\t1.1015\t100\t0\t2",
+            ]
+        )
+    )
+
+    with pytest.raises(LoadError, match="row 1"):
+        load_mt5_csv(str(csv_path), symbol="EURUSD")
+
+
+def test_rejects_non_numeric_ohlc_cell_as_load_error_not_raw_valueerror(tmp_path):
+    """A malformed cell that isn't a pandas NA-sentinel (e.g. "corrupted")
+    must fail as a named `LoadError`, not an uncaught `ValueError` from
+    `float(...)` — the CLI only catches `LoadError`/`PairingError`.
+    """
+    csv_path = tmp_path / "eurusd.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                MT5_HEADER,
+                _row("2026.01.01", "00:00:00", 1.1000, 1.1010, 1.0990, 1.1005),
+                "2026.01.01\t01:00:00\tcorrupted\t1.1020\t1.1000\t1.1015\t100\t0\t2",
+            ]
+        )
+    )
+
+    with pytest.raises(LoadError, match=r"row 1.*<OPEN>"):
+        load_mt5_csv(str(csv_path), symbol="EURUSD")
+
+
+def test_rejects_literal_nan_string_cell_instead_of_silently_parsing_it(tmp_path):
+    """`float("NaN")` succeeds and returns a real `nan` float — Python's
+    `float()` parses the literal strings "nan"/"NaN"/"inf"/"Infinity"
+    (case-insensitive) with no exception, independent of pandas' own
+    NA-sentinel handling. A hand-edited/corrupted MT5 export containing
+    that literal text must still be rejected (REQ-02).
+    """
+    csv_path = tmp_path / "eurusd.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                MT5_HEADER,
+                _row("2026.01.01", "00:00:00", 1.1000, 1.1010, 1.0990, 1.1005),
+                "2026.01.01\t01:00:00\tNaN\t1.1020\t1.1000\t1.1015\t100\t0\t2",
+            ]
+        )
+    )
+
+    with pytest.raises(LoadError, match=r"row 1.*<OPEN>"):
+        load_mt5_csv(str(csv_path), symbol="EURUSD")
+
+
+def test_rejects_malformed_date_time_cell_as_load_error_not_raw_exception(tmp_path):
+    """A malformed `<DATE>`/`<TIME>` cell must fail as a named `LoadError`,
+    symmetric with the OHLC cell handling — not an uncaught exception from
+    `pd.to_datetime(...)`.
+    """
+    csv_path = tmp_path / "eurusd.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                MT5_HEADER,
+                _row("2026.01.01", "00:00:00", 1.1000, 1.1010, 1.0990, 1.1005),
+                "2026.13.99\t25:99:99\t1.1005\t1.1020\t1.1000\t1.1015\t100\t0\t2",
+            ]
+        )
+    )
+
+    with pytest.raises(LoadError, match="date/time"):
+        load_mt5_csv(str(csv_path), symbol="EURUSD")
+
+
+def test_rejects_out_of_range_year_date_as_load_error_not_raw_valueerror(tmp_path):
+    """`pd.to_datetime` successfully parses a string like "0000.01.01" into
+    a valid `Timestamp`, but `Timestamp.to_pydatetime()` then raises an
+    uncaught `ValueError: year 0 is out of range` — Python's stdlib
+    `datetime` only supports years 1-9999. This must fail as a named
+    `LoadError`, not an uncaught `ValueError` (cli.py's except clause
+    doesn't catch a bare `ValueError`).
+    """
+    csv_path = tmp_path / "eurusd.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                MT5_HEADER,
+                _row("2026.01.01", "00:00:00", 1.1000, 1.1010, 1.0990, 1.1005),
+                "0000.01.01\t00:00:00\t1.1005\t1.1020\t1.1000\t1.1015\t100\t0\t2",
+            ]
+        )
+    )
+
+    with pytest.raises(LoadError, match="row 1"):
+        load_mt5_csv(str(csv_path), symbol="EURUSD")
+
+
 def test_infers_timeframe_from_modal_candle_spacing(tmp_path):
     csv_path = tmp_path / "eurusd_daily.csv"
     csv_path.write_text(

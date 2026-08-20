@@ -1,4 +1,6 @@
 from fixtures.synthetic import (
+    model1_body_tiebreak_aligned_color_bullish_setup,
+    model1_body_tiebreak_aligned_color_setup,
     model1_body_tiebreak_big_body_setup,
     model1_body_tiebreak_small_body_setup,
     model1_confirmed_setup,
@@ -6,6 +8,7 @@ from fixtures.synthetic import (
     model1_dual_purge_and_fvg_fill_charter2_setup,
     model1_invalidated_setup,
     model1_pending_setup,
+    model1_pre_confirmation_breach_setup,
     model1_purge_engulf_charter2_setup,
     model1_wick_priority_setup,
 )
@@ -69,6 +72,35 @@ def test_middle_zone_close_with_small_body_tiebreaks_to_wick():
     assert signal.entry_price == 1.1040
 
 
+def test_middle_zone_close_with_anchor_color_aligned_to_direction_uses_anchor_open_bearish():
+    """REQ-20 regression, charter-2 [00:11:04]-[00:11:18]: "Body" and
+    "Open" are synonyms in the source methodology — Body entry is always
+    anchor.open, with no color/direction-dependent min/max logic. Here the
+    anchor's color matches the trade direction (bearish anchor, bearish
+    trade), placing anchor.open on the body's HIGH side, but the entry
+    price is still anchor.open.
+    """
+    series = model1_body_tiebreak_aligned_color_setup()
+
+    signal = _find(detect_model1_signals(series), anchor_index=1, direction="bearish")
+
+    assert signal.entry_type == "body"
+    assert signal.entry_price == 1.1038
+
+
+def test_middle_zone_close_with_anchor_color_aligned_to_direction_uses_anchor_open_bullish():
+    """REQ-20 regression, bullish mirror: anchor's color matches the trade
+    direction (bullish anchor, bullish trade), placing anchor.open on the
+    body's LOW side — entry price is still anchor.open.
+    """
+    series = model1_body_tiebreak_aligned_color_bullish_setup()
+
+    signal = _find(detect_model1_signals(series), anchor_index=1, direction="bullish")
+
+    assert signal.entry_type == "body"
+    assert signal.entry_price == 1.0962
+
+
 def test_body_ratio_tiebreak_is_read_from_config_not_hardcoded():
     """REQ-25: a lower configured body_ratio_tiebreak flips the small-body
     fixture's tiebreak outcome from Wick (default 0.6) to Body (threshold
@@ -116,6 +148,22 @@ def test_close_beyond_protected_extreme_before_retest_invalidates():
 
     assert signal.status == DetectionStatus.INVALIDATED
     assert signal.retest_index is None
+
+
+def test_pre_confirmation_breach_invalidates_immediately_instead_of_dropping_the_signal():
+    """REQ-18: any close beyond the anchor's protected extreme BEFORE
+    confirmation invalidates immediately — must still emit a
+    Model1Signal(status=INVALIDATED), not silently drop the anchor
+    (previously indistinguishable from "no purge ever happened here").
+    """
+    series = model1_pre_confirmation_breach_setup()
+
+    signal = _find(detect_model1_signals(series), anchor_index=1, direction="bearish")
+
+    assert signal.status == DetectionStatus.INVALIDATED
+    assert signal.retest_index is None
+    assert signal.entry_type == "wick"
+    assert signal.entry_price == 1.1035
 
 
 def test_no_retest_by_series_end_is_pending_not_dropped():

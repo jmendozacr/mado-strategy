@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 
 from core.candle import Candle, OHLCSeries
@@ -14,32 +16,67 @@ class LoadError(Exception):
     pass
 
 
+_OHLC_COLUMNS = ("<OPEN>", "<HIGH>", "<LOW>", "<CLOSE>")
+
+
 def load_mt5_csv(path: str, symbol: str) -> OHLCSeries:
-    df = pd.read_csv(path, sep="\t", dtype=str)
+    # na_filter=False: with dtype=str alone, pandas still applies its
+    # default NA-sentinel detection ("", "N/A", "NaN", ...) and silently
+    # turns a blank/sentinel OHLC cell into NaN — float(nan) then succeeds,
+    # producing a `nan` field with no error. Disabling it keeps such cells
+    # as literal strings, so they fail explicitly in the per-row float
+    # conversion below instead of corrupting the candle.
+    df = pd.read_csv(path, sep="\t", dtype=str, na_filter=False)
 
     missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         raise LoadError(f"missing required column(s): {', '.join(missing)}")
 
-    timestamps = pd.to_datetime(
-        df["<DATE>"] + " " + df["<TIME>"], format="%Y.%m.%d %H:%M:%S"
-    )
-
-    candles = tuple(
-        Candle(
-            timestamp=timestamps.iloc[i].to_pydatetime(),
-            open=float(df["<OPEN>"].iloc[i]),
-            high=float(df["<HIGH>"].iloc[i]),
-            low=float(df["<LOW>"].iloc[i]),
-            close=float(df["<CLOSE>"].iloc[i]),
+    try:
+        timestamps = pd.to_datetime(
+            df["<DATE>"] + " " + df["<TIME>"], format="%Y.%m.%d %H:%M:%S"
         )
-        for i in range(len(df))
-    )
+    except ValueError as e:
+        raise LoadError(f"malformed date/time: {e}")
+
+    candles = tuple(_row_to_candle(df, timestamps, i) for i in range(len(df)))
 
     _validate_timestamp_order(candles)
 
     return OHLCSeries(
         candles=candles, instrument=symbol, timeframe=_infer_timeframe(candles)
+    )
+
+
+def _row_to_candle(df: pd.DataFrame, timestamps: pd.Series, i: int) -> Candle:
+    values = {}
+    for column in _OHLC_COLUMNS:
+        raw = df[column].iloc[i]
+        try:
+            parsed = float(raw)
+        except ValueError:
+            raise LoadError(f"malformed value at row {i}, column {column}: {raw!r}")
+        # float() itself parses "nan"/"NaN"/"inf"/"Infinity" (case-
+        # insensitive) into a valid non-finite float with no exception —
+        # independent of pandas' own NA-sentinel handling above.
+        if not math.isfinite(parsed):
+            raise LoadError(f"non-finite value at row {i}, column {column}: {raw!r}")
+        values[column] = parsed
+
+    try:
+        timestamp = timestamps.iloc[i].to_pydatetime()
+    except (ValueError, OverflowError) as e:
+        # A string like "0000.01.01" parses into a valid pandas Timestamp,
+        # but stdlib `datetime` only supports years 1-9999 — to_pydatetime()
+        # raises here, past the batch pd.to_datetime() try/except above.
+        raise LoadError(f"malformed date/time at row {i}: {e}")
+
+    return Candle(
+        timestamp=timestamp,
+        open=values["<OPEN>"],
+        high=values["<HIGH>"],
+        low=values["<LOW>"],
+        close=values["<CLOSE>"],
     )
 
 
