@@ -57,12 +57,12 @@
 
 ## S-005: HTF↔LTF alignment
 **Requires**: S-002, S-004 | **Covers**: REQ-03, 04, 05, 27, 26.2
-- [ ] `core/pairing_table.py` (charter-2's 5-row table) + `ingestion/pairing.py` (REQ-03/04/27) + `alignment/htf_ltf.py` (3-state tagging per ADR-05) + property test + `cli.py` pair-mode args
+- [x] `core/pairing_table.py` (charter-2's 5-row table) + `ingestion/pairing.py` (REQ-03/04/27) + `alignment/htf_ltf.py` (3-state tagging per ADR-05) + property test + `cli.py` pair-mode args
 
 ## S-006: Full viz + CLI filters + manual acceptance
 **Requires**: S-001–S-005 | **Covers**: REQ-23, 24, 28
-- [ ] `viz/chart.py` (wiring only — encodings already added incrementally) + `viz/table.py` (REQ-24) + `cli.py` (`--from-date/--to-date/--types`) + `tests/test_cli_e2e.py` (full pipeline)
-- [ ] **Manual acceptance**: run against one real MT5 export, visually confirm output — v1 done only after this passes
+- [x] `viz/chart.py` (wiring only — encodings already added incrementally) + `viz/table.py` (REQ-24) + `cli.py` (`--from-date/--to-date/--types`) + `tests/test_cli_e2e.py` (full pipeline)
+- [ ] **Manual acceptance**: run against one real MT5 export, visually confirm output — v1 done only after this passes (BLOCKED: no real MT5-exported CSV is present in this repo — requires a human to supply one and eyeball the output; not automatable)
 
 ---
 
