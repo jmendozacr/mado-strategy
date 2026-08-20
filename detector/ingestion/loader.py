@@ -1,19 +1,12 @@
-from datetime import timedelta
-
 import pandas as pd
 
 from core.candle import Candle, OHLCSeries
+from core.pairing_table import TIMEFRAME_DURATIONS
 
 REQUIRED_COLUMNS = ("<DATE>", "<TIME>", "<OPEN>", "<HIGH>", "<LOW>", "<CLOSE>")
 
-_TIMEFRAME_REFERENCE_DELTAS = (
-    (timedelta(minutes=5), "5M"),
-    (timedelta(minutes=15), "15M"),
-    (timedelta(hours=1), "1H"),
-    (timedelta(hours=4), "4H"),
-    (timedelta(days=1), "D"),
-    (timedelta(days=7), "W"),
-    (timedelta(days=30), "MN"),
+_TIMEFRAME_REFERENCE_DELTAS = tuple(
+    (delta, timeframe) for timeframe, delta in TIMEFRAME_DURATIONS.items()
 )
 
 

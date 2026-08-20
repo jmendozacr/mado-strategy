@@ -16,6 +16,28 @@ class CRTRange:
     resolved_at_index: int
 
 
+def first_breach_index(
+    candles: tuple[Candle, ...],
+    start: int,
+    end: int,
+    high: float | None = None,
+    low: float | None = None,
+) -> int | None:
+    """First candle index in `(start, end]` whose wick breaches `high`
+    and/or `low` — the purge concept shared by Model-1's own LTF anchor
+    scan (one side at a time, via `high` xor `low`) and HTF/LTF alignment's
+    purge-candle lookup (both sides in one pass, via `high` and `low`
+    together).
+    """
+    for j in range(start + 1, end + 1):
+        candle = candles[j]
+        if high is not None and candle.high > high:
+            return j
+        if low is not None and candle.low < low:
+            return j
+    return None
+
+
 @dataclass(frozen=True)
 class _Resolution:
     kind: Literal["true_break", "false_break"]

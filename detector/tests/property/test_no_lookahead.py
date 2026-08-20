@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from alignment.htf_ltf import tag_alignment
 from core.candle import Candle, OHLCSeries
 from composite.mss import detect_mss_events
 from entries.model1 import detect_model1_signals
@@ -25,6 +26,7 @@ _FVG_K = 3
 _CRT_RANGE_K = 20
 _MSS_K = 1
 _MODEL1_K = 20
+_ALIGNMENT_LTF_PER_HTF = 4
 
 
 def _ohlc_candle(draw, index: int) -> Candle:
@@ -196,3 +198,92 @@ def test_model1_detection_has_no_lookahead(series: OHLCSeries):
         }
         for key in settled_truncated_keys:
             assert truncated_by_key[key] == full_by_key[key]
+
+
+@st.composite
+def paired_htf_ltf_series(draw, min_htf=3, max_htf=25):
+    """A synthetic HTF series plus a matching LTF series where each HTF
+    candle is nested by exactly `_ALIGNMENT_LTF_PER_HTF` LTF candles
+    spanning its own 1H duration — the OHLC shape of the LTF candles is
+    independently random (tag_alignment doesn't require price consistency
+    across the pair), only their timestamps are derived from the HTF
+    series so they land inside their enclosing HTF candle's span.
+    """
+    htf_size = draw(st.integers(min_value=min_htf, max_value=max_htf))
+    htf_candles = tuple(_ohlc_candle(draw, i) for i in range(htf_size))
+    htf_series = OHLCSeries(candles=htf_candles, instrument="EURUSD", timeframe="1H")
+
+    ltf_step = timedelta(hours=1) / _ALIGNMENT_LTF_PER_HTF
+    ltf_candles = []
+    for htf_index, htf_candle in enumerate(htf_candles):
+        for sub in range(_ALIGNMENT_LTF_PER_HTF):
+            ltf_index = htf_index * _ALIGNMENT_LTF_PER_HTF + sub
+            base = _ohlc_candle(draw, ltf_index)
+            ltf_candles.append(
+                Candle(
+                    timestamp=htf_candle.timestamp + sub * ltf_step,
+                    open=base.open,
+                    high=base.high,
+                    low=base.low,
+                    close=base.close,
+                )
+            )
+    ltf_series = OHLCSeries(candles=tuple(ltf_candles), instrument="EURUSD", timeframe="5M")
+    return htf_series, ltf_series
+
+
+def _relevant_htf_index(htf_candles, timestamp):
+    index = None
+    for i, candle in enumerate(htf_candles):
+        if candle.timestamp > timestamp:
+            break
+        index = i
+    return index
+
+
+@given(pair=paired_htf_ltf_series())
+@settings(max_examples=30)
+def test_alignment_detection_has_no_lookahead(pair):
+    """Alignment inherits its k from its inputs — it composes CRT range
+    detection on the HTF side (k=20, by start_index) and Model-1 detection
+    on the LTF side (k=20, by anchor_index). An LTF signal's alignment tag
+    is settled once BOTH (a) its own anchor is Model-1-settled and (b)
+    every CRT range candidate that could still claim its relevant HTF
+    candle as a purge (start_index up to relevant_index - 1) is itself
+    CRT-range-settled. The insufficient_htf_data tail state (ADR-05) is a
+    deliberate POLICY choice for the still-forming last HTF candle, not a
+    lookahead violation, so it is excluded from the settled set rather
+    than asserted against.
+    """
+    htf_series, ltf_series = pair
+    htf_size = len(htf_series.candles)
+
+    def _key(signal):
+        # Overlapping, non-deduplicated LTF CRT range candidates (design
+        # 4.4) can independently produce a purge_engulf signal at the SAME
+        # anchor_index/direction — purge_target disambiguates between
+        # those distinct candidates.
+        return (signal.anchor_index, signal.direction, signal.confirmation_type, signal.purge_target)
+
+    full_tags = tag_alignment(htf_series, ltf_series)
+    full_by_key = {_key(t.ltf_signal): t for t in full_tags}
+
+    for n_htf in range(1, htf_size + 1):
+        n_ltf = n_htf * _ALIGNMENT_LTF_PER_HTF
+        truncated_htf = htf_series.up_to(n_htf)
+        truncated_ltf = ltf_series.up_to(n_ltf)
+        truncated_tags = tag_alignment(truncated_htf, truncated_ltf)
+        ltf_settled_boundary = n_ltf - _MODEL1_K - 1
+
+        for tag in truncated_tags:
+            signal = tag.ltf_signal
+            if signal.anchor_index > ltf_settled_boundary:
+                continue
+            anchor_ts = ltf_series.candles[signal.anchor_index].timestamp
+            relevant_index = _relevant_htf_index(truncated_htf.candles, anchor_ts)
+            if relevant_index is None or relevant_index > n_htf - _CRT_RANGE_K:
+                continue  # HTF context not yet settled for this candle
+
+            key = _key(signal)
+            assert key in full_by_key
+            assert full_by_key[key] == tag

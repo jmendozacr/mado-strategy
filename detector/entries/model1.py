@@ -4,7 +4,7 @@ from typing import Literal
 from core.candle import Candle, OHLCSeries
 from core.config import CRTRangeConfig, FVGConfig, Model1Config
 from core.results import DetectionStatus
-from primitives.crt_range import CRTRange, detect_crt_ranges
+from primitives.crt_range import CRTRange, detect_crt_ranges, first_breach_index
 from primitives.fvg import FVG, detect_fvgs
 
 Direction = Literal["bullish", "bearish"]
@@ -27,14 +27,23 @@ def detect_model1_signals(
     crt_config: CRTRangeConfig = CRTRangeConfig(),
     fvg_config: FVGConfig = FVGConfig(),
     config: Model1Config = Model1Config(),
+    crt_ranges: list[CRTRange] | None = None,
+    fvgs: list[FVG] | None = None,
 ) -> list[Model1Signal]:
+    """`crt_ranges`/`fvgs` let a caller that already computed them for the
+    same `series`+config reuse them instead of triggering a second
+    O(n)+ detection pass — cli.py's orchestration was calling
+    detect_crt_ranges/detect_fvgs a second time for results it had already
+    computed via this function. `None` (the default) preserves the original
+    self-contained behavior for every existing call site.
+    """
     candles = series.candles
     signals = []
 
-    for crt_range in detect_crt_ranges(series, crt_config):
+    for crt_range in crt_ranges if crt_ranges is not None else detect_crt_ranges(series, crt_config):
         signals.extend(_purge_signals(candles, crt_range, config))
 
-    for fvg in detect_fvgs(series, fvg_config):
+    for fvg in fvgs if fvgs is not None else detect_fvgs(series, fvg_config):
         signal = _fvg_fill_signal(candles, fvg, config)
         if signal is not None:
             signals.append(signal)
@@ -46,13 +55,13 @@ def _purge_signals(
     candles: tuple[Candle, ...], crt_range: CRTRange, config: Model1Config
 ) -> list[Model1Signal]:
     signals = []
-    anchor_index = _first_purge(candles, crt_range.start_index, crt_range.resolved_at_index, crt_range.high, "high")
+    anchor_index = first_breach_index(candles, crt_range.start_index, crt_range.resolved_at_index, high=crt_range.high)
     if anchor_index is not None:
         signal = _track_anchor(candles, anchor_index, "bearish", crt_range.high, "purge_engulf", config)
         if signal is not None:
             signals.append(signal)
 
-    anchor_index = _first_purge(candles, crt_range.start_index, crt_range.resolved_at_index, crt_range.low, "low")
+    anchor_index = first_breach_index(candles, crt_range.start_index, crt_range.resolved_at_index, low=crt_range.low)
     if anchor_index is not None:
         signal = _track_anchor(candles, anchor_index, "bullish", crt_range.low, "purge_engulf", config)
         if signal is not None:
@@ -61,35 +70,18 @@ def _purge_signals(
     return signals
 
 
-def _first_purge(
-    candles: tuple[Candle, ...], start: int, end: int, level: float, side: Literal["high", "low"]
-) -> int | None:
-    for j in range(start + 1, end + 1):
-        if side == "high" and candles[j].high > level:
-            return j
-        if side == "low" and candles[j].low < level:
-            return j
-    return None
-
-
 def _fvg_fill_signal(
     candles: tuple[Candle, ...], fvg: FVG, config: Model1Config
 ) -> Model1Signal | None:
-    anchor_index = _first_fvg_fill(candles, fvg)
-    if anchor_index is None:
+    """Reuses FVG's already-computed fill_index (Bug 1a fix) instead of
+    independently rescanning forward from fvg.end_index+1 for the same
+    result — fvg.py's own fill-status pass already resolves this.
+    """
+    if fvg.fill_index is None:
         return None
     direction: Direction = "bullish" if fvg.direction == "bullish" else "bearish"
     purge_target = fvg.bottom if fvg.direction == "bullish" else fvg.top
-    return _track_anchor(candles, anchor_index, direction, purge_target, "fvg_fill", config)
-
-
-def _first_fvg_fill(candles: tuple[Candle, ...], fvg: FVG) -> int | None:
-    for j in range(fvg.end_index + 1, len(candles)):
-        if fvg.direction == "bullish" and candles[j].low <= fvg.bottom:
-            return j
-        if fvg.direction == "bearish" and candles[j].high >= fvg.top:
-            return j
-    return None
+    return _track_anchor(candles, fvg.fill_index, direction, purge_target, "fvg_fill", config)
 
 
 def _track_anchor(

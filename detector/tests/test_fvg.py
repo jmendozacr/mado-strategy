@@ -80,6 +80,31 @@ def test_gap_narrower_than_default_min_size_is_excluded():
     assert fvgs == []
 
 
+def test_filled_fvg_exposes_fill_index_for_reuse_by_other_detectors():
+    """Bug 1a fix: FVG exposes fill_index so entries/model1.py can reuse
+    this already-computed result instead of independently rescanning for
+    the fill candle (eliminates a duplicate O(n)-per-FVG scan).
+    """
+    series = bearish_fvg_fill_setup()
+
+    fvgs = detect_fvgs(series)
+
+    assert len(fvgs) == 1
+    fvg = fvgs[0]
+    assert fvg.fill_status == "filled"
+    assert fvg.fill_index is not None
+    assert series.candles[fvg.fill_index].high >= fvg.top
+
+
+def test_open_fvg_has_no_fill_index():
+    series = bullish_fvg_partial_fill_setup()
+
+    fvgs = detect_fvgs(series)
+
+    assert fvgs[0].fill_status == "open"
+    assert fvgs[0].fill_index is None
+
+
 def test_custom_min_size_atr_config_lowers_exclusion_threshold():
     """REQ-25: min_size_atr is sourced from config, not hardcoded — a
     smaller configured multiplier admits the same gap REQ-09.1 excluded by

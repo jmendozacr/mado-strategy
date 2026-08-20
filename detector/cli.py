@@ -1,42 +1,234 @@
-"""CLI entry point — single-series mode (S-000). Pair mode, date/type
-filters, and the detections.csv table land in later slices (S-005/S-006).
+"""CLI entry point — single-series mode (S-000) plus HTF/LTF pair mode
+(S-005, --htf-csv/--htf-symbol). Full pipeline wiring, date/type result
+filters, and the detections.csv table are S-006's job.
 """
 
 import argparse
 import sys
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 from pathlib import Path
 
+from alignment.htf_ltf import AlignedSignal, tag_alignment
+from composite.mss import MSSEvent, detect_mss_events
+from core.candle import OHLCSeries
 from core.config import DetectorConfig
+from core.pairing_table import PairingError
+from entries.model1 import Model1Signal, detect_model1_signals
 from ingestion.loader import LoadError, load_mt5_csv
-from primitives.swing import detect_swings
+from ingestion.pairing import load_pair
+from primitives.crt_range import CRTRange, detect_crt_ranges
+from primitives.fvg import FVG, detect_fvgs
+from primitives.swing import SwingPoint, detect_swings
 from viz.chart import render_chart
+from viz.table import write_detections_csv
+
+_ALL_TYPES = {"swing", "fvg", "crt_range", "mss", "model1", "alignment"}
+
+
+@dataclass
+class _Detections:
+    swings: list[SwingPoint]
+    fvgs: list[FVG]
+    crt_ranges: list[CRTRange]
+    mss_events: list[MSSEvent]
+    model1_signals: list[Model1Signal] | None
+    aligned_signals: list[AlignedSignal] | None
+    htf_crt_ranges: list[CRTRange]
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m detector.cli")
-    parser.add_argument("--csv", required=True, help="Path to the MT5-exported OHLC CSV")
-    parser.add_argument("--symbol", required=True, help="Instrument identity, e.g. EURUSD")
-    parser.add_argument("--output-dir", required=True, help="Directory for overlay.png")
+    parser.add_argument("--csv", required=True, help="Path to the MT5-exported OHLC CSV (LTF in pair mode)")
+    parser.add_argument("--symbol", required=True, help="Instrument identity, e.g. EURUSD (LTF in pair mode)")
+    parser.add_argument("--htf-csv", help="Path to the HTF CSV — enables pair mode with --htf-symbol")
+    parser.add_argument("--htf-symbol", help="HTF instrument identity — enables pair mode with --htf-csv")
+    parser.add_argument("--output-dir", required=True, help="Directory for overlay.png/detections.csv")
+    parser.add_argument("--from-date", help="YYYY-MM-DD — filters RESULTS, never the input series")
+    parser.add_argument("--to-date", help="YYYY-MM-DD — filters RESULTS, never the input series")
+    parser.add_argument("--types", help="Comma-separated subset of swing,fvg,crt_range,mss,model1,alignment")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
+    if bool(args.htf_csv) != bool(args.htf_symbol):
+        print("error: --htf-csv and --htf-symbol must be provided together", file=sys.stderr)
+        return 1
+
     try:
-        series = load_mt5_csv(args.csv, symbol=args.symbol)
-    except LoadError as error:
+        types = _parse_types(args.types)
+        from_date, to_date = _parse_date(args.from_date, "--from-date"), _parse_date(args.to_date, "--to-date")
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    try:
+        if args.htf_csv:
+            htf_series, ltf_series = load_pair(
+                htf_csv=args.htf_csv, htf_symbol=args.htf_symbol,
+                ltf_csv=args.csv, ltf_symbol=args.symbol,
+            )
+        else:
+            htf_series, ltf_series = None, load_mt5_csv(args.csv, symbol=args.symbol)
+    except (LoadError, PairingError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
     config = DetectorConfig()
-    swings = detect_swings(series, config.swing)
+    detections = _detect_all(ltf_series, htf_series, config, types)
+    detections = _filter_by_date_range(detections, ltf_series, htf_series, from_date, to_date)
+    detections = _filter_by_types(detections, types)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    render_chart(series, swings, str(output_dir / "overlay.png"))
+    render_chart(
+        ltf_series, detections.swings, str(output_dir / "overlay.png"),
+        fvgs=detections.fvgs, crt_ranges=detections.crt_ranges, mss_events=detections.mss_events,
+        model1_signals=detections.model1_signals, aligned_signals=detections.aligned_signals,
+        htf_series=htf_series, htf_crt_ranges=detections.htf_crt_ranges,
+        ltf_index_range=_index_range_for_dates(ltf_series, from_date, to_date),
+        htf_index_range=None if htf_series is None else _index_range_for_dates(htf_series, from_date, to_date),
+    )
+    write_detections_csv(
+        ltf_series, str(output_dir / "detections.csv"),
+        swings=detections.swings, fvgs=detections.fvgs, crt_ranges=detections.crt_ranges,
+        mss_events=detections.mss_events, model1_signals=detections.model1_signals,
+        aligned_signals=detections.aligned_signals,
+    )
 
     return 0
+
+
+def _detect_all(
+    ltf_series: OHLCSeries, htf_series: OHLCSeries | None, config: DetectorConfig, types: set[str]
+) -> _Detections:
+    """LTF crt_ranges/fvgs and (in pair mode) HTF crt_ranges are each
+    computed exactly ONCE here and reused by `detect_model1_signals`/
+    `tag_alignment` (perf fix — cli.py was previously triggering a second,
+    redundant detection pass for each: detect_crt_ranges twice for LTF,
+    twice for HTF, detect_fvgs twice for LTF, per run).
+    """
+    ltf_crt_ranges = detect_crt_ranges(ltf_series, config.crt_range)
+    ltf_fvgs = detect_fvgs(ltf_series, config.fvg)
+    ltf_swings = detect_swings(ltf_series, config.swing)
+    model1_signals = detect_model1_signals(
+        ltf_series, config.crt_range, config.fvg, config.model1,
+        crt_ranges=ltf_crt_ranges, fvgs=ltf_fvgs,
+    )
+
+    aligned_signals = None
+    htf_crt_ranges: list[CRTRange] = []
+
+    if htf_series is not None:
+        htf_crt_ranges = detect_crt_ranges(htf_series, config.crt_range)
+        aligned_signals = tag_alignment(
+            htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
+            ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
+        )
+        if "alignment" not in types:
+            model1_signals = [tagged.ltf_signal for tagged in aligned_signals]
+            aligned_signals = None
+
+    return _Detections(
+        swings=ltf_swings,
+        fvgs=ltf_fvgs,
+        crt_ranges=ltf_crt_ranges,
+        mss_events=detect_mss_events(ltf_series, config.mss, swings=ltf_swings),
+        model1_signals=model1_signals,
+        aligned_signals=aligned_signals,
+        htf_crt_ranges=htf_crt_ranges,
+    )
+
+
+def _index_range_for_dates(
+    series: OHLCSeries, from_date: date | None, to_date: date | None
+) -> tuple[int, int] | None:
+    """Bug 3: DISPLAY-ONLY windowing of the plotted candles when
+    --from-date/--to-date are set — detection itself always runs on the
+    full, unfiltered series (see `_filter_by_date_range`). None means "plot
+    everything", matching today's behavior when no filter is given.
+    """
+    if from_date is None and to_date is None:
+        return None
+
+    indices = [
+        i for i, candle in enumerate(series.candles)
+        if (from_date is None or candle.timestamp.date() >= from_date)
+        and (to_date is None or candle.timestamp.date() <= to_date)
+    ]
+    if not indices:
+        return (0, -1)
+    return (indices[0], indices[-1])
+
+
+def _filter_by_date_range(
+    detections: _Detections,
+    ltf_series: OHLCSeries,
+    htf_series: OHLCSeries | None,
+    from_date: date | None,
+    to_date: date | None,
+) -> _Detections:
+    """REQ-28: filters apply to RESULTS after detection, never the input series."""
+    if from_date is None and to_date is None:
+        return detections
+
+    def keep(timestamp: datetime) -> bool:
+        return (from_date is None or timestamp.date() >= from_date) and (to_date is None or timestamp.date() <= to_date)
+
+    def date_filter(items, series, index_of):
+        return None if items is None else [x for x in items if keep(series.candles[index_of(x)].timestamp)]
+
+    return replace(
+        detections,
+        swings=date_filter(detections.swings, ltf_series, lambda s: s.index),
+        fvgs=date_filter(detections.fvgs, ltf_series, lambda f: f.start_index),
+        crt_ranges=date_filter(detections.crt_ranges, ltf_series, lambda r: r.start_index),
+        mss_events=date_filter(detections.mss_events, ltf_series, lambda m: m.index),
+        model1_signals=date_filter(detections.model1_signals, ltf_series, lambda s: s.anchor_index),
+        aligned_signals=date_filter(detections.aligned_signals, ltf_series, lambda t: t.ltf_signal.anchor_index),
+        htf_crt_ranges=detections.htf_crt_ranges if htf_series is None
+        else date_filter(detections.htf_crt_ranges, htf_series, lambda r: r.start_index),
+    )
+
+
+def _filter_by_types(detections: _Detections, types: set[str]) -> _Detections:
+    """REQ-28.1: e.g. --types fvg,model1 — only those markers/rows appear;
+    dependencies (like CRT range feeding Model-1) stay computed internally.
+    """
+    model1_signals = detections.model1_signals if "model1" in types else []
+    aligned_signals = detections.aligned_signals if "model1" in types else None
+    return replace(
+        detections,
+        swings=detections.swings if "swing" in types else [],
+        fvgs=detections.fvgs if "fvg" in types else [],
+        crt_ranges=detections.crt_ranges if "crt_range" in types else [],
+        mss_events=detections.mss_events if "mss" in types else [],
+        model1_signals=model1_signals,
+        aligned_signals=aligned_signals,
+    )
+
+
+def _parse_types(raw: str | None) -> set[str]:
+    if raw is None:
+        return set(_ALL_TYPES)
+    tokens = {token.strip() for token in raw.split(",") if token.strip()}
+    unknown = tokens - _ALL_TYPES
+    if unknown:
+        raise ValueError(
+            f"unknown --types token(s): {', '.join(sorted(unknown))} (expected subset of {', '.join(sorted(_ALL_TYPES))})"
+        )
+    return tokens
+
+
+def _parse_date(raw: str | None, flag: str) -> date | None:
+    if raw is None:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"invalid {flag} value: {raw} (expected YYYY-MM-DD)")
 
 
 if __name__ == "__main__":

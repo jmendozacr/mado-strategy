@@ -3,6 +3,7 @@ from typing import Literal
 
 from core.candle import Candle, OHLCSeries
 from core.config import FVGConfig
+from core.sweep import SweepSide, two_heap_sweep
 
 _ATR_PERIOD = 14
 
@@ -15,11 +16,12 @@ class FVG:
     bottom: float
     direction: Literal["bullish", "bearish"]
     fill_status: Literal["open", "filled"]
+    fill_index: int | None = None
 
 
 def detect_fvgs(series: OHLCSeries, config: FVGConfig = FVGConfig()) -> list[FVG]:
     candles = series.candles
-    fvgs = []
+    candidates: list[tuple[int, Literal["bullish", "bearish"], float, float]] = []
     for i in range(len(candles) - 2):
         formed = _formed_gap(candles[i], candles[i + 2])
         if formed is None:
@@ -27,17 +29,22 @@ def detect_fvgs(series: OHLCSeries, config: FVGConfig = FVGConfig()) -> list[FVG
         direction, top, bottom = formed
         if (top - bottom) < config.min_size_atr * _atr(candles, i + 2):
             continue
-        fvgs.append(
-            FVG(
-                start_index=i,
-                end_index=i + 2,
-                top=top,
-                bottom=bottom,
-                direction=direction,
-                fill_status=_fill_status(candles[i + 3 :], direction, top, bottom),
-            )
+        candidates.append((i, direction, top, bottom))
+
+    fill_results = _sweep_fill_status(candles, candidates)
+
+    return [
+        FVG(
+            start_index=start,
+            end_index=start + 2,
+            top=top,
+            bottom=bottom,
+            direction=direction,
+            fill_status=status,
+            fill_index=fill_index,
         )
-    return fvgs
+        for (start, direction, top, bottom), (status, fill_index) in zip(candidates, fill_results)
+    ]
 
 
 def _formed_gap(
@@ -50,17 +57,57 @@ def _formed_gap(
     return None
 
 
-def _fill_status(
-    subsequent: tuple[Candle, ...],
-    direction: Literal["bullish", "bearish"],
-    top: float,
-    bottom: float,
-) -> Literal["open", "filled"]:
-    if direction == "bullish":
-        reached_far_edge = any(c.low <= bottom for c in subsequent)
-    else:
-        reached_far_edge = any(c.high >= top for c in subsequent)
-    return "filled" if reached_far_edge else "open"
+def _sweep_fill_status(
+    candles: tuple[Candle, ...],
+    candidates: list[tuple[int, Literal["bullish", "bearish"], float, float]],
+) -> list[tuple[Literal["open", "filled"], int | None]]:
+    """One forward pass resolves every FVG's fill status/index, using two
+    heaps (one per direction) instead of rescanning the full still-open
+    working set on every candle. The prior "sweep-line" (maintain a
+    still-open set, re-check every member each candle) fixed the original
+    O(n^2) restart-per-FVG scan, but is itself still O(n * open_count) —
+    at real-data scale (100,000 M5 candles, ~18,000 FVGs, many staying open
+    for thousands of candles) this measured 189s, the dominant real cost
+    (see apply-progress). Fill is monotonic — an FVG's bottom/top threshold
+    only ever needs to be checked against ONE extreme per candle (the
+    smallest still-open bottom≥low can't fill without the largest also
+    being checked... see below) — which is exactly what a heap answers in
+    O(log n) instead of O(open_count):
+
+    - bullish fills when low[j] <= bottom: for a fixed low[j], EVERY open
+      bullish FVG with bottom >= low[j] fills now. A max-heap keyed by
+      bottom lets us pop them all (largest bottom first — if it doesn't
+      satisfy `bottom >= low[j]`, no smaller bottom can either).
+    - bearish fills when high[j] >= top: symmetric, min-heap keyed by top.
+
+    Each candidate is pushed once (when eligible, at start+3) and popped
+    once (when filled, or never if it stays open) — O(n + m log m) total,
+    not O(n * m). Which candle resolves each FVG is unchanged from the
+    original per-instance scan — only the scan structure is (differential
+    test: test_performance.py, against an independent reference
+    reimplementation of the ORIGINAL per-instance scan). Uses the generic
+    `two_heap_sweep` shared with mss.py's decisive-break resolution.
+    """
+    sides = (
+        SweepSide(
+            belongs=lambda c: c[1] == "bullish",
+            heap_key=lambda c: -c[3],  # -bottom — max-heap by bottom
+            resolves=lambda key, candle: -key >= candle.low,
+            result=lambda j: ("filled", j),
+        ),
+        SweepSide(
+            belongs=lambda c: c[1] == "bearish",
+            heap_key=lambda c: c[2],  # top — min-heap by top
+            resolves=lambda key, candle: key <= candle.high,
+            result=lambda j: ("filled", j),
+        ),
+    )
+    return two_heap_sweep(
+        candles, candidates,
+        eligible_at=lambda c: c[0] + 3,
+        sides=sides,
+        default=("open", None),
+    )
 
 
 def _true_range(candles: tuple[Candle, ...], index: int) -> float:

@@ -5,6 +5,7 @@ root_packages =
     primitives
     composite
     entries
+    alignment
     viz
 
 [importlinter:contract:layers]
@@ -12,6 +13,7 @@ name = Layered pipeline (ADR-01)
 type = layers
 layers =
     viz : ingestion
+    alignment
     composite | entries
     primitives
     core
