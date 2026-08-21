@@ -136,6 +136,12 @@ FVG, CRT range, MSS, and HTF/LTF alignment satisfy the same property as Swing/Mo
 - **REQ-28.1**: `--types fvg,model1` — only those markers/rows appear; CRT range still computed internally (Model-1 dependency) but not shown.
 - **REQ-28.2**: no filters — full unfiltered output.
 
+### REQ-29: Kill Zone session filter
+`--session ny-killzone` filters RESULTS (same post-detection pattern as REQ-28, never the input series) to detections anchored inside the New York Kill Zone (charter-3 [00:07:52]: 7:00-10:00/11:00am NY-local; `KillZoneConfig` defaults to the wider 11:00 upper bound). Converted via real `America/New_York` tz rules against UTC candle timestamps — not a fixed UTC offset, since the boundary shifts with US DST.
+- **REQ-29.1**: a candle at a UTC hour that maps to 07:00-10:59 NY-local, WHEN filtered, THEN kept.
+- **REQ-29.2**: the same UTC hour maps to inside the kill zone during EDT but outside during EST (11:00 UTC → 07:00 EDT vs. 06:00 EST) — the filter follows the DST-correct local hour, not a fixed UTC window.
+- **REQ-29.3**: `--session bogus` — rejected, naming the unknown token.
+
 ## Domain: chart-overlay-viz
 
 ### REQ-23: Chart image overlay

@@ -8,11 +8,12 @@ import sys
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from alignment.htf_ltf import AlignedSignal, tag_alignment
 from composite.mss import MSSEvent, detect_mss_events
 from core.candle import OHLCSeries
-from core.config import DetectorConfig
+from core.config import DetectorConfig, KillZoneConfig
 from core.pairing_table import PairingError
 from core.results import DetectionStatus
 from entries.model1 import Model1Signal, detect_model1_signals
@@ -25,6 +26,9 @@ from viz.chart import render_chart
 from viz.table import write_detections_csv
 
 _ALL_TYPES = {"swing", "fvg", "crt_range", "mss", "model1", "alignment"}
+_SESSIONS = {"ny-killzone"}
+_UTC = ZoneInfo("UTC")
+_NY = ZoneInfo("America/New_York")
 
 
 @dataclass
@@ -48,6 +52,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--from-date", help="YYYY-MM-DD — filters RESULTS, never the input series")
     parser.add_argument("--to-date", help="YYYY-MM-DD — filters RESULTS, never the input series")
     parser.add_argument("--types", help="Comma-separated subset of swing,fvg,crt_range,mss,model1,alignment")
+    parser.add_argument("--session", help="Restrict RESULTS to a named kill zone — currently: ny-killzone")
     return parser
 
 
@@ -61,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         types = _parse_types(args.types)
         from_date, to_date = _parse_date(args.from_date, "--from-date"), _parse_date(args.to_date, "--to-date")
+        session = _parse_session(args.session)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -80,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     config = DetectorConfig()
     detections = _detect_all(ltf_series, htf_series, config, types)
     detections = _filter_by_date_range(detections, ltf_series, htf_series, from_date, to_date)
+    detections = _filter_by_session(detections, ltf_series, htf_series, session, config.kill_zone)
     detections = _filter_by_types(detections, types)
 
     output_dir = Path(args.output_dir)
@@ -199,6 +206,48 @@ def _filter_by_date_range(
     )
 
 
+def _in_ny_kill_zone(timestamp: datetime, config: KillZoneConfig) -> bool:
+    """New REQ-29: candle timestamps are UTC wall-clock (verified against
+    real broker data — no further broker offset). Converts via real
+    America/New_York tz rules, not a fixed UTC offset, so the boundary
+    correctly shifts between EST and EDT.
+    """
+    local = timestamp.replace(tzinfo=_UTC).astimezone(_NY)
+    return config.ny_start_hour <= local.hour < config.ny_end_hour
+
+
+def _filter_by_session(
+    detections: _Detections,
+    ltf_series: OHLCSeries,
+    htf_series: OHLCSeries | None,
+    session: str | None,
+    config: KillZoneConfig,
+) -> _Detections:
+    """New REQ-29: filters apply to RESULTS after detection, never the
+    input series — same shape as `_filter_by_date_range` (REQ-28).
+    """
+    if session is None:
+        return detections
+
+    def keep(timestamp: datetime) -> bool:
+        return _in_ny_kill_zone(timestamp, config)
+
+    def session_filter(items, series, index_of):
+        return None if items is None else [x for x in items if keep(series.candles[index_of(x)].timestamp)]
+
+    return replace(
+        detections,
+        swings=session_filter(detections.swings, ltf_series, lambda s: s.index),
+        fvgs=session_filter(detections.fvgs, ltf_series, lambda f: f.start_index),
+        crt_ranges=session_filter(detections.crt_ranges, ltf_series, lambda r: r.start_index),
+        mss_events=session_filter(detections.mss_events, ltf_series, lambda m: m.index),
+        model1_signals=session_filter(detections.model1_signals, ltf_series, lambda s: s.anchor_index),
+        aligned_signals=session_filter(detections.aligned_signals, ltf_series, lambda t: t.ltf_signal.anchor_index),
+        htf_crt_ranges=detections.htf_crt_ranges if htf_series is None
+        else session_filter(detections.htf_crt_ranges, htf_series, lambda r: r.start_index),
+    )
+
+
 def _filter_by_types(detections: _Detections, types: set[str]) -> _Detections:
     """REQ-28.1: e.g. --types fvg,model1 — only those markers/rows appear;
     dependencies (like CRT range feeding Model-1) stay computed internally.
@@ -247,6 +296,14 @@ def _parse_types(raw: str | None) -> set[str]:
             f"unknown --types token(s): {', '.join(sorted(unknown))} (expected subset of {', '.join(sorted(_ALL_TYPES))})"
         )
     return tokens
+
+
+def _parse_session(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    if raw not in _SESSIONS:
+        raise ValueError(f"unknown --session value: {raw} (expected one of {', '.join(sorted(_SESSIONS))})")
+    return raw
 
 
 def _parse_date(raw: str | None, flag: str) -> date | None:

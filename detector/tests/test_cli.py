@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest import mock
 
 from fixtures.synthetic import (
@@ -7,6 +8,7 @@ from fixtures.synthetic import (
 
 import cli
 from cli import main
+from core.config import KillZoneConfig
 
 MT5_HEADER = "<DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>"
 
@@ -308,3 +310,28 @@ def test_main_returns_1_for_unlisted_timeframe_pairing(tmp_path, capsys):
 
     assert exit_code == 1
     assert "1H" in capsys.readouterr().err
+
+
+def test_ny_kill_zone_boundary_shifts_with_dst_not_fixed_utc_offset():
+    """New REQ-29: 11:00 UTC is the NY Kill Zone open (07:00 local) during
+    EDT (summer, UTC-4) but one hour before it (06:00 local) during EST
+    (winter, UTC-5) — proves the predicate converts via real
+    America/New_York tz rules, not a fixed UTC offset (this session's
+    real-data finding: broker candle timestamps are UTC with no further
+    broker offset).
+    """
+    config = KillZoneConfig()
+    winter = datetime(2026, 1, 5, 11, 0, 0)  # EST: 11:00 UTC -> 06:00 NY local
+    summer = datetime(2026, 7, 6, 11, 0, 0)  # EDT: 11:00 UTC -> 07:00 NY local
+
+    assert cli._in_ny_kill_zone(winter, config) is False
+    assert cli._in_ny_kill_zone(summer, config) is True
+
+
+def test_ny_kill_zone_upper_bound_is_exclusive():
+    config = KillZoneConfig()
+    just_before_close = datetime(2026, 7, 6, 14, 59, 0)  # EDT: 10:59 NY local
+    at_close = datetime(2026, 7, 6, 15, 0, 0)  # EDT: 11:00 NY local
+
+    assert cli._in_ny_kill_zone(just_before_close, config) is True
+    assert cli._in_ny_kill_zone(at_close, config) is False

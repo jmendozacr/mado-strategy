@@ -29,9 +29,20 @@ class Model1Config:
 
 
 @dataclass(frozen=True)
+class KillZoneConfig:
+    """charter-3 [00:07:52]: New York Kill Zone, 7:00-10:00/11:00am
+    NY-local. Upper bound is ambiguous in the source ("10:00/11:00 a.m.")
+    — defaults to the wider 11:00 to avoid silently dropping real signals.
+    """
+    ny_start_hour: int = 7
+    ny_end_hour: int = 11
+
+
+@dataclass(frozen=True)
 class DetectorConfig:
     swing: SwingConfig = field(default_factory=SwingConfig)
     fvg: FVGConfig = field(default_factory=FVGConfig)
     crt_range: CRTRangeConfig = field(default_factory=CRTRangeConfig)
     mss: MSSConfig = field(default_factory=MSSConfig)
     model1: Model1Config = field(default_factory=Model1Config)
+    kill_zone: KillZoneConfig = field(default_factory=KillZoneConfig)

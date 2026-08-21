@@ -144,6 +144,17 @@ def test_date_filter_excludes_all_results_outside_range(tmp_path):
     assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned"]]
 
 
+def _write_dual_csv_at(path, date_str, start_hour):
+    """Same `_DUAL_CANDLES` shape as `_write_dual_csv`, but starting at an
+    arbitrary UTC hour instead of 00:00 — lets session-filter tests place
+    the whole detection cluster inside/outside/straddling the NY Kill Zone.
+    """
+    rows = [MT5_HEADER]
+    for i, (o, h, l, c) in enumerate(_DUAL_CANDLES):
+        rows.append(_row(date_str, f"{(start_hour + i) % 24:02d}:00:00", o, h, l, c))
+    path.write_text("\n".join(rows))
+
+
 def _write_daily_csv(path):
     rows = [MT5_HEADER]
     for i, (o, h, l, c) in enumerate(
@@ -227,6 +238,75 @@ def test_no_date_filter_passes_none_as_the_index_range(tmp_path):
     _, kwargs = render_chart_spy.call_args
     assert kwargs["ltf_index_range"] is None
     assert kwargs["htf_index_range"] is None
+
+
+def test_session_filter_excludes_results_outside_ny_kill_zone(tmp_path):
+    """New REQ-29: --session ny-killzone narrows RESULTS to detections
+    anchored inside 07:00-11:00 NY-local time. Winter date, candles at UTC
+    16:00-23:00 -> NY local 11:00-18:00 (EST) -> entirely after the kill
+    zone closes.
+    """
+    csv_path = tmp_path / "eurusd.csv"
+    _write_dual_csv_at(csv_path, "2026.01.05", start_hour=16)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            "--csv", str(csv_path), "--symbol", "EURUSD",
+            "--output-dir", str(output_dir),
+            "--session", "ny-killzone",
+        ]
+    )
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "detections.csv")
+    assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned"]]
+
+
+def test_unknown_session_token_is_rejected(tmp_path, capsys):
+    csv_path = tmp_path / "eurusd.csv"
+    _write_dual_csv(csv_path)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            "--csv", str(csv_path), "--symbol", "EURUSD",
+            "--output-dir", str(output_dir),
+            "--session", "bogus",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "bogus" in capsys.readouterr().err
+
+
+def test_session_filter_does_not_change_detection_values_only_narrows_them(tmp_path):
+    """Mirrors the date-filter invariant (Bug 3 (c)): a session filter must
+    window RESULTS only, never re-run detection against a truncated series.
+    Summer date, candles at UTC 11:00-18:00 -> NY local 07:00-14:00 (EDT):
+    the first 4 candles (11:00-14:00 UTC) fall inside the 11:00-15:00 UTC
+    kill zone window, the last 4 fall outside -> a genuine, non-vacuous
+    narrowing where every surviving row must still be byte-identical.
+    """
+    csv_path = tmp_path / "eurusd.csv"
+    _write_dual_csv_at(csv_path, "2026.07.06", start_hour=11)
+    full_dir = tmp_path / "full"
+    filtered_dir = tmp_path / "filtered"
+
+    main(["--csv", str(csv_path), "--symbol", "EURUSD", "--output-dir", str(full_dir)])
+    main(
+        [
+            "--csv", str(csv_path), "--symbol", "EURUSD", "--output-dir", str(filtered_dir),
+            "--session", "ny-killzone",
+        ]
+    )
+
+    full_rows = {tuple(row) for row in _read_csv_rows(full_dir / "detections.csv")[1:]}
+    filtered_rows = {tuple(row) for row in _read_csv_rows(filtered_dir / "detections.csv")[1:]}
+
+    assert filtered_rows
+    assert filtered_rows.issubset(full_rows)
+    assert filtered_rows != full_rows
 
 
 def test_pair_mode_populates_aligned_column_on_model1_rows(tmp_path):
