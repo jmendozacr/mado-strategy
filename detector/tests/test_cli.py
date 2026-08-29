@@ -1,6 +1,7 @@
 from datetime import datetime
 from unittest import mock
 
+from fixtures.mt5_csv import MT5_HEADER, _row
 from fixtures.synthetic import (
     model1_pre_confirmation_breach_setup,
     model1_purge_engulf_charter2_setup,
@@ -8,13 +9,9 @@ from fixtures.synthetic import (
 
 import cli
 from cli import main
-from core.config import KillZoneConfig
-
-MT5_HEADER = "<DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>"
-
-
-def _row(date: str, time: str, o: float, h: float, l: float, c: float) -> str:
-    return f"{date}\t{time}\t{o}\t{h}\t{l}\t{c}\t100\t0\t2"
+from core.candle import Candle, OHLCSeries
+from core.config import DetectorConfig, KillZoneConfig
+from core.kill_zone import in_ny_kill_zone
 
 
 def _series_to_mt5_csv_text(series) -> str:
@@ -312,6 +309,25 @@ def test_main_returns_1_for_unlisted_timeframe_pairing(tmp_path, capsys):
     assert "1H" in capsys.readouterr().err
 
 
+def test_detect_all_no_longer_takes_a_types_parameter_and_never_nulls_aligned_signals():
+    """REQ-52.2: the dead `types` parameter is removed from `_detect_all`'s
+    signature with no change to its observable output — display-only
+    degradation now lives solely in `_filter_by_types` (C2/C2b)."""
+    ltf_series = model1_purge_engulf_charter2_setup()
+    htf_series = OHLCSeries(
+        candles=(
+            Candle(timestamp=datetime(2026, 1, 1, 0, 0, 0), open=1.1000, high=1.1030, low=1.0970, close=1.1010),
+            Candle(timestamp=datetime(2026, 1, 2, 0, 0, 0), open=1.1010, high=1.1040, low=1.0980, close=1.1020),
+        ),
+        instrument="EURUSD", timeframe="D",
+    )
+
+    detections = cli._detect_all(ltf_series, htf_series, DetectorConfig())
+
+    assert detections.aligned_signals is not None
+    assert detections.model1_signals is not None
+
+
 def test_ny_kill_zone_boundary_shifts_with_dst_not_fixed_utc_offset():
     """New REQ-29: 11:00 UTC is the NY Kill Zone open (07:00 local) during
     EDT (summer, UTC-4) but one hour before it (06:00 local) during EST
@@ -324,8 +340,8 @@ def test_ny_kill_zone_boundary_shifts_with_dst_not_fixed_utc_offset():
     winter = datetime(2026, 1, 5, 11, 0, 0)  # EST: 11:00 UTC -> 06:00 NY local
     summer = datetime(2026, 7, 6, 11, 0, 0)  # EDT: 11:00 UTC -> 07:00 NY local
 
-    assert cli._in_ny_kill_zone(winter, config) is False
-    assert cli._in_ny_kill_zone(summer, config) is True
+    assert in_ny_kill_zone(winter, config) is False
+    assert in_ny_kill_zone(summer, config) is True
 
 
 def test_ny_kill_zone_upper_bound_is_exclusive():
@@ -333,5 +349,5 @@ def test_ny_kill_zone_upper_bound_is_exclusive():
     just_before_close = datetime(2026, 7, 6, 14, 59, 0)  # EDT: 10:59 NY local
     at_close = datetime(2026, 7, 6, 15, 0, 0)  # EDT: 11:00 NY local
 
-    assert cli._in_ny_kill_zone(just_before_close, config) is True
-    assert cli._in_ny_kill_zone(at_close, config) is False
+    assert in_ny_kill_zone(just_before_close, config) is True
+    assert in_ny_kill_zone(at_close, config) is False

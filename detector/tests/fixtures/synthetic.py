@@ -3,16 +3,26 @@ from datetime import datetime, timedelta
 from core.candle import Candle, OHLCSeries
 
 
+# 12:00 UTC is 07:00 NY EST — the first hour inside the default NY Kill
+# Zone. Backtest's kill-zone gate defaults to enabled (REQ-36), so a base of
+# midnight UTC would put every fixture's early candles outside the zone and
+# silently cut the whole population at stage 5 for every backtest unit test.
+_KILL_ZONE_BASE = datetime(2026, 1, 1, 12, 0)
+
+
 class CandleSeriesBuilder:
     """Fluent builder for synthetic OHLCSeries fixtures.
 
     Candles are auto-timestamped one hour apart in emission order — tests
-    care about OHLC shape and relative position, not wall-clock time.
+    care about OHLC shape and relative position, not wall-clock time. The
+    default `start` (`_KILL_ZONE_BASE`) keeps a fixture's early candles
+    inside the NY Kill Zone; pass an explicit `start` to land elsewhere.
     """
 
-    def __init__(self, instrument: str = "EURUSD", timeframe: str = "1H"):
+    def __init__(self, instrument: str = "EURUSD", timeframe: str = "1H", start: datetime = _KILL_ZONE_BASE):
         self._instrument = instrument
         self._timeframe = timeframe
+        self._start = start
         self._candles: list[Candle] = []
 
     def candle(
@@ -21,7 +31,7 @@ class CandleSeriesBuilder:
         index = len(self._candles)
         self._candles.append(
             Candle(
-                timestamp=datetime(2026, 1, 1) + timedelta(hours=index),
+                timestamp=self._start + timedelta(hours=index),
                 open=open,
                 high=high,
                 low=low,
@@ -511,6 +521,30 @@ def model1_dual_purge_and_fvg_fill_charter2_setup() -> OHLCSeries:
         .candle(open=1.1020, high=1.1042, low=1.1015, close=1.1040)  # 5 — confirms both; resolves range false_break
         .candle(open=1.1040, high=1.1042, low=1.1025, close=1.1038)  # 6 — retest (overlaps anchor body [1.1020,1.1030])
         .candle(open=1.1038, high=1.1060, low=1.1035, close=1.1055)  # 7 — expansion -> CONFIRMED
+        .build()
+    )
+
+
+def model1_delayed_confirmation_after_retest_setup() -> OHLCSeries:
+    """REQ-43.1: retest touches at index 3 (wick overlaps the anchor body,
+    but the retest candle's own close does not beat its own open), then 5
+    flat candles (4-8) neither breach the anchor's protected extreme nor
+    close beyond the retest candle's open, until candle 9 finally does —
+    confirmation lands 6 candles after the retest touch, so
+    confirmation_index (9) is distinct from retest_index (3).
+    """
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
+        .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1035)
+        .candle(open=1.1005, high=1.1012, low=1.1008, close=1.1010)  # 3 — retest (overlaps anchor body [1.1010,1.1015]), no same-candle beat
+        .candle(open=1.1008, high=1.1012, low=1.1004, close=1.1010)  # 4 — flat, no breach/beat
+        .candle(open=1.1008, high=1.1012, low=1.1004, close=1.1010)  # 5 — flat
+        .candle(open=1.1008, high=1.1012, low=1.1004, close=1.1010)  # 6 — flat
+        .candle(open=1.1008, high=1.1012, low=1.1004, close=1.1010)  # 7 — flat
+        .candle(open=1.1008, high=1.1012, low=1.1004, close=1.1010)  # 8 — flat
+        .candle(open=1.1010, high=1.1015, low=1.0990, close=1.0995)  # 9 — closes beyond retest open (1.1005) -> CONFIRMED, 6 candles after retest
         .build()
     )
 

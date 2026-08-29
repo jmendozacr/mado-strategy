@@ -1,19 +1,22 @@
-"""CLI entry point — single-series mode (S-000) plus HTF/LTF pair mode
-(S-005, --htf-csv/--htf-symbol). Full pipeline wiring, date/type result
-filters, and the detections.csv table are S-006's job.
+"""CLI entry point — single-series mode plus HTF/LTF pair mode
+(--htf-csv/--htf-symbol) and, when --backtest is passed, the backtest
+simulation path (trades.csv + metrics_summary.txt), including the 5
+BacktestConfig CLI overrides and the 3-state kill-zone gate resolution
+(REQ-36, REQ-51).
 """
 
 import argparse
+import math
 import sys
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from alignment.htf_ltf import AlignedSignal, tag_alignment
 from composite.mss import MSSEvent, detect_mss_events
 from core.candle import OHLCSeries
-from core.config import DetectorConfig, KillZoneConfig
+from core.config import BacktestConfig, DetectorConfig, KillZoneConfig
+from core.kill_zone import in_ny_kill_zone
 from core.pairing_table import PairingError
 from core.results import DetectionStatus
 from entries.model1 import Model1Signal, detect_model1_signals
@@ -25,10 +28,12 @@ from primitives.swing import SwingPoint, detect_swings
 from viz.chart import render_chart
 from viz.table import write_detections_csv
 
+from backtest.metrics import KillZoneGateState, compute_metrics
+from backtest.simulate import simulate
+from viz.trades_table import write_metrics_summary, write_trades_csv
+
 _ALL_TYPES = {"swing", "fvg", "crt_range", "mss", "model1", "alignment"}
 _SESSIONS = {"ny-killzone"}
-_UTC = ZoneInfo("UTC")
-_NY = ZoneInfo("America/New_York")
 
 
 @dataclass
@@ -53,6 +58,24 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--to-date", help="YYYY-MM-DD — filters RESULTS, never the input series")
     parser.add_argument("--types", help="Comma-separated subset of swing,fvg,crt_range,mss,model1,alignment")
     parser.add_argument("--session", help="Restrict RESULTS to a named kill zone — currently: ny-killzone")
+    parser.add_argument(
+        "--backtest", action="store_true",
+        help="Simulate the tradeable population -> trades.csv + metrics_summary.txt. Requires --htf-csv/--htf-symbol.",
+    )
+    # Deliberately no type=float/int/BooleanOptionalAction here: argparse's
+    # own type= conversion raises and exits 2 before our code ever runs,
+    # bypassing the flag/value/constraint-naming ValueError path. All 5
+    # values arrive as raw strings (or None) and are converted, range- and
+    # finiteness-checked in `_parse_backtest_config` instead.
+    parser.add_argument("--sl-buffer", default=None, help="Override BacktestConfig.sl_buffer_price (raw price units)")
+    parser.add_argument("--min-rr", default=None, help="Override BacktestConfig.min_risk_reward")
+    parser.add_argument("--trading-cost", default=None, help="Override BacktestConfig.trading_cost_price (raw price units, per trade)")
+    parser.add_argument(
+        "--kill-zone-gated", nargs="?", const="true", default=None,
+        help="Override BacktestConfig.kill_zone_gated -- true/false (e.g. --kill-zone-gated false); "
+        "omitting the value means true",
+    )
+    parser.add_argument("--max-fill-wait", default=None, help="Override BacktestConfig.max_fill_wait (candles)")
     return parser
 
 
@@ -63,10 +86,15 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --htf-csv and --htf-symbol must be provided together", file=sys.stderr)
         return 1
 
+    if args.backtest and not (args.htf_csv and args.htf_symbol):
+        print("error: --backtest requires both --htf-csv and --htf-symbol", file=sys.stderr)
+        return 1
+
     try:
         types = _parse_types(args.types)
         from_date, to_date = _parse_date(args.from_date, "--from-date"), _parse_date(args.to_date, "--to-date")
         session = _parse_session(args.session)
+        backtest_config = _parse_backtest_config(args)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -83,10 +111,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
-    config = DetectorConfig()
-    detections = _detect_all(ltf_series, htf_series, config, types)
+    config = DetectorConfig(backtest=backtest_config)
+    detections = _detect_all(ltf_series, htf_series, config)
+    ltf_swings = detections.swings  # captured before the filter chain below may narrow/clear detections.swings
     detections = _filter_by_date_range(detections, ltf_series, htf_series, from_date, to_date)
     detections = _filter_by_session(detections, ltf_series, htf_series, session, config.kill_zone)
+    types_excludes_backtest_population = not ("model1" in types or "alignment" in types)
+    population = [] if types_excludes_backtest_population else (detections.aligned_signals or [])
     detections = _filter_by_types(detections, types)
 
     output_dir = Path(args.output_dir)
@@ -106,7 +137,19 @@ def main(argv: list[str] | None = None) -> int:
             swings=detections.swings, fvgs=detections.fvgs, crt_ranges=detections.crt_ranges,
             mss_events=detections.mss_events, model1_signals=detections.model1_signals,
             aligned_signals=detections.aligned_signals,
+            include_signal_id=args.backtest,
         )
+        if args.backtest:
+            backtest_run_config, kill_zone_gate_state = _resolve_kill_zone_gate(config, session)
+            trades, reconciliation = simulate(population, ltf_series, backtest_run_config, swings=ltf_swings)
+            metrics = compute_metrics(
+                trades, reconciliation, backtest_run_config.backtest, kill_zone_gate_state=kill_zone_gate_state
+            )
+            write_trades_csv(ltf_series, trades, str(output_dir / "trades.csv"))
+            write_metrics_summary(
+                metrics, str(output_dir / "metrics_summary.txt"),
+                types_excluded_population=types_excludes_backtest_population,
+            )
     except OSError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -115,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _detect_all(
-    ltf_series: OHLCSeries, htf_series: OHLCSeries | None, config: DetectorConfig, types: set[str]
+    ltf_series: OHLCSeries, htf_series: OHLCSeries | None, config: DetectorConfig
 ) -> _Detections:
     """LTF crt_ranges/fvgs and (in pair mode) HTF crt_ranges are each
     computed exactly ONCE here and reused by `detect_model1_signals`/
@@ -140,9 +183,6 @@ def _detect_all(
             htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
             ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
         )
-        if "alignment" not in types:
-            model1_signals = [tagged.ltf_signal for tagged in aligned_signals]
-            aligned_signals = None
 
     return _Detections(
         swings=ltf_swings,
@@ -206,16 +246,6 @@ def _filter_by_date_range(
     )
 
 
-def _in_ny_kill_zone(timestamp: datetime, config: KillZoneConfig) -> bool:
-    """New REQ-29: candle timestamps are UTC wall-clock (verified against
-    real broker data — no further broker offset). Converts via real
-    America/New_York tz rules, not a fixed UTC offset, so the boundary
-    correctly shifts between EST and EDT.
-    """
-    local = timestamp.replace(tzinfo=_UTC).astimezone(_NY)
-    return config.ny_start_hour <= local.hour < config.ny_end_hour
-
-
 def _filter_by_session(
     detections: _Detections,
     ltf_series: OHLCSeries,
@@ -230,7 +260,7 @@ def _filter_by_session(
         return detections
 
     def keep(timestamp: datetime) -> bool:
-        return _in_ny_kill_zone(timestamp, config)
+        return in_ny_kill_zone(timestamp, config)
 
     def session_filter(items, series, index_of):
         return None if items is None else [x for x in items if keep(series.candles[index_of(x)].timestamp)]
@@ -253,16 +283,14 @@ def _filter_by_types(detections: _Detections, types: set[str]) -> _Detections:
     dependencies (like CRT range feeding Model-1) stay computed internally.
     """
     include_model1 = "model1" in types or "alignment" in types
-    model1_signals = detections.model1_signals if include_model1 else []
-    aligned_signals = detections.aligned_signals if include_model1 else None
     return replace(
         detections,
         swings=detections.swings if "swing" in types else [],
         fvgs=detections.fvgs if "fvg" in types else [],
         crt_ranges=detections.crt_ranges if "crt_range" in types else [],
         mss_events=detections.mss_events if "mss" in types else [],
-        model1_signals=model1_signals,
-        aligned_signals=aligned_signals,
+        model1_signals=detections.model1_signals if include_model1 else [],
+        aligned_signals=detections.aligned_signals if "alignment" in types else None,
     )
 
 
@@ -304,6 +332,86 @@ def _parse_session(raw: str | None) -> str | None:
     if raw not in _SESSIONS:
         raise ValueError(f"unknown --session value: {raw} (expected one of {', '.join(sorted(_SESSIONS))})")
     return raw
+
+
+def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
+    """REQ-51: each of the 5 flags overrides exactly one BacktestConfig
+    field; an omitted flag falls through to that field's default. Validation
+    order matches the design's flag table, top to bottom; the first
+    violation wins (REQ-51.3). Every flag arrives as a raw string (argparse
+    does no type= conversion, see `_build_arg_parser`), so non-numeric and
+    non-finite values are rejected here too, through the same ValueError ->
+    exit 1 path as range violations -- never argparse's own exit 2."""
+    defaults = BacktestConfig()
+
+    sl_buffer = _parse_float(args.sl_buffer, defaults.sl_buffer_price, "--sl-buffer")
+    if sl_buffer <= 0:
+        raise ValueError(f"invalid --sl-buffer value: {args.sl_buffer} (expected a positive number)")
+
+    min_rr = _parse_float(args.min_rr, defaults.min_risk_reward, "--min-rr")
+    if min_rr < 0:
+        raise ValueError(f"invalid --min-rr value: {args.min_rr} (expected a non-negative number)")
+
+    trading_cost = _parse_float(args.trading_cost, defaults.trading_cost_price, "--trading-cost")
+    if trading_cost < 0:
+        raise ValueError(f"invalid --trading-cost value: {args.trading_cost} (expected a non-negative number)")
+
+    kill_zone_gated = _parse_kill_zone_gated(args.kill_zone_gated, defaults.kill_zone_gated)
+
+    max_fill_wait = _parse_int(args.max_fill_wait, defaults.max_fill_wait, "--max-fill-wait")
+    if max_fill_wait <= 0:
+        raise ValueError(f"invalid --max-fill-wait value: {args.max_fill_wait} (expected a positive integer)")
+
+    return BacktestConfig(
+        sl_buffer_price=sl_buffer, min_risk_reward=min_rr, trading_cost_price=trading_cost,
+        kill_zone_gated=kill_zone_gated, max_fill_wait=max_fill_wait,
+    )
+
+
+def _parse_float(raw: str | None, default: float, flag: str) -> float:
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"invalid {flag} value: {raw} (expected a number)")
+    if not math.isfinite(value):
+        raise ValueError(f"invalid {flag} value: {raw} (expected a finite number)")
+    return value
+
+
+def _parse_int(raw: str | None, default: int, flag: str) -> int:
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"invalid {flag} value: {raw} (expected an integer)")
+
+
+def _parse_kill_zone_gated(raw: str | None, default: bool) -> bool:
+    if raw is None:
+        return default
+    lowered = raw.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    raise ValueError(f"invalid --kill-zone-gated value: {raw} (expected true or false)")
+
+
+def _resolve_kill_zone_gate(
+    config: DetectorConfig, session: str | None
+) -> tuple[DetectorConfig, KillZoneGateState]:
+    """REQ-36.2/36.4/36.5: `--session` always wins, forcing the gate off for
+    the run (excluded_kill_zone=0 by construction) regardless of an explicit
+    `--kill-zone-gated true`. Resolved ONCE, before simulate()/compute_metrics(),
+    so the effective and disclosed gate state cannot drift."""
+    if session is not None:
+        return replace(config, backtest=replace(config.backtest, kill_zone_gated=False)), "auto-disabled"
+    if config.backtest.kill_zone_gated:
+        return config, "enabled"
+    return config, "disabled"
 
 
 def _parse_date(raw: str | None, flag: str) -> date | None:

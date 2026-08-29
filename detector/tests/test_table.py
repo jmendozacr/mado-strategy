@@ -110,6 +110,7 @@ def test_one_row_per_model1_signal_single_series_leaves_aligned_blank(tmp_path):
             anchor_index=1, direction="bullish", purge_target=0.9990,
             confirmation_type="purge_engulf", entry_type="wick", entry_price=0.9995,
             retest_index=2, status=DetectionStatus.CONFIRMED,
+            confirmation_index=2, origin_index=0,
         )
     ]
     output_path = tmp_path / "detections.csv"
@@ -130,6 +131,7 @@ def test_aligned_signals_populate_aligned_column_and_replace_plain_model1(tmp_pa
                 anchor_index=1, direction="bullish", purge_target=0.9990,
                 confirmation_type="purge_engulf", entry_type="wick", entry_price=0.9995,
                 retest_index=2, status=DetectionStatus.PENDING,
+                confirmation_index=2, origin_index=0,
             ),
             htf_context=None,
             aligned="aligned",
@@ -144,6 +146,82 @@ def test_aligned_signals_populate_aligned_column_and_replace_plain_model1(tmp_pa
     assert rows[1][1] == "model1"
     assert rows[1][5] == "pending"
     assert rows[1][6] == "aligned"
+
+
+def test_include_signal_id_appends_trailing_column_to_header(tmp_path):
+    """REQ-41/45: include_signal_id=True (the --backtest run) appends a
+    trailing 8th signal_id column; the default False stays at 7 columns,
+    matching today's byte-for-byte output."""
+    output_path = tmp_path / "detections.csv"
+
+    write_detections_csv(_series(), str(output_path), include_signal_id=True)
+
+    assert _read(output_path) == [_HEADER + ["signal_id"]]
+
+
+def test_model1_row_carries_signal_id_only_when_include_signal_id_is_true(tmp_path):
+    """REQ-41.1: a model1 row carries its Model1Signal.signal_id in the
+    trailing column when include_signal_id=True."""
+    model1_signals = [
+        Model1Signal(
+            anchor_index=1, direction="bullish", purge_target=0.9990,
+            confirmation_type="purge_engulf", entry_type="wick", entry_price=0.9995,
+            retest_index=2, status=DetectionStatus.CONFIRMED,
+            confirmation_index=2, origin_index=0,
+        )
+    ]
+    output_path = tmp_path / "detections.csv"
+
+    write_detections_csv(_series(), str(output_path), model1_signals=model1_signals, include_signal_id=True)
+
+    rows = _read(output_path)
+    assert rows[0] == _HEADER + ["signal_id"]
+    assert rows[1][7] == "0-1-bullish-purge_engulf-wick"
+
+
+def test_non_model1_rows_write_empty_signal_id_when_include_signal_id_is_true(tmp_path):
+    """REQ-41: every non-model1 row type writes "" for the trailing
+    signal_id column, never a real id."""
+    swings = [SwingPoint(index=1, price=1.0020, kind="high")]
+    output_path = tmp_path / "detections.csv"
+
+    write_detections_csv(_series(), str(output_path), swings=swings, include_signal_id=True)
+
+    rows = _read(output_path)
+    assert rows[1][1] == "swing"
+    assert rows[1][7] == ""
+
+
+def test_two_signals_sharing_origin_index_but_different_confirmation_type_never_collide(tmp_path):
+    """REQ-41.2: an fvg_fill-confirmed signal and a purge_engulf-confirmed
+    signal sharing the same origin_index get distinct signal_id values."""
+    aligned_signals = [
+        AlignedSignal(
+            ltf_signal=Model1Signal(
+                anchor_index=1, direction="bullish", purge_target=0.9990,
+                confirmation_type="purge_engulf", entry_type="wick", entry_price=0.9995,
+                retest_index=2, status=DetectionStatus.CONFIRMED,
+                confirmation_index=2, origin_index=40,
+            ),
+            htf_context=None, aligned="aligned",
+        ),
+        AlignedSignal(
+            ltf_signal=Model1Signal(
+                anchor_index=2, direction="bullish", purge_target=0.9990,
+                confirmation_type="fvg_fill", entry_type="wick", entry_price=0.9995,
+                retest_index=3, status=DetectionStatus.CONFIRMED,
+                confirmation_index=3, origin_index=40,
+            ),
+            htf_context=None, aligned="aligned",
+        ),
+    ]
+    output_path = tmp_path / "detections.csv"
+
+    write_detections_csv(_series(), str(output_path), aligned_signals=aligned_signals, include_signal_id=True)
+
+    rows = _read(output_path)
+    signal_ids = {row[7] for row in rows[1:]}
+    assert len(signal_ids) == 2
 
 
 def test_rows_are_sorted_by_timestamp(tmp_path):

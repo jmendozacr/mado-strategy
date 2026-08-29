@@ -39,6 +39,15 @@ class KillZoneConfig:
 
 
 @dataclass(frozen=True)
+class BacktestConfig:
+    sl_buffer_price: float = 0.0002  # raw PRICE-UNIT offset, never a pip count (REQ-31)
+    min_risk_reward: float = 2.0  # REQ-35
+    trading_cost_price: float = 0.0  # total per-trade cost, price units (REQ-48)
+    kill_zone_gated: bool = True  # REQ-36
+    max_fill_wait: int = 20  # candles (REQ-50)
+
+
+@dataclass(frozen=True)
 class DetectorConfig:
     swing: SwingConfig = field(default_factory=SwingConfig)
     fvg: FVGConfig = field(default_factory=FVGConfig)
@@ -46,3 +55,4 @@ class DetectorConfig:
     mss: MSSConfig = field(default_factory=MSSConfig)
     model1: Model1Config = field(default_factory=Model1Config)
     kill_zone: KillZoneConfig = field(default_factory=KillZoneConfig)
+    backtest: BacktestConfig = field(default_factory=BacktestConfig)

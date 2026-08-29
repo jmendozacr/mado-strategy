@@ -3,16 +3,11 @@ detection -> overlay.png + detections.csv -> date/type filters apply to
 RESULTS, never the input series.
 """
 
-import csv
 from unittest import mock
 
+from fixtures.mt5_csv import MT5_HEADER, _read_csv_rows, _row
+
 from cli import main
-
-MT5_HEADER = "<DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>"
-
-
-def _row(date: str, time: str, o: float, h: float, l: float, c: float) -> str:
-    return f"{date}\t{time}\t{o}\t{h}\t{l}\t{c}\t100\t0\t2"
 
 
 # Charter-2 [00:07:27]-[00:07:56] dual purge+FVG-fill shape (matches
@@ -43,11 +38,6 @@ def _write_flat_csv(path, n=2):
     for i in range(n):
         rows.append(_row("2026.01.01", f"{i:02d}:00:00", 1.1000, 1.1005, 1.0995, 1.1000))
     path.write_text("\n".join(rows))
-
-
-def _read_csv_rows(path):
-    with open(path, newline="") as f:
-        return list(csv.reader(f))
 
 
 def test_full_pipeline_produces_populated_overlay_and_detections_csv(tmp_path):
@@ -359,3 +349,21 @@ def test_pair_mode_types_excluding_alignment_keeps_model1_rows_but_blanks_aligne
     assert len(model1_rows) > 0
     for row in model1_rows:
         assert row[6] == ""
+
+    # REQ-52.2 regression: the C2 relocation (deleting `_detect_all`'s
+    # display-degradation branch and re-expressing it as a single
+    # `_filter_by_types` expression) must not change any model1 row's
+    # non-aligned columns — only the `aligned` column (blanked above)
+    # differs from the full-types run.
+    aligned_output_dir = tmp_path / "out_aligned"
+    main(
+        [
+            "--csv", str(ltf_path), "--symbol", "EURUSD",
+            "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+            "--output-dir", str(aligned_output_dir),
+            "--types", "model1,alignment",
+        ]
+    )
+    aligned_rows = _read_csv_rows(aligned_output_dir / "detections.csv")
+    aligned_model1_rows = [row for row in aligned_rows[1:] if row[1] == "model1"]
+    assert [row[:6] for row in model1_rows] == [row[:6] for row in aligned_model1_rows]

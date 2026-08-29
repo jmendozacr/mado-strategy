@@ -43,13 +43,14 @@ def test_ltf_signal_inside_htf_purge_window_is_aligned():
     """
     htf_series = _htf_series(
         candle_specs=_HTF_MULTI_INSIDE_SPECS,
-        start=datetime(2026, 1, 1, 0, 0, 0),
+        start=datetime(2026, 1, 1, 12, 0, 0),
         step=timedelta(hours=1),
         timeframe="1H",
     )
     # anchor_index=1 in this LTF fixture defaults to timestamp 2026-01-01
-    # 01:00 (1H builder spacing) — shift it to land inside the HTF purge
-    # candle's window [02:00, 03:00): candle2 (t=01:00) shifts to t=02:00.
+    # 13:00 (1H builder spacing off _KILL_ZONE_BASE) — shift it to land
+    # inside the HTF purge candle's window [14:00, 15:00): candle2
+    # (t=13:00) shifts to t=14:00.
     ltf_series = _shift(
         model1_purge_engulf_charter2_setup(),
         offset=timedelta(hours=1),
@@ -71,12 +72,12 @@ def test_ltf_signal_outside_any_purge_window_is_unaligned():
     """
     htf_series = _htf_series(
         candle_specs=_HTF_MULTI_INSIDE_SPECS,
-        start=datetime(2026, 1, 1, 0, 0, 0),
+        start=datetime(2026, 1, 1, 12, 0, 0),
         step=timedelta(hours=1),
         timeframe="1H",
     )
-    # anchor_index=1 stays at its default t=01:00 -> maps to HTF candle1
-    # (t=01:00), which is "trapped" (no purge) in this HTF series.
+    # anchor_index=1 stays at its default t=13:00 -> maps to HTF candle1
+    # (t=13:00), which is "trapped" (no purge) in this HTF series.
     ltf_series = _shift(
         model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M"
     )
@@ -97,9 +98,9 @@ def test_ltf_signal_near_htf_tail_with_partial_coverage_is_insufficient():
     htf_series = _htf_series(
         candle_specs=[
             (1.1000, 1.1010, 1.0990, 1.1005),  # 0
-            (1.1005, 1.1020, 1.1000, 1.1015),  # 1 — last HTF candle, spans [01:00, 02:00)
+            (1.1005, 1.1020, 1.1000, 1.1015),  # 1 — last HTF candle, spans [13:00, 14:00)
         ],
-        start=datetime(2026, 1, 1, 0, 0, 0),
+        start=datetime(2026, 1, 1, 12, 0, 0),
         step=timedelta(hours=1),
         timeframe="1H",
     )
@@ -108,9 +109,9 @@ def test_ltf_signal_near_htf_tail_with_partial_coverage_is_insufficient():
     o2, h2, l2, c2 = 1.1000, 1.1005, 1.0990, 1.0995
     ltf_series = OHLCSeries(
         candles=(
-            Candle(timestamp=datetime(2026, 1, 1, 1, 0, 0), open=o, high=h, low=l, close=c),
-            Candle(timestamp=datetime(2026, 1, 1, 1, 30, 0), open=o1, high=h1, low=l1, close=c1),
-            Candle(timestamp=datetime(2026, 1, 1, 1, 48, 0), open=o2, high=h2, low=l2, close=c2),
+            Candle(timestamp=datetime(2026, 1, 1, 13, 0, 0), open=o, high=h, low=l, close=c),
+            Candle(timestamp=datetime(2026, 1, 1, 13, 30, 0), open=o1, high=h1, low=l1, close=c1),
+            Candle(timestamp=datetime(2026, 1, 1, 13, 48, 0), open=o2, high=h2, low=l2, close=c2),
         ),
         instrument="EURUSD",
         timeframe="5M",
@@ -133,12 +134,12 @@ def test_ltf_signal_before_first_htf_candle_has_no_enclosing_index():
     """
     htf_series = _htf_series(
         candle_specs=_HTF_MULTI_INSIDE_SPECS,
-        start=datetime(2026, 1, 1, 0, 0, 0),
+        start=datetime(2026, 1, 1, 12, 0, 0),
         step=timedelta(hours=1),
         timeframe="1H",
     )
-    # anchor_index=1 defaults to t=01:00 (see other tests in this file);
-    # shifting -2h puts it strictly before the HTF series' t=00:00 start.
+    # anchor_index=1 defaults to t=13:00 (see other tests in this file);
+    # shifting -2h puts it strictly before the HTF series' t=12:00 start.
     ltf_series = _shift(
         model1_purge_engulf_charter2_setup(), offset=-timedelta(hours=2), timeframe="5M"
     )
@@ -162,7 +163,7 @@ def test_crt_config_is_read_through_not_hardcoded():
     """
     htf_series = _htf_series(
         candle_specs=_HTF_MULTI_INSIDE_SPECS,
-        start=datetime(2026, 1, 1, 0, 0, 0),
+        start=datetime(2026, 1, 1, 12, 0, 0),
         step=timedelta(hours=1),
         timeframe="1H",
     )
