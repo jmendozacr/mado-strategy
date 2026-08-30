@@ -1,0 +1,80 @@
+# Program: CRT Key Level Confluence
+
+**Program name**: `crt-detector-key-level-confluence`
+**Status**: planning
+**Build mode**: all (work all 3 sub-changes in dependency order without pausing between them; integration gate after each)
+**Source change**: `crt-detector-key-level-confluence` (XL triage, engram #412)
+**Spec source**: internal — no upstream publication
+
+## Big Picture — CORRECTED 2026-08-29 (supersedes the original framing below)
+
+**This is a correction, not a refinement — the original framing was wrong about the core mechanic.** The user clarified directly: confluence with a Key Level is not a comparison dimension ("does confluence improve the edge, measured against a non-confluent control group") — it's a VALIDITY GATE. A Model-1 setup that does not react at an HTF Key Level is not a real setup at all under the methodology as the user trades it. Consequence: there is no "non-confluent population" to report metrics on. A Model-1 failing the confluence check is EXCLUDED, the same way `excluded_unaligned` already excludes a non-HTF-aligned signal — an 8th bucket in the existing reconciliation pattern, not a second population to partition against.
+
+**This also reaches further than the backtest layer.** The user confirmed explicitly: a Model-1 without Key Level confluence should not appear in `detections.csv` AT ALL, even on a run without `--backtest`. This REOPENS the signed REQ-45 byte-compat guarantee ("detections.csv stays byte-for-byte identical to today's output when --backtest is NOT passed") — that guarantee no longer holds as originally written once confluence-gating is live; it needs a MODIFIED REQ-45, not a new REQ alongside it. Flag this explicitly to `sdd-spec` — this is a destructive-sync situation (Section 4 of `sdd-archive`'s validation applies at THIS change's own archive time too), and the current archived spec's REQ-45 text must be located and replaced, not left contradicted.
+
+**Confirmed, does not require design work**: the user always runs the tool in pair mode (`--htf-csv`/`--htf-symbol` always provided). The single-series-mode edge case (no HTF data available to check confluence against) is out of practical concern — document it as "confluence cannot be determined without HTF data; single-series-mode Model-1 output is unaffected by this gate" rather than building a third state for it. No ADR-005-style 3-state design needed here — this isn't a partial-coverage case, it's simply outside the user's actual usage pattern.
+
+**Structural constraint, already resolved**: `entries/model1.py::detect_model1_signals` is pure-LTF by design (ADR-001 — `entries` sits below `alignment`, never depends on HTF context). It CANNOT itself know about Key Level confluence. The gate must be applied ONE LAYER UP — at the `cli.py` assembly point (or a new stage between `alignment` and the CSV writer), using the HTF context `tag_alignment` already has, filtering which `model1_signals`/`aligned_signals` actually reach `write_detections_csv` and the backtest population. `entries/model1.py` itself, and its existing signed behavior (REQ-17 etc.), stays completely untouched — this is a downstream filter, not a redefinition of Model-1 detection.
+
+Revised big picture: the detector today reports metrics over a population that includes setups the methodology itself doesn't consider valid. This program makes the confluence check (charter-1 [00:12:02]) a hard validity gate, so `detections.csv` and `--backtest`'s reported population only ever contain Model-1 setups the methodology actually endorses — a single, corrected number, not a comparison.
+
+**Deferred out of this program**: Rejection Block — no definitional source available; stays flagged at `project/pending-changes`. Swing — user explicitly deferred it ("omitamos los swings, dejémoslo para una fase futura") to keep sub-change #1 to what already exists in the simplest form (FVG only) — Swing becomes a candidate for a LATER sub-change extending the same seam, not part of this program's committed scope.
+
+## Sub-Changes (dependency order) — scope corrected, sequencing CONFIRMED (user considered merging OB+BB into #1, explicitly chose to keep them sequential)
+
+| # | Name | Scope | Target size | Depends on | Status | Epic |
+|---|---|---|---|---|---|---|
+| 1 | `crt-detector-key-level-confluence-core` | **Program walking skeleton.** `core/key_level.py` (KeyLevel type) + `to_key_levels` adapter for FVG ONLY (not Swing — deferred). Confluence = geometric overlap between the HTF purge candle's actual wick extreme (high for a bullish purge, low for a bearish one) and the FVG's `[top, bottom]` zone — no separate tolerance parameter, direct overlap test (confirmed against the charter-1 example frames — the Key Level renders as a price ZONE, not a line, and the purge wick visibly enters it). A mitigated/filled FVG still counts (does not expire as a Key Level). Confluence gates Model-1 VALIDITY — a non-confluent Model-1 does not appear in `detections.csv` (REQ-45 reopened, see above) and does not enter the `--backtest` population (new 8th exclusion bucket, `excluded_no_key_level`, mirroring `excluded_unaligned`'s existing shape — NOT a partition, no parallel confluent/non-confluent metrics split). `detections.csv` gains a source-attribution field (currently only ever "fvg" in this sub-change, but shaped for extension by #2/#3). Validated on H4→M15 (project/strategy-preferences, #411). | L (likely — confirm at this sub-change's own triage; simpler than the original partition design in code terms, but the REQ-45 reopening + detections.csv-level filtering is real added surface versus the original backtest-only framing) | — | pending | — |
+| 2 | `crt-detector-ict-order-block` | New `ICTOrderBlock` detector in `primitives/`, registered as a Key Level source through #1's adapter seam (same exclusion-gate mechanic, not additive-only as originally framed — a Model-1 confluent with an ICTOrderBlock but with nothing else still passes the gate). Named `ICTOrderBlock` / `ict_order_block` throughout to avoid colliding with the shipped informal "Order Block" (Model-1's anchor candle, REQ-17). **[ADDED 2026-08-29, R6 of #1's foresight]** ALSO carries the `detections.csv` source-attribution column deferred from #1 — with a 2nd Key Level source registered it stops being a constant, single-value column and starts carrying real information (which source(s) credited a signal). #1's spec explicitly deferred this HERE; without this row saying so, #2's own triage would never see it. | M (L if explore finds real ambiguity) | #1 | pending | — |
+| 3 | `crt-detector-breaker-block` | Breaker Block in `composite/` (depends on `composite/mss.py::MSSEvent` per charter-4 [00:07:11]), registered as a third Key Level source, same gate mechanic. Extracts and reuses #2's shared detection kernel rather than duplicating it. | M | #1, #2 | pending | — |
+
+**Sequencing note (reconfirmed 2026-08-29 — user considered merging #2+#3 into #1 to get all 3 Key Level types at once, explicitly declined after being shown the cost: likely re-triage to XL, and a much longer wait before ANY end-to-end verified result)**: #1 ships FVG-only confluence-gating end to end first — fast path to a real, verifiable number. #2 and #3 extend the same seam afterward, sequentially (#3 reuses #2's kernel, not parallel).
+
+## Seams — SEAM-03 corrected (was: partition; now: exclusion gate)
+
+| Seam | Producer | Consumer | Interface (verbatim shape) | Verified by |
+|---|---|---|---|---|
+| SEAM-01 | #1 `core/key_level.py` | `alignment`, `viz`, `backtest`, `cli` | `@dataclass(frozen=True) class KeyLevel: kind: Literal[...]; top: float; bottom: float; origin_index: int` (kind = source tag: `"fvg"`, later `"ict_order_block"`, `"breaker_block"`; NOT overloaded with direction — see design's ADR notes) — module imports nothing from `primitives`/`composite` | Fitness test: `alignment/htf_ltf.py` imports `core.key_level` and NOT `primitives.ict_order_block` / `composite.breaker_block`. Re-asserted after #2 and #3. |
+| SEAM-02 | each detector module (#1 `primitives/fvg.py`; #2 `primitives/ict_order_block.py`; #3 `composite/breaker_block.py`) | `cli.py` assembly → `tag_alignment` | `to_key_levels(<detections>) -> list[KeyLevel]`, one per source module; `origin_index` MUST be the index at which the KeyLevel is first PROVABLY knowable (FVG: `end_index`, i.e. `start_index + 2`, never `start_index` — lookahead-unsafe otherwise), never the geometric anchor index; `tag_alignment(..., htf_key_levels: list[KeyLevel] | None = None)` mirroring existing injection params | Cross-boundary test: real CLI run with #2's/#3's sources injected changes the confluence gate's pass/fail set with ZERO edits to `alignment`/`viz`/`backtest`/`cli`-filter code beyond registering the new source. |
+| SEAM-03 (CORRECTED — was framed as a partition, is actually a validity gate) | #1 `alignment/htf_ltf.py` (confluence determination) → `cli.py` (gate applied to what reaches `detections.csv`/backtest population) | `backtest` population (new 8th exclusion bucket `excluded_no_key_level`), `viz` CSV writer (only confluent Model-1 rows written) | confluence field on `AlignedSignal` (source-attributing, not boolean — e.g. `key_level: KeyLevel | None`), credited only when the HTF purge candle's actual wick (not the CRTRange boundary) geometrically overlaps a `KeyLevel` with `origin_index < purge_index`. `cli.py` filters `model1_signals`/`aligned_signals` down to confluent-only BEFORE `write_detections_csv` runs (REQ-45 reopened — the byte-compat guarantee now applies to "confluent Model-1 output," not "all Model-1 output"). | Property test (no-lookahead) over the confluence determination itself + a NEW invariant: `excluded_no_key_level` bucket, wired into the EXISTING 7-bucket precedence/sum contract as an 8th bucket — `opened + sum(8 exclusion_buckets) == considered` (ADR-009 extended, not superseded). The old `confluent + non_confluent == opened` invariant from the original framing is DROPPED — there is no non-confluent population to sum. |
+
+## Program-wide Fitness Functions (updated)
+
+1. Consumer-coupling test on SEAM-01 — keeps the adapter design honest as sources are added.
+2. No-lookahead hypothesis property test per new detector (ADR-003) AND over the confluence gate itself — a KeyLevel must be established strictly before the purge index it's credited against, AND the gate's `origin_index` semantics (provably-knowable index, not geometric anchor) must be pinned by a dedicated boundary test. Highest-value test in the program.
+3. **[CORRECTED]** `excluded_no_key_level` is the 8th bucket in the EXISTING reconciliation precedence/sum contract (ADR-009) — no separate parallel invariant.
+4. Proximity/overlap check reads `KeyLevel.top`/`.bottom` directly (no new tunable magic number for sub-change #1, since the definition is now "geometric overlap," not "distance within a tolerance") — ADR-002 still applies to any config field #2/#3 introduce for their own detectors.
+5. **[NEW]** REQ-45 destructive-sync check at this program's own eventual archive time: the signed spec's REQ-45 text must be located and MODIFIED (not left standing alongside a contradicting new REQ) — flag to `sdd-spec` now so it isn't missed.
+
+## Required Scope Note for Sub-Change #1 — UPDATED
+
+Swing significance is NO LONGER required scope for #1 (Swing itself deferred by the user). The equivalent "does this filter actually discriminate" concern still applies to the FVG-only gate, but is structurally simpler: FVG's own `top`/`bottom` are already well-defined and tested; no new significance criterion needs inventing for this sub-change. `core/config.py::SwingConfig`'s emptiness remains a real gap, but is now a concern for whichever LATER sub-change reintroduces Swing as a Key Level source, not for #1.
+
+## Proposed ADRs (for sub-change #1's design phase to formalize) — updated
+
+- **KeyLevel is a normalising frozen dataclass, not a Protocol and not a union.** (unchanged from original)
+- **Confluence is determined by direct geometric overlap between the purge candle's actual wick extreme and the KeyLevel's `[top, bottom]` zone — no separate tolerance parameter for sub-change #1.** Grounded in charter-1's own example frames (the Key Level renders as a price zone the purge wick visibly enters, not a line approached within some distance). Rejected alternative: a configurable price-unit tolerance from the zone edge (the originally-proposed design) — rejected because it invents a tunable the source material doesn't support and the visual evidence doesn't need.
+- **Confluence is a VALIDITY GATE (exclusion bucket #8), not a reporting partition.** User-clarified product decision, not an engineering choice — a non-confluent Model-1 is not a real setup under the methodology.
+- **REQ-45 is MODIFIED, not left standing** — `detections.csv`'s byte-compat guarantee now scopes to "confluent Model-1 output" only.
+- **Breaker Block is a composite, not a primitive.** (unchanged from original)
+- **Order Block naming disambiguation** — `ICTOrderBlock`/`ict_order_block`. (unchanged from original)
+
+## Architecture Baseline Conformance
+
+No deviation in package placement (unchanged: every new module lands in an existing `root_package`). NEW conformance note: the confluence gate's placement at the `cli.py` assembly layer (not inside `entries/model1.py`) preserves ADR-001's one-way layering (`entries` never depends on HTF/`alignment` data) — this was verified as the only layering-safe option before locking it in, not assumed.
+
+## Integration Gate Contract
+
+After each sub-change completes: program-wide affected suite + every seam it touches exercised by a real cross-boundary test (both sides unmocked) + the `--backtest` E2E happy path on H4→M15, INCLUDING a non-`--backtest` run proving `detections.csv` now correctly excludes non-confluent Model-1 rows (the new REQ-45 contract). Report: `sdd/crt-detector-key-level-confluence/verify-integration-{N}`.
+
+## Upstream
+
+`spec_source: internal` — Step 6 skipped, no initiative or epics published.
+
+initiative_key: null
+sub_changes: [{`crt-detector-key-level-confluence-core`, null}, {`crt-detector-ict-order-block`, null}, {`crt-detector-breaker-block`, null}]
+
+## Revision History
+
+- 2026-08-29 (original): 3-sub-change program, FVG+Swing walking skeleton, confluence as a reporting partition.
+- 2026-08-29 (this correction, same day): user clarified confluence is a hard validity gate (not a comparison), Swing deferred, REQ-45 reopening required, geometric-overlap definition confirmed against charter-1's example frames, cli.py-level filtering confirmed as the layering-safe placement, sequential sub-change ordering RECONFIRMED after user considered and declined merging OB+BB into #1.

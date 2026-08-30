@@ -4,10 +4,15 @@ Follow-ups registered during planning that are correctly out of scope for their 
 
 ## From `crt-pattern-detector-v1`
 
-- **`crt-detector-order-block-breaker`** (M) — standalone ICT-conventional Order Block detector + Breaker Block detector. Deferred because charter-2's own "Order Block" is actually the Model-1 anchor candle (delivered as REQ-17), not this concept; cost/value analysis ranked this pairing as the most expensive, least v1-standalone-valuable work in the original 7-detector graph.
+- ~~**`crt-detector-order-block-breaker`** (M) — standalone ICT-conventional Order Block detector + Breaker Block detector.~~ **SUPERSEDED 2026-08-29** by the `crt-detector-key-level-confluence` program's sub-changes 2 (`crt-detector-ict-order-block`) and 3 (`crt-detector-breaker-block`) — see `sdd/crt-detector-key-level-confluence/program` (engram #413).
 - **`crt-detector-smt-divergence`** — SMT Divergence (charter-3, correlated-pair analysis, e.g. EUR/USD vs DXY).
-- **`crt-detector-rejection-block`** — Rejection Block (charter-1 Key Level type).
+- ~~**`crt-detector-rejection-block`** — Rejection Block (charter-1 Key Level type).~~ **RE-CONFIRMED DEFERRED 2026-08-29** — no definitional source in any charter (one passing mention only); explicitly excluded from the `crt-detector-key-level-confluence` program pending a source the user trusts.
 - **CRT range "currently forming / live" state** — the one in-progress range at the tail of a series (useful for "run against data ending now" live-style use) is invisible under v1's resolved-only rule (REQ-14). Reopening this needs careful design to avoid undoing REQ-14's noise-flood fix — not a named change yet, just a flagged need.
+
+## From `crt-detector-backtest-engine` — discovered post-archive (2026-08-29)
+
+- **`crt-detector-key-level-confluence`** — charter-1 [00:12:02]: "los setups de CRT más confiables ocurren cuando la manipulación reacciona directamente en un Key Level de temporalidad mayor". This confluence check is entirely unimplemented — `alignment/htf_ltf.py` only checks HTF purge-window timing (REQ-05); FVG and Swing exist as primitives but neither is wired as a Key Level confluence tag anywhere. Every win-rate/R-multiple number produced so far (judgment-day, reckoning, the H4/M15 real-data check) measures the UNFILTERED Model-1 population, not the confluence-filtered subset the charter says is most reliable. Building the already-registered `crt-detector-order-block-breaker`/`crt-detector-rejection-block` sub-detectors would NOT by itself wire this in — it's a distinct change: unify FVG+Swing (extendable later) into a queryable `KeyLevel` concept, tag Model-1 setups for confluence, expose it as a filterable/reportable dimension. Consider sequencing before `crt-detector-backtest-partial-exits` if validating the methodology as taught (not just as coded) is the priority. Full writeup: engram `project/pending-changes` (obs #303) / `sdd/crt-detector-backtest-engine/judgment-day`.
+- **Strategy preference**: H4 (HTF) → M15 (LTF) is now the user's designated PRIMARY timeframe pairing (over H1→M5) — see engram `project/strategy-preferences` (obs #411). An ad-hoc real-data check (2026-08-29, `pairs/H4/`+`pairs/M15/`, ~4 years EURUSD) found H4/M15 has a wider real-cost margin (+0.244R frictionless, breakeven ~1.95 pips vs. real spread ~1.09 pips) than H1/M5 (+0.235R, breakeven ~1.25 pips vs. real spread ~1.04 pips).
 
 ## From `crt-pattern-detector-v1` — verify-report followups
 
