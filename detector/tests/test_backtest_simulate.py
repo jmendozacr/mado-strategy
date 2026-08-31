@@ -11,6 +11,7 @@ from fixtures.synthetic import CandleSeriesBuilder
 
 from alignment.htf_ltf import AlignedSignal
 from core.config import BacktestConfig, DetectorConfig
+from core.key_level import KeyLevel
 from core.results import DetectionStatus
 from entries.model1 import Model1Signal
 from primitives.crt_range import CRTRange
@@ -21,6 +22,12 @@ _HTF_CONTEXT = CRTRange(
     model="2-candle", high=1.1050, low=1.0950, start_index=0, end_index=1,
     resolution="true_break", resolved_at_index=1,
 )
+
+# Confluence is irrelevant to most of this file's fill/exit/bucket-mechanics
+# tests, and was implicitly satisfied before AlignedSignal.key_level
+# existed — this default preserves that authored intent (design §8.1).
+# Confluence-specific tests pass key_level=None explicitly.
+_KEY_LEVEL = KeyLevel(kind="fvg", top=1.1050, bottom=1.0950, origin_index=0, expiry_index=None)
 
 
 def _signal(
@@ -36,8 +43,8 @@ def _signal(
     )
 
 
-def _aligned(signal, htf_context=_HTF_CONTEXT, aligned="aligned"):
-    return AlignedSignal(ltf_signal=signal, htf_context=htf_context, aligned=aligned)
+def _aligned(signal, htf_context=_HTF_CONTEXT, aligned="aligned", key_level=_KEY_LEVEL):
+    return AlignedSignal(ltf_signal=signal, htf_context=htf_context, aligned=aligned, key_level=key_level)
 
 
 def _base_bullish_series() -> CandleSeriesBuilder:
@@ -303,6 +310,20 @@ def test_fvg_fill_confirmed_signal_excluded_as_no_crt_range():
     assert trades == []
     assert report.trades_opened == 0
     assert report.excluded_no_crt_range == 1
+
+
+def test_aligned_confirmed_signal_with_no_key_level_excluded_as_no_key_level():
+    """REQ-30.7: an aligned CONFIRMED signal with retest_index set but no
+    Key Level recorded is not a trade candidate -- counted under
+    excluded_no_key_level, never reaching the fill mechanism."""
+    series = _base_bullish_series().build()
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+
+    trades, report = simulate([_aligned(signal, key_level=None)], series, DetectorConfig())
+
+    assert trades == []
+    assert report.trades_opened == 0
+    assert report.excluded_no_key_level == 1
 
 
 def test_unaligned_signal_excluded_regardless_of_status():

@@ -23,7 +23,7 @@ from entries.model1 import Model1Signal, detect_model1_signals
 from ingestion.loader import LoadError, load_mt5_csv
 from ingestion.pairing import load_pair
 from primitives.crt_range import CRTRange, detect_crt_ranges
-from primitives.fvg import FVG, detect_fvgs
+from primitives.fvg import FVG, detect_fvgs, to_key_levels
 from primitives.swing import SwingPoint, detect_swings
 from viz.chart import render_chart
 from viz.table import write_detections_csv
@@ -118,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     detections = _filter_by_session(detections, ltf_series, htf_series, session, config.kill_zone)
     types_excludes_backtest_population = not ("model1" in types or "alignment" in types)
     population = [] if types_excludes_backtest_population else (detections.aligned_signals or [])
+    detections = _filter_to_confluent(detections)
     detections = _filter_by_types(detections, types)
 
     output_dir = Path(args.output_dir)
@@ -179,9 +180,13 @@ def _detect_all(
 
     if htf_series is not None:
         htf_crt_ranges = detect_crt_ranges(htf_series, config.crt_range)
+        # Same config.fvg as the LTF pass (design §8.6) — min_size_atr is
+        # ATR-relative, so it self-scales to the HTF series' own
+        # volatility; never a _Detections field (REQ-58.1).
+        htf_key_levels = to_key_levels(detect_fvgs(htf_series, config.fvg))
         aligned_signals = tag_alignment(
             htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
-            ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
+            ltf_signals=model1_signals, htf_ranges=htf_crt_ranges, htf_key_levels=htf_key_levels,
         )
 
     return _Detections(
@@ -276,6 +281,36 @@ def _filter_by_session(
         htf_crt_ranges=detections.htf_crt_ranges if htf_series is None
         else session_filter(detections.htf_crt_ranges, htf_series, lambda r: r.start_index),
     )
+
+
+def _filter_to_confluent(detections: _Detections) -> _Detections:
+    """REQ-56: a validity gate on REPORTED detections only (ADR-014) — runs
+    AFTER the backtest population is snapshotted (main(), above) so the
+    excluded_no_key_level bucket stays live/countable while narrowing what
+    detections.csv/overlay.png show. aligned_signals is None (single-series
+    mode, no `alignment`/`model1` types selected yet at this point) -> no-op
+    (REQ-56.6). Narrows model1_signals by the SAME kept signal_ids so a
+    later --types model1 (which nulls aligned_signals in _filter_by_types,
+    falling back to model1_signals in the CSV/chart writers) cannot leak an
+    unfiltered row the gate already withheld — the two lists cannot
+    disagree, mirroring REQ-42's join guarantee."""
+    if detections.aligned_signals is None:
+        return detections
+
+    def keep(tagged: AlignedSignal) -> bool:
+        return (
+            tagged.aligned != "aligned"
+            or tagged.ltf_signal.confirmation_type == "fvg_fill"
+            or tagged.key_level is not None
+        )
+
+    aligned_signals = [t for t in detections.aligned_signals if keep(t)]
+    kept_signal_ids = {t.ltf_signal.signal_id for t in aligned_signals}
+    model1_signals = (
+        None if detections.model1_signals is None
+        else [s for s in detections.model1_signals if s.signal_id in kept_signal_ids]
+    )
+    return replace(detections, aligned_signals=aligned_signals, model1_signals=model1_signals)
 
 
 def _filter_by_types(detections: _Detections, types: set[str]) -> _Detections:

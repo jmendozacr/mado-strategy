@@ -4,9 +4,13 @@ trades.csv row; a cohort narrowed to zero by --types produces an empty,
 fully-disclosed backtest run; detections.csv/overlay.png are unaffected.
 """
 
+from datetime import datetime, timedelta
+
 from fixtures.mt5_csv import MT5_HEADER, _read_csv_rows, _row
 
 from cli import main
+from core.candle import Candle, OHLCSeries
+from primitives.fvg import detect_fvgs
 
 
 # Charter-2 example 1 (matches fixtures.synthetic.model1_purge_engulf_charter2_setup):
@@ -23,16 +27,21 @@ _LTF_CANDLES = [
     (1.0965, 1.1010, 1.0790, 1.0910),  # 4 — expansion -> CONFIRMED; low also reaches take_profit (1.0800)
 ]
 
-# Daily HTF pair: day0 forms a wide range (H=1.1010, L=1.0800), day1
-# (2026-07-06, the LTF anchor's own calendar day) purges it -> the LTF
-# anchor's enclosing HTF index (day1) resolves to day0's range as
-# htf_context, giving a bearish take_profit of 1.0800 (well below entry,
-# clearing the R:R floor). day2 exists so day1 is never the "last HTF
-# candle" (avoids the insufficient_htf_data special case).
+# Daily HTF pair (design §8.2, redesigned): candles 0-2 form a bearish FVG
+# (zone [1.1030, 1.1040], origin_index=2 — the third candle, per REQ-54.1);
+# candle 3 is the CRT range (H=1.1028, L=1.0900 -> bearish take_profit,
+# clearing the R:R floor against the LTF entry ~1.1010/SL 1.1037); candle 4
+# (2026-07-06, the LTF anchor's own calendar day) purges the range, its
+# high (1.1035) landing INSIDE the unexpired FVG zone -> credited Key Level
+# (REQ-55.1). candle 5 exists so candle 4 is never the "last HTF candle"
+# (avoids insufficient_htf_data).
 _HTF_DAILY = [
-    ("2026.07.05", 1.1000, 1.1010, 1.0800, 1.1005),
-    ("2026.07.06", 1.1005, 1.1025, 1.1000, 1.1020),
-    ("2026.07.07", 1.1020, 1.1030, 1.1010, 1.1025),
+    ("2026.07.02", 1.1060, 1.1065, 1.1040, 1.1045),  # 0 — FVG top = low 1.1040
+    ("2026.07.03", 1.1042, 1.1044, 1.1034, 1.1036),  # 1 — middle candle
+    ("2026.07.04", 1.1028, 1.1030, 1.1020, 1.1022),  # 2 — FVG bottom = high 1.1030 -> zone [1.1030, 1.1040]
+    ("2026.07.05", 1.1020, 1.1028, 1.0900, 1.0910),  # 3 — CRT range: H=1.1028 L=1.0900 (= take_profit)
+    ("2026.07.06", 1.0915, 1.1035, 1.0905, 1.0920),  # 4 — purge (high 1.1035 > 1.1028, inside FVG zone)
+    ("2026.07.07", 1.0920, 1.0930, 1.0910, 1.0925),  # 5 — trailing
 ]
 
 
@@ -48,6 +57,63 @@ def _write_htf_csv(path):
     for date_str, o, h, l, c in _HTF_DAILY:
         rows.append(_row(date_str, "00:00:00", o, h, l, c))
     path.write_text("\n".join(rows))
+
+
+# Mixed-population fixture (design §8.10, NEW): _HTF_DAILY extended with a
+# SECOND HTF purge (indices 6-8, CRT range B + purge B), all prices strictly
+# below the 0/1/2 zone's bottom (1.1030) so purge B is non-confluent by
+# geometry regardless of expiry. Feeds S-005.3/REQ-40.6's non-zero-bucket
+# assertion — a run with one confluent and one non-confluent signal.
+_HTF_DAILY_MIXED = _HTF_DAILY + [
+    ("2026.07.08", 1.0920, 1.0940, 1.0850, 1.0860),  # 6 — CRT range B: H=1.0940 L=1.0850 (= take_profit B)
+    ("2026.07.09", 1.0860, 1.0955, 1.0855, 1.0870),  # 7 — purge B — breaches 1.0940; 1.0955 not in [1.1030,1.1040] -> non-confluent
+    ("2026.07.10", 1.0870, 1.0880, 1.0860, 1.0875),  # 8 — trailing
+]
+
+# Second-day LTF block (purge B's day, 2026-07-09), same shape as
+# _LTF_CANDLES shifted into range B's price region: forms its own CRT
+# range, purges its high, confirms, and has retest_index set (otherwise it
+# lands in excluded_never_confirmed, an earlier cut, never reaching the
+# confluence bucket at all).
+_MIXED_SECOND_DAY_LTF_CANDLES = [
+    (1.0920, 1.0940, 1.0900, 1.0930),  # 0 — range: H=1.0940 L=1.0900
+    (1.0930, 1.0955, 1.0920, 1.0935),  # 1 — anchor, purges High
+    (1.0920, 1.0925, 1.0870, 1.0880),  # 2 — confirms
+    (1.0880, 1.0932, 1.0875, 1.0885),  # 3 — retest + fills
+    (1.0885, 1.0930, 1.0710, 1.0830),  # 4 — expansion -> CONFIRMED
+]
+_MIXED_LTF_CANDLES = _LTF_CANDLES + _MIXED_SECOND_DAY_LTF_CANDLES
+
+
+def _write_mixed_ltf_csv(path):
+    """Separate writer (not `_write_ltf_csv`, which hard-codes one date):
+    day A candles at 2026-07-06, day B candles at 2026-07-09 (purge B's
+    day), both starting at NY 07:00 (10:00 UTC)."""
+    rows = [MT5_HEADER]
+    for i, (o, h, l, c) in enumerate(_LTF_CANDLES):
+        rows.append(_row("2026.07.06", f"{10 + i:02d}:00:00", o, h, l, c))
+    for i, (o, h, l, c) in enumerate(_MIXED_SECOND_DAY_LTF_CANDLES):
+        rows.append(_row("2026.07.09", f"{10 + i:02d}:00:00", o, h, l, c))
+    path.write_text("\n".join(rows))
+
+
+def test_mixed_htf_fixture_has_no_stray_fvg_near_purge_b():
+    """Design §8.10 constraint 3 — the constraint most easily broken by an
+    OHLC tweak: no additional FVG may form on candles 3..8 whose zone
+    contains candle7's high (the purge B extreme) — verified by running
+    detect_fvgs on the finished fixture, not by inspection."""
+    start = datetime(2026, 7, 2)
+    candles = tuple(
+        Candle(timestamp=start + timedelta(days=i), open=o, high=h, low=l, close=c)
+        for i, (date_str, o, h, l, c) in enumerate(_HTF_DAILY_MIXED)
+    )
+    series = OHLCSeries(candles=candles, instrument="EURUSD", timeframe="D")
+    purge_b_high = candles[7].high
+
+    fvgs = detect_fvgs(series)
+
+    offending = [f for f in fvgs if min(f.top, f.bottom) <= purge_b_high <= max(f.top, f.bottom)]
+    assert offending == [], f"stray FVG zone contains purge B's high ({purge_b_high}): {offending}"
 
 
 def _run_backtest(tmp_path, extra_args=None):
@@ -230,8 +296,8 @@ def test_default_run_discloses_kill_zone_gate_enabled_and_frictionless_cost(tmp_
     summary = (output_dir / "metrics_summary.txt").read_text()
     assert "kill-zone gate: enabled (evaluating anchor_index against the NY kill zone)" in summary
     assert "trading cost: 0.0 (frictionless)" in summary
-    assert "average R: 7.778 over 1 closed trades" in summary
-    assert "total R: 7.778 over 1 closed trades" in summary
+    assert "average R: 4.074 over 1 closed trades" in summary
+    assert "total R: 4.074 over 1 closed trades" in summary
     assert "note: average R and total R assume unlimited capital, no cap on concurrently open positions" in summary
     assert "same-candle SL+TP resolutions: 0" in summary
 
@@ -412,10 +478,15 @@ _SECOND_ZONE_LTF_CANDLES = _LTF_CANDLES + [
 
 
 def test_signals_considered_measured_after_session_filter_narrows_population(tmp_path):
-    """REQ-40.2: signals_considered is measured strictly AFTER the CLI's
-    --session filter has already narrowed the population -- the session
-    run's count equals its own detections.csv model1 row count, is > 0, and
-    is strictly less than the unfiltered run's count."""
+    """REQ-40.2 (V3-corrected): signals_considered is measured strictly
+    AFTER the CLI's --session filter has already narrowed the population,
+    and is > 0 and strictly less than the unfiltered run's count.
+    signals_considered is measured INDEPENDENTLY of detections.csv's
+    Model-1 row count and MUST NOT be asserted equal to it (V3 correction,
+    verify-plan-2 finding #9) — the REQ-56 confluence gate can make the CSV
+    row count strictly smaller than signals_considered (REQ-40.6) once a
+    signal in this population lacks a Key Level; the CSV side of that
+    interaction is S-005's non-vacuous coverage (§8.10's mixed fixture)."""
     unfiltered_exit, unfiltered_dir = _run_backtest_with_candles(
         tmp_path / "unfiltered", _SECOND_ZONE_LTF_CANDLES, extra_args=["--types", "model1"]
     )
@@ -432,8 +503,6 @@ def test_signals_considered_measured_after_session_filter_narrows_population(tmp
 
     unfiltered_considered = _signals_considered(unfiltered_dir)
     session_considered = _signals_considered(session_dir)
-    session_model1_rows = len(_read_csv_rows(session_dir / "detections.csv")) - 1  # minus header
 
-    assert session_considered == session_model1_rows
     assert session_considered > 0
     assert session_considered < unfiltered_considered

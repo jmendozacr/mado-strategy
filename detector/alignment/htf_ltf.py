@@ -5,6 +5,7 @@ from typing import Literal
 
 from core.candle import Candle, OHLCSeries
 from core.config import CRTRangeConfig, FVGConfig, Model1Config
+from core.key_level import KeyLevel
 from core.pairing_table import TIMEFRAME_DURATIONS
 from entries.model1 import Model1Signal, detect_model1_signals
 from primitives.crt_range import CRTRange, detect_crt_ranges, first_breach_index
@@ -17,6 +18,7 @@ class AlignedSignal:
     ltf_signal: Model1Signal
     htf_context: CRTRange | None
     aligned: Alignment
+    key_level: KeyLevel | None = None
 
 
 def tag_alignment(
@@ -27,6 +29,7 @@ def tag_alignment(
     model1_config: Model1Config = Model1Config(),
     ltf_signals: list[Model1Signal] | None = None,
     htf_ranges: list[CRTRange] | None = None,
+    htf_key_levels: list[KeyLevel] | None = None,
 ) -> list[AlignedSignal]:
     """Tag each LTF Model-1 signal against the HTF CRT purge window it
     falls in (REQ-05). A resolved HTF CRTRange's "purge candle" is the
@@ -40,6 +43,11 @@ def tag_alignment(
     (see `detect_model1_signals`'s `crt_ranges`/`fvgs` params for the same
     pattern). `None` (the default) preserves the original self-contained
     behavior.
+
+    `htf_key_levels` breaks that convention deliberately (ADR-012): `None`
+    means "no Key Level sources registered" (every `key_level` stays
+    `None`), NOT "self-compute FVG key levels" — the caller (`cli.py`)
+    injects sources so this module never imports a source detector.
     """
     htf_candles = htf_series.candles
     htf_timestamps = [c.timestamp for c in htf_candles]
@@ -48,6 +56,9 @@ def tag_alignment(
     if htf_ranges is None:
         htf_ranges = detect_crt_ranges(htf_series, crt_config)
     purge_index_to_range = _purge_index_map(htf_candles, htf_ranges)
+    key_level_credit_map = _key_level_credit_map(
+        htf_candles, purge_index_to_range, htf_key_levels or []
+    )
     htf_duration = TIMEFRAME_DURATIONS[htf_series.timeframe]
     last_htf_index = len(htf_candles) - 1
 
@@ -70,11 +81,59 @@ def tag_alignment(
 
         crt_range = purge_index_to_range.get(relevant_index)
         if crt_range is not None:
-            tags.append(AlignedSignal(ltf_signal=signal, htf_context=crt_range, aligned="aligned"))
+            tags.append(
+                AlignedSignal(
+                    ltf_signal=signal, htf_context=crt_range, aligned="aligned",
+                    key_level=key_level_credit_map.get(relevant_index),
+                )
+            )
         else:
             tags.append(AlignedSignal(ltf_signal=signal, htf_context=None, aligned="unaligned"))
 
     return tags
+
+
+def _purge_wick_extremes(purge_candle: Candle, crt_range: CRTRange) -> tuple[float, ...]:
+    """The extreme(s) on the side(s) actually breached — the breach(es)
+    that made this the purge candle (REQ-55.6/.7). Both sides can breach on
+    the same candle (~14.1% of real H4 purges); NEVER derived from a
+    signal's `direction` — that mapping is exactly what REQ-55.7 exists to
+    catch as wrong."""
+    extremes = []
+    if purge_candle.high > crt_range.high:
+        extremes.append(purge_candle.high)
+    if purge_candle.low < crt_range.low:
+        extremes.append(purge_candle.low)
+    return tuple(extremes)
+
+
+def _key_level_credit_map(
+    candles: tuple[Candle, ...],
+    purge_index_to_range: dict[int, CRTRange],
+    key_levels: list[KeyLevel],
+) -> dict[int, KeyLevel]:
+    """Eager, keyed by purge index — O(purges x levels x extremes<=2),
+    independent of LTF signal count (design §12). A level qualifies for a
+    purge if some credited extreme satisfies all three: knowable before the
+    purge (REQ-54.4), unexpired at-or-before the purge (REQ-55.9/.10/.11,
+    right-closed), and inside the level's zone inclusive of both edges
+    (REQ-55.4). Both extremes are evaluated independently and their
+    qualifying levels pooled; the lowest origin_index wins across the pool
+    (REQ-55.6/.12/.13) — no high-side preference."""
+    credit_map: dict[int, KeyLevel] = {}
+    for purge_index, crt_range in purge_index_to_range.items():
+        extremes = _purge_wick_extremes(candles[purge_index], crt_range)
+        qualifying = [
+            level
+            for extreme in extremes
+            for level in key_levels
+            if level.origin_index < purge_index
+            and (level.expiry_index is None or purge_index <= level.expiry_index)
+            and level.bottom <= extreme <= level.top
+        ]
+        if qualifying:
+            credit_map[purge_index] = min(qualifying, key=lambda level: level.origin_index)
+    return credit_map
 
 
 def _purge_index_map(

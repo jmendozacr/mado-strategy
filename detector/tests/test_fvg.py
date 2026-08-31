@@ -5,7 +5,7 @@ from fixtures.synthetic import (
 )
 
 from core.config import FVGConfig
-from primitives.fvg import detect_fvgs
+from primitives.fvg import detect_fvgs, to_key_levels
 
 
 def test_detects_bearish_fvg_and_marks_filled_after_retest():
@@ -103,6 +103,28 @@ def test_open_fvg_has_no_fill_index():
 
     assert fvgs[0].fill_status == "open"
     assert fvgs[0].fill_index is None
+
+
+def test_to_key_levels_preserves_fvg_zone_and_identifies_source():
+    """REQ-53.1: a bullish FVG top=1.1050, bottom=1.1030, presented as a
+    KeyLevel, has zone exactly [1.1030, 1.1050] and kind identifies FVG as
+    the source."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.1020, high=1.1030, low=1.1015, close=1.1025)  # 0 — gap bottom = high 1.1030
+        .candle(open=1.1032, high=1.1038, low=1.1028, close=1.1035)  # 1 — middle candle
+        .candle(open=1.1055, high=1.1060, low=1.1050, close=1.1058)  # 2 — gap top = low 1.1050
+        .build()
+    )
+
+    fvgs = detect_fvgs(series)
+    levels = to_key_levels(fvgs)
+
+    assert len(levels) == 1
+    level = levels[0]
+    assert level.kind == "fvg"
+    assert level.top == 1.1050
+    assert level.bottom == 1.1030
 
 
 def test_custom_min_size_atr_config_lowers_exclusion_threshold():

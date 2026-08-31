@@ -60,10 +60,24 @@ class ReconciliationReport:
     excluded_no_crt_range: int
     excluded_unaligned: int
     excluded_never_confirmed: int
+    excluded_no_key_level: int
     excluded_duplicate: int
     excluded_kill_zone: int
     excluded_rr_floor: int
     excluded_never_filled: int
+
+
+@dataclass(frozen=True)
+class _PopulationCuts:
+    """Named-field record, not a positional tuple (ADR-015) — a swap
+    between two adjacent same-typed int counts at the unpack site would
+    otherwise pass the REQ-40.1 sum invariant silently."""
+
+    survivors: list[AlignedSignal]
+    no_crt_range: int
+    unaligned: int
+    never_confirmed: int
+    no_key_level: int
 
 
 def _build_candidate(
@@ -139,13 +153,14 @@ def _exit_gap_beyond(open_price: float, level: float, direction: Direction, chos
     return open_price > level if chosen_is_stop else open_price < level
 
 
-def _population_cuts(
-    aligned_signals: list[AlignedSignal],
-) -> tuple[list[AlignedSignal], int, int, int]:
-    """Stages 1-3: population-status cuts — no CRT range, unaligned, never
-    confirmed (`retest_index is None`, regardless of status)."""
+def _population_cuts(aligned_signals: list[AlignedSignal]) -> _PopulationCuts:
+    """Stages 1-4: population-status cuts — no CRT range, unaligned, never
+    confirmed (`retest_index is None`, regardless of status), no Key Level
+    (REQ-30.7) — confluence is READ here, never recomputed (REQ-59); it was
+    determined once in `alignment.tag_alignment` and stored on
+    `AlignedSignal.key_level`."""
     survivors: list[AlignedSignal] = []
-    excluded_no_crt_range = excluded_unaligned = excluded_never_confirmed = 0
+    excluded_no_crt_range = excluded_unaligned = excluded_never_confirmed = excluded_no_key_level = 0
     for tagged in aligned_signals:
         signal = tagged.ltf_signal
         if signal.confirmation_type == "fvg_fill":
@@ -154,9 +169,14 @@ def _population_cuts(
             excluded_unaligned += 1
         elif signal.retest_index is None:
             excluded_never_confirmed += 1
+        elif tagged.key_level is None:
+            excluded_no_key_level += 1
         else:
             survivors.append(tagged)
-    return survivors, excluded_no_crt_range, excluded_unaligned, excluded_never_confirmed
+    return _PopulationCuts(
+        survivors=survivors, no_crt_range=excluded_no_crt_range, unaligned=excluded_unaligned,
+        never_confirmed=excluded_never_confirmed, no_key_level=excluded_no_key_level,
+    )
 
 
 def _dedup(candidates: list[Candidate]) -> tuple[list[Candidate], int]:
@@ -283,10 +303,12 @@ def simulate(
     site."""
     candles = ltf_series.candles
 
-    survivors, no_crt_range, unaligned, never_confirmed = _population_cuts(aligned_signals)
+    cuts = _population_cuts(aligned_signals)
     swings = swings if swings is not None else detect_swings(ltf_series, config.swing)
     indices = [s.index for s in swings]
-    candidates = [_build_candidate(tagged, swings, indices, ltf_series, config.backtest) for tagged in survivors]
+    candidates = [
+        _build_candidate(tagged, swings, indices, ltf_series, config.backtest) for tagged in cuts.survivors
+    ]
 
     candidates, excluded_duplicate = _dedup(candidates)
     candidates, excluded_kill_zone = _kill_zone_cut(candidates, candles, config)
@@ -299,9 +321,10 @@ def simulate(
     report = ReconciliationReport(
         signals_considered=len(aligned_signals),
         trades_opened=len(trades),
-        excluded_no_crt_range=no_crt_range,
-        excluded_unaligned=unaligned,
-        excluded_never_confirmed=never_confirmed,
+        excluded_no_crt_range=cuts.no_crt_range,
+        excluded_unaligned=cuts.unaligned,
+        excluded_never_confirmed=cuts.never_confirmed,
+        excluded_no_key_level=cuts.no_key_level,
         excluded_duplicate=excluded_duplicate,
         excluded_kill_zone=excluded_kill_zone,
         excluded_rr_floor=excluded_rr_floor,

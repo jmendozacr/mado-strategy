@@ -3,6 +3,7 @@ from typing import Literal
 
 from core.candle import Candle, OHLCSeries
 from core.config import FVGConfig
+from core.key_level import KeyLevel
 from core.sweep import SweepSide, two_heap_sweep
 
 _ATR_PERIOD = 14
@@ -44,6 +45,13 @@ def detect_fvgs(series: OHLCSeries, config: FVGConfig = FVGConfig()) -> list[FVG
             fill_index=fill_index,
         )
         for (start, direction, top, bottom), (status, fill_index) in zip(candidates, fill_results)
+    ]
+
+
+def to_key_levels(fvgs: list[FVG]) -> list[KeyLevel]:
+    return [
+        KeyLevel(kind="fvg", top=fvg.top, bottom=fvg.bottom, origin_index=fvg.end_index)
+        for fvg in fvgs
     ]
 
 

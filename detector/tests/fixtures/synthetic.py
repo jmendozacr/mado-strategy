@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from core.candle import Candle, OHLCSeries
+from core.key_level import KeyLevel
 
 
 # 12:00 UTC is 07:00 NY EST — the first hour inside the default NY Kill
@@ -569,3 +571,64 @@ def bearish_purge_setup() -> OHLCSeries:
         .candle(open=1.0990, high=1.1030, low=1.0970, close=1.0975)
         .build()
     )
+
+
+@dataclass(frozen=True)
+class KeyLevelConfluencePair:
+    htf_series: OHLCSeries
+    ltf_series: OHLCSeries
+    expected_key_level: KeyLevel | None  # the level REQ-55 must credit; None for the non-confluent twin
+
+
+def key_level_confluence_pair_setup(confluent: bool) -> KeyLevelConfluencePair:
+    """Design §8.9 minimal-pair builder: an HTF bearish FVG (candles 0-2),
+    a CRT range (candle 3), and a purge candle (candle 4) whose high
+    (1.1035) breaches the range and — in the confluent variant — lands
+    inside the FVG zone. The two variants differ in EXACTLY ONE number —
+    candle 2's high (the FVG zone's bottom edge) — shifted so the zone no
+    longer contains the purge's credited extreme; everything else
+    (timestamps, CRT range, purge candle, LTF series, Model-1 signal) is
+    identical, which is what makes a differential comparison (REQ-56.3)
+    meaningful. Same geometry as test_cli_backtest_e2e.py's `_HTF_DAILY`
+    (design §8.2), reused here as an HTF/LTF `OHLCSeries` pair rather than
+    MT5 CSV rows.
+    """
+    zone_bottom = 1.1030 if confluent else 1.1036
+    htf_start = datetime(2026, 7, 2)
+    htf_specs = [
+        (1.1060, 1.1065, 1.1040, 1.1045),  # 0 — FVG top = low 1.1040
+        (1.1042, 1.1044, 1.1034, 1.1036),  # 1 — middle candle
+        (1.1028, zone_bottom, 1.1020, 1.1022),  # 2 — FVG bottom = high (varies)
+        (1.1020, 1.1028, 1.0900, 1.0910),  # 3 — CRT range: H=1.1028 L=1.0900
+        (1.0915, 1.1035, 1.0905, 1.0920),  # 4 — purge (high 1.1035)
+        (1.0920, 1.0930, 1.0910, 1.0925),  # 5 — trailing
+    ]
+    htf_series = OHLCSeries(
+        candles=tuple(
+            Candle(timestamp=htf_start + timedelta(days=i), open=o, high=h, low=l, close=c)
+            for i, (o, h, l, c) in enumerate(htf_specs)
+        ),
+        instrument="EURUSD", timeframe="D",
+    )
+
+    ltf_start = datetime(2026, 7, 6, 10, 0)
+    ltf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range: H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1015),  # 1 — anchor, purges High
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — confirms
+        (1.0960, 1.1012, 1.0955, 1.0965),  # 3 — retest + fills
+        (1.0965, 1.1010, 1.0790, 1.0910),  # 4 — expansion -> CONFIRMED
+    ]
+    ltf_series = OHLCSeries(
+        candles=tuple(
+            Candle(timestamp=ltf_start + timedelta(hours=i), open=o, high=h, low=l, close=c)
+            for i, (o, h, l, c) in enumerate(ltf_specs)
+        ),
+        instrument="EURUSD", timeframe="1H",
+    )
+
+    expected_key_level = (
+        KeyLevel(kind="fvg", top=1.1040, bottom=zone_bottom, origin_index=2, expiry_index=None)
+        if confluent else None
+    )
+    return KeyLevelConfluencePair(htf_series=htf_series, ltf_series=ltf_series, expected_key_level=expected_key_level)

@@ -11,6 +11,7 @@ from fixtures.synthetic import CandleSeriesBuilder
 
 from alignment.htf_ltf import AlignedSignal
 from core.config import DetectorConfig
+from core.key_level import KeyLevel
 from core.results import DetectionStatus
 from entries.model1 import Model1Signal
 from primitives.crt_range import CRTRange
@@ -23,10 +24,13 @@ _HTF_CONTEXT = CRTRange(
     resolution="true_break", resolved_at_index=1,
 )
 
+# See test_backtest_simulate.py's _KEY_LEVEL for the rationale (design §8.1).
+_KEY_LEVEL = KeyLevel(kind="fvg", top=1.1050, bottom=1.0950, origin_index=0, expiry_index=None)
+
 _ZERO_RECONCILIATION = ReconciliationReport(
     signals_considered=0, trades_opened=0, excluded_no_crt_range=0, excluded_unaligned=0,
-    excluded_never_confirmed=0, excluded_duplicate=0, excluded_kill_zone=0, excluded_rr_floor=0,
-    excluded_never_filled=0,
+    excluded_never_confirmed=0, excluded_no_key_level=0, excluded_duplicate=0, excluded_kill_zone=0,
+    excluded_rr_floor=0, excluded_never_filled=0,
 )
 
 
@@ -53,8 +57,8 @@ def _signal(
     )
 
 
-def _aligned(signal, htf_context=_HTF_CONTEXT, aligned="aligned"):
-    return AlignedSignal(ltf_signal=signal, htf_context=htf_context, aligned=aligned)
+def _aligned(signal, htf_context=_HTF_CONTEXT, aligned="aligned", key_level=_KEY_LEVEL):
+    return AlignedSignal(ltf_signal=signal, htf_context=htf_context, aligned=aligned, key_level=key_level)
 
 
 def test_win_rate_is_none_never_zero_when_no_trades_have_closed():
@@ -119,8 +123,9 @@ def test_metrics_denominators_exclude_opens_in_a_mixed_population():
 
 def test_reconciliation_buckets_plus_trades_opened_sum_to_signals_considered():
     """REQ-40.1: for a real simulate() run mixing distinct bucket outcomes
-    (no_crt_range, unaligned, and a trade), trades_opened + every exclusion
-    bucket sums EXACTLY to signals_considered."""
+    (no_crt_range, unaligned, no_key_level, and a trade), trades_opened +
+    every one of the 8 exclusion buckets sums EXACTLY to
+    signals_considered."""
     series = (
         CandleSeriesBuilder()
         .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor
@@ -137,23 +142,26 @@ def test_reconciliation_buckets_plus_trades_opened_sum_to_signals_considered():
         confirmation_type="fvg_fill", origin_index=1,
     )
     unaligned = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2, origin_index=2)
+    no_key_level = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2, origin_index=3)
 
     population = [
         _aligned(opens_a_trade),
         _aligned(no_crt_range),
         _aligned(unaligned, htf_context=None, aligned="unaligned"),
+        _aligned(no_key_level, key_level=None),
     ]
     trades, report = simulate(population, series, DetectorConfig())
 
     bucket_sum = report.trades_opened + sum([
         report.excluded_no_crt_range, report.excluded_unaligned, report.excluded_never_confirmed,
-        report.excluded_duplicate, report.excluded_kill_zone, report.excluded_rr_floor,
-        report.excluded_never_filled,
+        report.excluded_no_key_level, report.excluded_duplicate, report.excluded_kill_zone,
+        report.excluded_rr_floor, report.excluded_never_filled,
     ])
-    assert bucket_sum == report.signals_considered == 3
+    assert bucket_sum == report.signals_considered == 4
     assert report.trades_opened == 1
     assert report.excluded_no_crt_range == 1
     assert report.excluded_unaligned == 1
+    assert report.excluded_no_key_level == 1
 
 
 def test_unaligned_and_outside_kill_zone_lands_in_excluded_unaligned_not_kill_zone():

@@ -91,6 +91,7 @@ def write_metrics_summary(
         f"  no crt range: {r.excluded_no_crt_range}",
         f"  unaligned: {r.excluded_unaligned}",
         f"  never confirmed: {r.excluded_never_confirmed}",
+        f"  no key level: {r.excluded_no_key_level}",
         f"  duplicate: {r.excluded_duplicate}",
         f"  kill zone: {r.excluded_kill_zone}",
         f"  rr floor: {r.excluded_rr_floor}",

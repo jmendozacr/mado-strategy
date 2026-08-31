@@ -1,11 +1,17 @@
 from datetime import datetime, timedelta
 
-from fixtures.synthetic import model1_pending_setup, model1_purge_engulf_charter2_setup
+from fixtures.synthetic import (
+    key_level_confluence_pair_setup,
+    model1_pending_setup,
+    model1_purge_engulf_charter2_setup,
+)
 
 from alignment.htf_ltf import tag_alignment
 from core.candle import Candle, OHLCSeries
 from core.config import CRTRangeConfig
+from core.key_level import KeyLevel
 from core.results import DetectionStatus
+from primitives.fvg import detect_fvgs, to_key_levels
 
 
 def _shift(series: OHLCSeries, offset: timedelta, timeframe: str | None = None) -> OHLCSeries:
@@ -178,3 +184,117 @@ def test_crt_config_is_read_through_not_hardcoded():
 
     assert any(t.aligned == "aligned" for t in default_tags)
     assert strict_tags == []
+
+
+def _bearish_signal_tag(tags):
+    return next(t for t in tags if t.ltf_signal.anchor_index == 1 and t.ltf_signal.direction == "bearish")
+
+
+def test_high_side_breach_credited_when_extreme_inside_unexpired_zone():
+    """REQ-55.1: an aligned signal whose HTF purge candle breached its CRT
+    range's high, with high=1.1035 inside an unexpired Key Level
+    [1.1030, 1.1050] with an earlier origin_index, is credited that Key
+    Level — notwithstanding the signal's own direction being bearish."""
+    htf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 1 — purges High(1.1035), closes back inside
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    key_level = KeyLevel(kind="fvg", top=1.1050, bottom=1.1030, origin_index=0)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[key_level])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level == key_level
+
+
+def test_low_side_breach_credited_when_extreme_inside_unexpired_zone():
+    """REQ-55.2: mirror of REQ-55.1 for a low-side purge breach."""
+    htf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+        (1.1005, 1.1015, 1.0965, 1.0995),  # 1 — pokes Low(1.0965), closes back inside
+        (1.1000, 1.1005, 1.0950, 1.1025),  # 2 — closes above High -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    key_level = KeyLevel(kind="fvg", top=1.0975, bottom=1.0960, origin_index=0)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[key_level])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level == key_level
+
+
+def test_both_sides_breached_each_evaluated_independently_lower_origin_wins():
+    """REQ-55.6: a purge candle breaching BOTH sides has each extreme
+    evaluated independently against its own matching Key Level; the level
+    with the LOWER origin_index is recorded across both extremes."""
+    htf_specs = [
+        (1.1000, 1.1010, 1.0995, 1.1005),  # 0 — filler
+        (1.1005, 1.1010, 1.0995, 1.1002),  # 1 — filler
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 2 — range H=1.1020 L=1.0980
+        (1.1005, 1.1045, 1.0955, 1.1000),  # 3 — breaches BOTH high(1.1045) and low(1.0955), closes inside
+        (1.1000, 1.1005, 1.0950, 1.1025),  # 4 — closes above High -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(hours=2), timeframe="5M")
+    high_side_level = KeyLevel(kind="fvg", top=1.1050, bottom=1.1040, origin_index=2)
+    low_side_level = KeyLevel(kind="fvg", top=1.0960, bottom=1.0950, origin_index=0)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[high_side_level, low_side_level])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level == low_side_level  # lower origin_index (3 < 10) wins
+
+
+def test_direction_based_wick_selection_must_fail_this_scenario():
+    """REQ-55.7: the purge breached the CRT high ONLY, so the credited
+    extreme is 1.1035 (high side); direction is therefore bearish. A Key
+    Level containing the theoretical LOW extreme but NOT the high extreme
+    must NOT be credited — an implementation selecting the wick by
+    `direction` (wrongly reading bearish -> low) would wrongly credit it."""
+    htf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 1 — purges High(1.1035) ONLY, closes back inside
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    # Contains the range LOW (1.0980), never breached by this purge — a
+    # direction-based (bearish -> low) implementation would wrongly match it.
+    low_side_level = KeyLevel(kind="fvg", top=1.0985, bottom=1.0975, origin_index=0)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[low_side_level])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level is None
+
+
+def test_minimal_pair_builder_confluent_and_non_confluent_twins_agree_with_expectation():
+    """Design §8.9: the minimal-pair fixture's `expected_key_level` for
+    each variant matches what a real HTF FVG source (`to_key_levels(
+    detect_fvgs(...))`) actually produces through `tag_alignment` — proves
+    the builder itself is wired correctly for S-001..S-004's consumption."""
+    for confluent in (True, False):
+        pair = key_level_confluence_pair_setup(confluent=confluent)
+        htf_key_levels = to_key_levels(detect_fvgs(pair.htf_series))
+
+        tags = tag_alignment(pair.htf_series, pair.ltf_series, htf_key_levels=htf_key_levels)
+
+        signal_tag = _bearish_signal_tag(tags)
+        assert signal_tag.aligned == "aligned"
+        assert signal_tag.key_level == pair.expected_key_level
