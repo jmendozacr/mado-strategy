@@ -24,6 +24,8 @@ from ingestion.loader import LoadError, load_mt5_csv
 from ingestion.pairing import load_pair
 from primitives.crt_range import CRTRange, detect_crt_ranges
 from primitives.fvg import FVG, detect_fvgs, to_key_levels
+from primitives.ict_order_block import detect_ict_order_blocks
+from primitives.ict_order_block import to_key_levels as ict_order_block_to_key_levels
 from primitives.swing import SwingPoint, detect_swings
 from viz.chart import render_chart
 from viz.table import write_detections_csv
@@ -183,7 +185,11 @@ def _detect_all(
         # Same config.fvg as the LTF pass (design §8.6) — min_size_atr is
         # ATR-relative, so it self-scales to the HTF series' own
         # volatility; never a _Detections field (REQ-58.1).
-        htf_key_levels = to_key_levels(detect_fvgs(htf_series, config.fvg))
+        htf_order_blocks = detect_ict_order_blocks(htf_series, config.ict_order_block)
+        htf_key_levels = (
+            to_key_levels(detect_fvgs(htf_series, config.fvg))
+            + ict_order_block_to_key_levels(htf_order_blocks)
+        )
         aligned_signals = tag_alignment(
             htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
             ltf_signals=model1_signals, htf_ranges=htf_crt_ranges, htf_key_levels=htf_key_levels,

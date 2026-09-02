@@ -487,3 +487,42 @@ def test_ny_kill_zone_upper_bound_is_exclusive():
 
     assert in_ny_kill_zone(just_before_close, config) is True
     assert in_ny_kill_zone(at_close, config) is False
+
+
+def test_htf_key_levels_concatenate_fvg_and_ict_order_block_sources(tmp_path):
+    """REQ-63: `_detect_all` must compose BOTH HTF Key Level sources (FVG
+    and ICTOrderBlock) into the single `htf_key_levels` list handed to
+    `tag_alignment` — neither silently shadows the other (the naming-
+    collision risk the design flags for `to_key_levels`). Both adapters are
+    mocked so the test proves the composition wiring, independent of
+    whether this specific fixture happens to form a real FVG or Order
+    Block organically."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(htf_path)
+    output_dir = tmp_path / "out"
+
+    fake_fvg_key_level = KeyLevel(kind="fvg", top=1.2000, bottom=1.1990, origin_index=0)
+    fake_ict_key_level = KeyLevel(kind="ict_order_block", top=1.2100, bottom=1.2090, origin_index=1)
+    real_tag_alignment = cli.tag_alignment
+
+    with (
+        mock.patch("cli.to_key_levels", return_value=[fake_fvg_key_level]) as fake_fvg_adapter,
+        mock.patch("cli.ict_order_block_to_key_levels", return_value=[fake_ict_key_level]) as fake_ict_adapter,
+        mock.patch("cli.tag_alignment", side_effect=real_tag_alignment) as tag_alignment_spy,
+    ):
+        exit_code = main(
+            [
+                "--csv", str(ltf_path), "--symbol", "EURUSD",
+                "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+                "--output-dir", str(output_dir),
+            ]
+        )
+
+    assert exit_code == 0
+    assert fake_fvg_adapter.call_count == 1
+    assert fake_ict_adapter.call_count == 1
+    htf_key_levels = tag_alignment_spy.call_args.kwargs["htf_key_levels"]
+    assert fake_fvg_key_level in htf_key_levels
+    assert fake_ict_key_level in htf_key_levels

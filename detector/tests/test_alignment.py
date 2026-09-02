@@ -1,4 +1,6 @@
+import ast
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from fixtures.synthetic import (
     key_level_confluence_pair_setup,
@@ -298,3 +300,22 @@ def test_minimal_pair_builder_confluent_and_non_confluent_twins_agree_with_expec
         signal_tag = _bearish_signal_tag(tags)
         assert signal_tag.aligned == "aligned"
         assert signal_tag.key_level == pair.expected_key_level
+
+
+def test_htf_ltf_imports_unchanged():
+    """REQ-63.3 regression guard: `alignment/htf_ltf.py` stays source-agnostic
+    -- it must keep importing `core.key_level` (the normalised, source-agnostic
+    type) and must NEVER import a source detector's own type (`primitives.
+    ict_order_block`, `core.structure_break`, `composite.mss`), which would
+    reintroduce the coupling SEAM-01 exists to avoid."""
+    module_path = Path(__file__).resolve().parent.parent / "alignment" / "htf_ltf.py"
+    tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
+
+    imported_modules = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+
+    assert "core.key_level" in imported_modules
+    assert "primitives.ict_order_block" not in imported_modules
+    assert "core.structure_break" not in imported_modules
+    assert "composite.mss" not in imported_modules

@@ -20,6 +20,7 @@ from composite.mss import detect_mss_events
 from entries.model1 import detect_model1_signals
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
+from primitives.ict_order_block import detect_ict_order_blocks
 from primitives.swing import detect_swings
 
 from backtest.levels import entry_price, stop_loss
@@ -29,6 +30,7 @@ _SWING_K = 1
 _FVG_K = 3
 _CRT_RANGE_K = 20
 _MSS_K = 1
+_ICT_ORDER_BLOCK_K = 1
 _MODEL1_K = 20
 _ALIGNMENT_LTF_PER_HTF = 4
 
@@ -162,6 +164,46 @@ def test_mss_detection_has_no_lookahead(series: OHLCSeries):
             full_event = full_by_key[key]
             assert truncated_event.index == full_event.index
             assert truncated_event.broken_swing == full_event.broken_swing
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_ict_order_block_detection_has_no_lookahead(series: OHLCSeries):
+    """ICTOrderBlock's k=1 bounds the pair's own identity — an Order Block
+    anchored at i is knowable only once candle i+1 exists in the prefix
+    (structurally identical in shape to swing's own no-lookahead property).
+    Invalidation status for an already-knowable block must be re-derivable
+    from any prefix that includes the invalidating candle, and must remain
+    open in any shorter prefix.
+    """
+    full_blocks = detect_ict_order_blocks(series)
+    full_by_key = {(b.candle_index, b.direction): b for b in full_blocks}
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_blocks = detect_ict_order_blocks(series.up_to(n))
+        settled_boundary = n - _ICT_ORDER_BLOCK_K - 1
+
+        settled_truncated = [b for b in truncated_blocks if b.candle_index <= settled_boundary]
+        settled_full_keys = {
+            key for key, block in full_by_key.items() if block.candle_index <= settled_boundary
+        }
+        assert {(b.candle_index, b.direction) for b in settled_truncated} == settled_full_keys
+
+        for block in settled_truncated:
+            full_block = full_by_key[(block.candle_index, block.direction)]
+            assert block.confirmation_index == full_block.confirmation_index
+            assert (block.top, block.bottom) == (full_block.top, full_block.bottom)
+
+            invalidated_within_prefix = (
+                full_block.invalidation_index is not None
+                and full_block.invalidation_index < n
+            )
+            if invalidated_within_prefix:
+                assert block.status == "invalidated"
+                assert block.invalidation_index == full_block.invalidation_index
+            else:
+                assert block.status == "open"
+                assert block.invalidation_index is None
 
 
 @given(series=ohlc_series(max_size=40))

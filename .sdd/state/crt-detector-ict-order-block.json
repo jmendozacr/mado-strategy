@@ -1,0 +1,13 @@
+{
+  "change": "crt-detector-ict-order-block",
+  "triage": "M",
+  "phase": "spec",
+  "spec_status": "needs-v3-daily-tier-pivot",
+  "slices": false,
+  "plan_verify": "none",
+  "verify_final": "none",
+  "arch_audit": "none",
+  "outcome": "none",
+  "updated_at": "2026-08-31T22:30:00Z",
+  "viz_url": "none"
+}

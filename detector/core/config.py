@@ -22,6 +22,11 @@ class MSSConfig:
 
 
 @dataclass(frozen=True)
+class ICTOrderBlockConfig:
+    pass  # base rule is fully structural — engulfment and touch-invalidation are hard geometric tests, no discretionary threshold
+
+
+@dataclass(frozen=True)
 class Model1Config:
     body_ratio_tiebreak: float = 0.6
     respect_rule_tolerance: float = 0
@@ -53,6 +58,7 @@ class DetectorConfig:
     fvg: FVGConfig = field(default_factory=FVGConfig)
     crt_range: CRTRangeConfig = field(default_factory=CRTRangeConfig)
     mss: MSSConfig = field(default_factory=MSSConfig)
+    ict_order_block: ICTOrderBlockConfig = field(default_factory=ICTOrderBlockConfig)
     model1: Model1Config = field(default_factory=Model1Config)
     kill_zone: KillZoneConfig = field(default_factory=KillZoneConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
