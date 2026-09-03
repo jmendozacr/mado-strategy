@@ -1,6 +1,10 @@
 # Proposal + Spec: ICT Order Block Detector
 
-> M light pipeline — merged propose+spec artefact. **Spec V2** (this file) — REQ-61..64 rewritten per user correction after S-000's real-data gate (obs #457-ish investigation trail below); REQ-65/66 carry forward unchanged. `proposal.md` still holds V1 for history; this file is now spec-authoritative. See "## Changes from V1" at the end of the Requirements section.
+> M light pipeline — merged propose+spec artefact. **Spec V4** (this file) — REQ-63 amended (NEW REQ-63.7): a Daily-sourced Order Block's invalidation MUST be checked candle-by-candle against the H4 series, not by translating a boundary computed from the Daily series' own (coarser) invalidation scan. Caught during `sdd-apply`'s real-data run when the user's own mental model ("quien mata ese OB de 1D debe ser una vela de 4h") surfaced a gap V3 missed. REQ-63/66 (V3) rewritten and REQ-67 added for the Daily-tier Key Level pivot; REQ-61/62/64/65 carry forward unchanged from V2. `proposal.md` still holds V1 for history; this file is now spec-authoritative. See "## Changes from V3" and "## Changes from V2" at the end of the Requirements section (V1 history: "## Changes from V1", further down).
+
+## Daily-tier pivot (V3 — supersedes V2's H4-only Key Level scope)
+
+V1 and V2 both computed Order Block Key Levels on the H4 series — a 2-tier scope (H4 Key Level ↔ H4 purge) confirmed WRONG against the user's own separate, previously-working tool (`crt-scanner_old/core/htf_confluence.py`), which crosses H4 CRT signals against DAILY-timeframe Key Levels — the real hierarchy is 3-tier: **Daily (Key Level) → H4 (CRT signal/purge) → M15 (execution)**. Full investigation trail: `openspec/changes/crt-detector-ict-order-block/NEXT-STEPS.md`, engram topic `sdd/crt-detector-ict-order-block/pause`. See "## Changes from V2" below for the full corrected REQ-63/66/67 text.
 
 ## Corrected detection rule (V2 — supersedes the Approach section below, which still describes V1's eliminated MSS/StructureBreak mechanism; a design V2 pass will replace it)
 
@@ -18,7 +22,10 @@ in_scope:
   - Registration as 2nd Key Level source: primitives/ict_order_block.py::to_key_levels, KeyLevel.kind widened to Literal["fvg", "ict_order_block"]
   - detections.csv trailing key_level_source column (8th column) — reopens signed main-spec REQ-24/REQ-41.3 and confluence-core's REQ-56.5
   - No-lookahead property test for the new detector (ADR-03 pattern)
-  - Real-data comparison run on the same H4/M15 pairing and same 3 instruments (EURUSDm, GBPUSDm, DXYm) as #1's S-000.9 gate, gating on ICTOrderBlock alone, producing ICTOrderBlock's own discrimination number
+  - Real-data comparison run on the same 3 instruments (EURUSDm, GBPUSDm, DXYm) as #1's S-000.9 gate, now WITH `--daily-csv` provided, gating on ICTOrderBlock alone, producing ICTOrderBlock's own Daily-tier discrimination number (REQ-66 V3)
+  - V3: Daily-tier Key Level detection — `detect_ict_order_blocks` runs against a NEW Daily series input, not H4 (REQ-63 V3)
+  - V3: new CLI input `--daily-csv`/`--daily-symbol`, optional pair mode mirroring the existing `--htf-csv`/`--htf-symbol` precedent (REQ-67)
+  - V3: `alignment/htf_ltf.py::_key_level_credit_map` tie-break flips from oldest-wins to most-recent-wins (REQ-63 V3) — this crosses into sub-change #1's original design ownership; landing here first is a user-confirmed sequencing call (see program `crt-detector-key-level-confluence`)
 out_of_scope:
   - crt-detector-breaker-block (sub-change #3)
   - Rejection Block, Swing as Key Level sources (deferred program-wide)
@@ -27,6 +34,7 @@ out_of_scope:
   - --types ict_order_block CLI flag — nothing to filter; there is no such row type to include/exclude
   - Mandatory liquidity-sweep or FVG-coincidence validity filters (product decision, obs #464: base rule only)
   - Chart rendering polish, new config surface beyond ICTOrderBlockConfig
+  - V3: porting the Daily-tier pivot to FVG (sub-change #1, `crt-detector-key-level-confluence-core`) — stays paused; this change lands the 3-tier pattern as reference, #1 ports it later
 ```
 
 ## Approach
@@ -64,7 +72,7 @@ def detect_ict_order_blocks(
 def to_key_levels(blocks: list[ICTOrderBlock]) -> list[KeyLevel]: ...
 ```
 
-`cli.py` composes: `to_structure_breaks(detect_mss_events(series, config.mss, swings=swings))` → `detect_ict_order_blocks(...)` → `to_key_levels(...)`, concatenated with FVG's HTF key levels before feeding `tag_alignment`. **`alignment/htf_ltf.py` needs zero changes** — confirmed it already imports only `core.key_level` (REQ-53.4 in confluence-core's spec).
+`cli.py` composes: `to_structure_breaks(detect_mss_events(series, config.mss, swings=swings))` → `detect_ict_order_blocks(...)` → `to_key_levels(...)`, concatenated with FVG's HTF key levels before feeding `tag_alignment`. (V2 shape — see "## Daily-tier pivot" above and "## Changes from V2" below: V3 feeds `detect_ict_order_blocks` the Daily series instead of HTF, and `alignment/htf_ltf.py`'s `_key_level_credit_map` gets a tie-break comparator change — its IMPORTS still need zero changes, REQ-63.3, but it is no longer byte-identical to its pre-this-change state.)
 
 **Config**: `ICTOrderBlockConfig` is an empty frozen dataclass, mirroring `SwingConfig`'s existing precedent. The base rule (per product decision, obs #464) has no discretionary threshold — the backward scan is bounded by `StructureBreak.broken_swing_index` itself (a structural bound, not a magic number), and invalidation is a deterministic close-through-zone check. This satisfies REQ-25.1's config-completeness scan without inventing an unused parameter.
 
@@ -76,20 +84,22 @@ def to_key_levels(blocks: list[ICTOrderBlock]) -> list[KeyLevel]: ...
 
 1. **Branch dependency**: building on an uncommitted, paused sub-change's branch — if that branch is rebased or abandoned before #1 resumes, this change's foundation moves under it.
 2. **Base-rule-only choice may reproduce weak discrimination** — addressed explicitly by the go/no-go item in Success Criteria, not silently absorbed.
-3. **Backward-scan bound is a design-time detail** (explore open question #2) — `broken_swing_index` is used as the natural bound; if design deviates, it should be justified against ICT convention, since it directly affects which candle gets flagged and thus the comparison number's validity.
+3. **V3: `alignment/htf_ltf.py` ownership crosses into sub-change #1's original design territory** — the tie-break comparator this change modifies (REQ-63.4) was designed by #1 (FVG, confluence-core), not this change. Landing it here first is a user-confirmed sequencing call; #1 must reconcile its own design/spec text against this change's edit when it resumes, not silently re-diverge.
 4. **Second CSV schema reopening** (after #1's REQ-45 in the same program) — the pattern is now proven twice; the column itself (`key_level_source`, a source `kind` string) generalizes cleanly to sub-change #3's future Breaker Block source with no further schema change expected.
 5. **Cross-change spec drift**: confluence-core's own signed spec (REQ-56.5, "Explicitly Out of Scope" table) states the 7-column header "stays signed" and is "NOT touched" — that statement becomes stale once this change ships. Reconciling confluence-core's own spec text is confluence-core's job when it resumes/archives, not this change's — flagged here so it isn't lost.
+6. **V3: Daily data availability — VERIFIED, not a live risk.** `pairs/D1/*.csv` confirmed present for all 3 real-data instruments: `EURUSDm_Daily_202001020000_202608190000.csv`, `GBPUSDm_Daily_202001020000_202608190000.csv`, `DXYm_Daily_202110270000_202608190000.csv` — sufficient history depth for REQ-66's run.
 
 ## Rollback Plan
 
-Purely additive except two 1–3 line touches (`core/key_level.py`'s `Literal` widening, `viz/table.py`'s `_HEADER`). No persisted state, no migrations — `detections.csv`/`trades.csv` are regenerated artefacts. Revert = `git revert` the change's commit(s); no backfill required.
+Purely additive except: `core/key_level.py`'s `Literal` widening, `viz/table.py`'s `_HEADER`, and (V3) `cli.py`'s new `--daily-csv`/`--daily-symbol` flags + `alignment/htf_ltf.py`'s tie-break comparator. No persisted state, no migrations — `detections.csv`/`trades.csv` are regenerated artefacts. Revert = `git revert` the change's commit(s); no backfill required.
 
 ## Success Criteria
 
-- All REQ-61..66 scenarios pass; no-lookahead property test green; `uv run lint-imports` passes (layering respected).
-- Real-data run completes on EURUSDm/GBPUSDm/DXYm (H4/M15), producing ICTOrderBlock's own discrimination percentage, disclosed alongside FVG's 1.5–3.0% (obs #449) — this number is descriptive evidence, not a pass/fail gate on this change.
-- **Explicit go/no-go note (not a REQ)**: if ICTOrderBlock's discrimination is ALSO in the 1–3% range, this is signal about the confluence-gate CONCEPT itself, not just FVG — escalate to the user before automatically proceeding to `crt-detector-breaker-block` (#3), per triage's PM flag.
+- All REQ-61..67 scenarios pass; no-lookahead property test green; `uv run lint-imports` passes (layering respected).
+- Real-data run completes on EURUSDm/GBPUSDm/DXYm (H4/M15/Daily, `--daily-csv` provided), producing ICTOrderBlock's own Daily-tier discrimination percentage, disclosed alongside FVG's 1.5–3.0% (obs #449) and V2's now-superseded H4-tier number (98.0–98.4%) — this number is descriptive evidence, not a pass/fail gate on this change.
+- **Explicit go/no-go note (not a REQ)**: if ICTOrderBlock's Daily-tier discrimination is ALSO in the 1–3% range, this is signal about the confluence-gate CONCEPT itself, not just FVG — escalate to the user before automatically proceeding to `crt-detector-breaker-block` (#3), per triage's PM flag.
 - REQ-24/REQ-41.3 (main spec) and REQ-56.5 (confluence-core spec) amendments applied consistently; `detections.csv` header verified 8/9 columns as specified.
+- `--daily-csv`/`--daily-symbol` pairing validated (REQ-67), mirroring `--htf-csv`/`--htf-symbol`'s existing behaviour exactly.
 
 ## Requirements
 
@@ -114,11 +124,22 @@ The system MUST mark an `ICTOrderBlock` `invalidated` at the FIRST candle strict
 - **REQ-62.4** (edge, confirmation candle excluded from the scan): GIVEN the confirmation candle `i+1` — which by definition already overlaps the zone, since full engulfment implies `i+1.high >= i.high` and `i+1.low <= i.low` — WHEN evaluated, THEN it is NEVER treated as the invalidating candle; the invalidation scan begins strictly at `i+2`, never at `i+1`.
 - **REQ-62.5** (edge, never invalidated): GIVEN no candle from `i+2` onward ever overlaps the zone, WHEN evaluated at series end, THEN `status="open"`, `invalidation_index=None`.
 
-### REQ-63: Registration as a Key Level source — V2 (origin_index updated)
-`core.key_level.KeyLevel.kind` MUST widen to `Literal["fvg", "ict_order_block"]`. The system MUST expose `to_key_levels(blocks: list[ICTOrderBlock]) -> list[KeyLevel]` producing, for every `ICTOrderBlock`, a `KeyLevel` with `kind="ict_order_block"`, `top`/`bottom` = the Order Block's own zone, `origin_index` = the CONFIRMATION candle's index (`i+1`) — an Order Block is not knowable as real until the very next candle's engulfing-and-close confirms it, always exactly one candle after the anchor — and `expiry_index` = `invalidation_index` when invalidated, absent when open. `alignment/htf_ltf.py` MUST require ZERO changes.
-- **REQ-63.1** (happy, origin is the confirmation candle, not the anchor): GIVEN a bullish `ICTOrderBlock` anchored at candle `i=13`, confirmed at candle `i+1=14`, WHEN presented as a `KeyLevel`, THEN `origin_index=14`, not `13`.
-- **REQ-63.2** (alternate, expiry): GIVEN an `ICTOrderBlock` invalidated at index `40`, WHEN presented as a `KeyLevel`, THEN `expiry_index=40`.
+### REQ-63: Registration as a Key Level source — V4 (Daily-tier source, H4-native invalidation, most-recent tie-break)
+`core.key_level.KeyLevel.kind` MUST widen to `Literal["fvg", "ict_order_block"]`. The system MUST expose `to_key_levels(blocks: list[ICTOrderBlock]) -> list[KeyLevel]` producing, for every `ICTOrderBlock`, a `KeyLevel` with `kind="ict_order_block"`, `top`/`bottom` = the Order Block's own zone, `origin_index` = the CONFIRMATION candle's index (`i+1`) — an Order Block is not knowable as real until the very next candle's engulfing-and-close confirms it, always exactly one candle after the anchor — and `expiry_index` = `invalidation_index` when invalidated, absent when open. This raw output stays Daily-indexed and is NOT the final word on expiry for the Daily-tier flow — see REQ-63.7 (V4).
+
+**Timeframe (V3)**: `detect_ict_order_blocks` MUST run against the Daily series (REQ-67's input), not the HTF (H4) series — Order Block Key Levels are Daily-tier, matching the 3-tier hierarchy (Daily Key Level → H4 CRT signal/purge → M15 execution). `origin_index` is an index into the Daily series, reindexed to H4-index-space per the existing rule (confirming day's CLOSE, unchanged by V4). (Previously: computed from the HTF/H4 series.)
+
+**Invalidation granularity (V4, NEW — corrects V3)**: for a Daily-sourced Order Block, whether and when it becomes invalidated MUST be determined by scanning the H4 series candle-by-candle — starting at the reindexed `origin_index` (inclusive) — for the first H4 candle whose range overlaps the zone `[bottom, top]`, NOT by asking whether some Daily candle's full-day range touched it. The Order Block's own Daily-native `invalidation_index`/`status` (from `detect_ict_order_blocks`'s generic same-series scan) are NOT used for this — they are computed but discarded for the Daily-tier flow, replaced entirely by the H4-native scan's result. Rationale: a Daily candle's high/low aggregates 24h of movement into one blunt yes/no touch test, collapsing a Key Level's real survival time to at most ~1 day regardless of which of that day's ~6 H4 candles (if any) actually touched it first; checking H4 candle-by-candle gives the Key Level's true, finer-grained lifetime — matching how the level is actually consumed (against H4 purges) in the first place.
+
+**Confluence matching (V3, MODIFIED)**: `alignment/htf_ltf.py`'s `_key_level_credit_map` MUST select the MOST RECENT qualifying Key Level (by `origin_index`) among candidates for a given purge, not the oldest. (Previously: oldest, `min(qualifying, key=lambda level: level.origin_index)`.) All other matching semantics are unchanged and hereby reconfirmed: a Daily Key Level qualifies for an H4 purge when the purge candle's own wick extreme (`_purge_wick_extremes`, unchanged) falls inside the Key Level's zone `[bottom, top]` inclusive of both edges, with NO tolerance — exact overlap only. A comparable external tool's 10% tolerance was explicitly considered and rejected for this change.
+
+- **REQ-63.1** (happy, origin is the confirmation candle, not the anchor): GIVEN a bullish `ICTOrderBlock` anchored at Daily candle `i=13`, confirmed at candle `i+1=14`, WHEN presented as a `KeyLevel`, THEN `origin_index=14`, not `13`.
+- **REQ-63.2** (alternate, expiry, V4 — supersedes V3's Daily-native reading): GIVEN a Daily-sourced Order Block whose zone is first touched by the H4 candle at H4 index `102` (not by asking which Daily candle touched it), WHEN the Key Level is credited, THEN `expiry_index=102`, an H4 index, derived from the H4-native scan (REQ-63.7).
 - **REQ-63.3** (structural, regression): GIVEN `alignment/htf_ltf.py`'s own import statements, WHEN inspected after this change, THEN they are UNCHANGED — it still imports only `core.key_level`.
+- **REQ-63.4** (NEW, most-recent tie-break): GIVEN two Daily Key Levels both qualify for the same H4 purge (both overlap the purge candle's wick extreme), WHEN credited, THEN the one with the GREATER `origin_index` (more recent) is selected, not the lesser.
+- **REQ-63.5** (NEW, Daily-tier source): GIVEN a Daily series is provided (REQ-67), WHEN Order Blocks are detected for Key Level registration, THEN they are computed from the Daily series' own candles — never from the H4 series.
+- **REQ-63.6** (NEW, exact overlap reconfirmed): GIVEN a purge candle's wick extreme lies outside a Daily Key Level's zone by any margin, however small, WHEN credited, THEN NO confluence is recorded for that Key Level — no tolerance is applied, regardless of how close the miss.
+- **REQ-63.7** (NEW, V4, H4-native invalidation scan): GIVEN a Daily-sourced Order Block confirmed on Daily candle `D`, reindexed to H4 origin index `X`, WHEN checking for invalidation, THEN the system scans H4 candles starting at index `X` (inclusive) and marks the Order Block invalidated at the FIRST H4 candle whose range overlaps `[bottom, top]` — never at a Daily candle, and never by translating the Daily-native `invalidation_index`. If no H4 candle ever overlaps, the Order Block has no `expiry_index` (open indefinitely, same as an un-invalidated H4-native Order Block).
 
 ### REQ-64: No-lookahead (ICT Order Block) — V2 (simplified to fixed k=1)
 `detect_ict_order_blocks(series.up_to(n))` MUST match the full-series output for every `ICTOrderBlock` whose confirmation candle (`i+1`) has index `< n` — a fixed `k=1` boundary-equality property (an Order Block anchored at `i` is knowable only once candle `i+1` exists in the prefix), the same standard fixed-K test already used by `swing`/`fvg`'s own no-lookahead properties. Invalidation status for an already-knowable Order Block MUST be re-derivable from any prefix that includes the invalidating candle, and MUST remain `open` in any shorter prefix.
@@ -141,11 +162,38 @@ Destructive-sync reopening, same style as confluence-core's own REQ-45 reopening
 **Confluence-core's REQ-56.5** ("GIVEN a run WITHOUT `--backtest`, THEN `detections.csv`'s header is byte-identical to the 7-column header of REQ-24/REQ-41.3") likewise needs its "7-column" wording bumped to 8 once confluence-core resumes — that edit belongs to confluence-core's own spec file, not this one; flagged here (Risk #5) so it is not lost. Confluence-core's "Explicitly Out of Scope" table row ("Key Level source-attribution column ... Deferred to sub-change #2") is fulfilled by this REQ.
 - **REQ-65.1** (edge, contract): GIVEN a run WITH `--backtest`, WHEN `detections.csv` is inspected, THEN its header is exactly 9 columns: the 8 above plus trailing `signal_id`.
 
-### REQ-66: ICTOrderBlock's own discrimination number (real-data comparison)
-The system's real-data validation MUST run on the SAME H4/M15 pairing and SAME 3 instruments (EURUSDm, GBPUSDm, DXYm) as sub-change #1's S-000.9 gate, gating confluence SOLELY on ICTOrderBlock-sourced Key Levels (FVG Key Levels excluded from this run, to isolate the number), and the run's evidence MUST record, per instrument: the count of `aligned`, non-`fvg_fill` Model-1 signals; how many were credited an ICTOrderBlock Key Level; how many were not; the resulting `excluded_no_key_level` count; and `trades_opened`. This produces a comparison figure against FVG's already-measured 1.5–3.0% (obs #449). This REQ does NOT gate pass/fail on any specific threshold — the number itself is the deliverable (explicitly NOT mirroring #1's REQ-60.2 pattern).
-- **REQ-66.1** (happy): GIVEN the real EURUSDm H4/M15 pair with `--backtest`, WHEN run gating on ICTOrderBlock alone, THEN the evidence records all counts above.
+### REQ-66: ICTOrderBlock's own discrimination number (real-data comparison) — V4 (Daily-tier, H4-native invalidation)
+The system's real-data validation MUST run on the SAME 3 instruments (EURUSDm, GBPUSDm, DXYm) as sub-change #1's S-000.9 gate, WITH `--daily-csv`/`--daily-symbol` provided (REQ-67), gating confluence SOLELY on ICTOrderBlock-sourced Key Levels now detected on the Daily series with H4-native invalidation (REQ-63.7) (FVG Key Levels excluded from this run, to isolate the number), and the run's evidence MUST record, per instrument: the count of `aligned`, non-`fvg_fill` Model-1 signals; how many were credited an ICTOrderBlock Key Level; how many were not; the resulting `excluded_no_key_level` count; and `trades_opened`. (Previously, V3: Daily-native invalidation, measured 99.85–99.95% exclusion — INVALIDATED by the REQ-63.7 correction, not a comparison baseline; V2: ICTOrderBlock on the H4 series, no `--daily-csv`.) This produces a comparison figure against FVG's already-measured 1.5–3.0% (obs #449) AND against V2's own H4-tier ICTOrderBlock number (98.0–98.4%, `evidence/real-data-h4-m15.md`) — kept for the record, the corrected Daily-tier (V4) one is the one that matters going forward. This REQ does NOT gate pass/fail on any specific threshold — the number itself is the deliverable.
+- **REQ-66.1** (happy): GIVEN the real EURUSDm H4/M15/Daily triple with `--backtest`, WHEN run gating on ICTOrderBlock alone, THEN the evidence records all counts above.
 - **REQ-66.2** (edge, no threshold gate): GIVEN any resulting discrimination percentage, WHEN evidence is recorded, THEN the run does NOT fail or halt based on that percentage's value alone.
 - **REQ-66.3** (edge, full coverage): GIVEN all 3 instruments run, WHEN evidence is compiled, THEN a complete count set exists for each of EURUSDm, GBPUSDm, and DXYm — not a subset.
+
+### REQ-67 (NEW): Daily series CLI input
+The system MUST accept an optional Daily-timeframe series input via `--daily-csv`/`--daily-symbol`, mirroring the existing optional `--htf-csv`/`--htf-symbol` pair-mode precedent (`cli.py` lines 56-57, 87-89): both flags MUST be provided together (error if only one is given), and omitting both is valid — the run proceeds without Daily-tier ICTOrderBlock Key Levels rather than failing.
+- **REQ-67.1** (happy): GIVEN `--daily-csv` and `--daily-symbol` are both provided, WHEN the detector runs, THEN Order Block Key Levels are computed from the Daily series per REQ-63.
+- **REQ-67.2** (edge, omitted): GIVEN both `--daily-csv` and `--daily-symbol` are omitted, WHEN the detector runs, THEN no ICTOrderBlock Key Levels are registered (FVG-only confluence, as before V3) and the run does NOT fail.
+- **REQ-67.3** (edge, partial pair rejected): GIVEN only ONE of `--daily-csv`/`--daily-symbol` is provided, WHEN the CLI parses arguments, THEN it exits with an error before any detection runs — mirroring `--htf-csv`/`--htf-symbol`'s existing validation.
+
+## Changes from V3
+
+1. **REQ-63.7 added (H4-native invalidation scan)**: the single biggest correction of this pass. V3 computed a Daily-sourced Order Block's expiry by running `detect_ict_order_blocks`'s OWN generic invalidation scan on the Daily series (asking "did SOME Daily candle's full-day range touch the zone"), then translating that Daily-space boundary into an H4 index via `_ceiling_htf_index`. That collapses the Key Level's real survival time to at most ~1 day, regardless of which specific H4 candle within that day actually touched it — a full day's range is a blunt, coarse touch test. V4 instead scans H4 candles one-by-one starting at the reindexed origin index, and marks invalidation at the first H4 candle that actually overlaps the zone — the granularity the user's own mental model expected from the start ("quien mata ese OB de 1D debe ser una vela de 4h").
+2. **REQ-63.2 rewritten**: `expiry_index` is now explicitly an H4 index derived from the H4-native scan, not a translated Daily-native one.
+3. **`detect_ict_order_blocks`'s own Daily-native `invalidation_index`/`status` output is computed but discarded** for the Daily-tier confluence flow — it's still correct and used as-is for the (unrelated) H4-tier fallback path (REQ-67.2, `--daily-csv` omitted), where the function's own same-series scan IS the right one.
+4. **REQ-66 rescoped again**: V3's real-data run (99.85–99.95% exclusion) is INVALIDATED by this correction, not a comparison baseline — the run must be repeated under REQ-63.7's corrected mechanism before any number is treated as evidence.
+5. **Caught how**: not by design review — by the user restating their own mental model of the mechanism mid-conversation, after seeing V3's real-data result and a diagram of it. A reminder that "the code does X and X matches the written REQ" does not by itself prove X was the right thing to build.
+
+## Changes from V2
+
+1. **Timeframe pivot (user correction #3)**: Order Block Key Level detection moves from H4 to Daily — confirmed against `crt-scanner_old/core/htf_confluence.py`'s working 3-tier hierarchy (Daily Key Level → H4 CRT signal/purge → M15 execution). V1 and V2 both scoped this 2-tier (H4↔H4), confirmed wrong SCOPE, not just a wrong detection rule.
+2. **REQ-63 substantially rewritten**: adds the Daily-series-source requirement and the `_key_level_credit_map` tie-break flip (oldest→most-recent). `to_key_levels`'s own mapping logic (`origin_index`=confirmation candle, `expiry_index`=invalidation_index) is UNCHANGED — only which series' indices those numbers refer to changes.
+3. **REQ-63.3's "zero changes to alignment/htf_ltf.py" claim narrowed**: imports genuinely stay unchanged (still true, kept as REQ-63.3 verbatim), but the file is no longer byte-identical to its pre-this-change state — the tie-break comparator changes (new REQ-63.4).
+4. **`_purge_wick_extremes`-based matching reconfirmed, NOT changed**: 3 rounds of user clarification confirmed the EXISTING wick-of-purge-candle mechanism is correct and needs no redesign — only its Key Level INPUT source changes from H4 to Daily. This was the change initially suspected to be needed and turned out not to be (new REQ-63.6 locks in "no tolerance" against future drift toward a tempting-but-rejected 10%-tolerance alternative seen in a comparable external tool, `htf_confluence.py`).
+5. **REQ-66 rescoped to Daily-tier**: the real-data comparison run now requires `--daily-csv` and measures ICTOrderBlock's Daily-tier discrimination number, distinct from V2's now-superseded H4-tier number (98.0–98.4%, kept in the record for comparison, not as the design figure going forward).
+6. **REQ-67 added**: new optional `--daily-csv`/`--daily-symbol` CLI input pair, following the existing `--htf-csv`/`--htf-symbol` precedent exactly (paired validation, optional, graceful degradation when omitted).
+7. **Sequencing decision recorded**: this change (program sub-change #2) lands the 3-tier pattern FIRST as reference implementation; sub-change #1 (FVG, `crt-detector-key-level-confluence-core`) stays paused and ports the pattern later — not addressed by this spec.
+8. **REQ-61/62/64/65 carry forward from V2 with NO changes** — none of them reference timeframe or Key Level source; the detection rule, invalidation, no-lookahead property, and CSV column plumbing are timeframe-agnostic.
+
+**Not addressed by this rewrite (flagged for design V3)**: `design.md` still describes V2's H4-only wiring — stale, will be replaced by `sdd-design` V3. In particular, its File Changes Table needs `cli.py` (Daily series wiring + new flags), `alignment/htf_ltf.py` (tie-break, previously listed as "ZERO CHANGE"), and a Daily CSV loading path added.
 
 ## Changes from V1
 

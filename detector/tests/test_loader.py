@@ -35,6 +35,30 @@ def test_loads_valid_mt5_csv_with_ascending_timestamps_and_instrument(tmp_path):
     assert series.candles[0].close == 1.1005
 
 
+def test_loads_daily_csv_with_no_time_column_defaulting_to_midnight(tmp_path):
+    """V3/REQ-67: MT5's Daily (D1) export omits <TIME> entirely (no
+    intraday time on a daily bar) — a real, previously-untested export
+    shape, discovered running the real Daily data for the first time.
+    <DATE> alone must parse, defaulting the time-of-day to midnight."""
+    csv_path = tmp_path / "eurusd_daily.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "<DATE>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>",
+                "2020.01.02\t1.12179\t1.12241\t1.11632\t1.11704\t19945\t0\t10",
+                "2020.01.03\t1.11704\t1.11850\t1.11600\t1.11800\t18000\t0\t10",
+            ]
+        )
+    )
+
+    series = load_mt5_csv(str(csv_path), symbol="EURUSD")
+
+    assert len(series.candles) == 2
+    assert series.candles[0].timestamp == datetime(2020, 1, 2, 0, 0, 0)
+    assert series.candles[1].timestamp == datetime(2020, 1, 3, 0, 0, 0)
+    assert series.candles[0].open == 1.12179
+
+
 def test_rejects_duplicate_timestamps(tmp_path):
     csv_path = tmp_path / "eurusd.csv"
     csv_path.write_text(

@@ -208,6 +208,103 @@ def test_main_returns_1_for_mismatched_instrument_pair(tmp_path, capsys):
     assert "GBPUSD" in stderr
 
 
+def test_main_rejects_daily_csv_without_daily_symbol(tmp_path, capsys):
+    """REQ-67.3: --daily-csv and --daily-symbol must be provided together,
+    mirroring --htf-csv/--htf-symbol's existing validation."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    daily_path = tmp_path / "eurusd_d.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(htf_path)
+    _write_daily_csv(daily_path)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            "--csv", str(ltf_path), "--symbol", "EURUSD",
+            "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+            "--daily-csv", str(daily_path),
+            "--output-dir", str(output_dir),
+        ]
+    )
+
+    assert exit_code == 1
+    assert "--daily-symbol" in capsys.readouterr().err
+
+
+def test_main_rejects_daily_csv_without_htf_csv(tmp_path, capsys):
+    """Design executor note: --daily-csv without --htf-csv is rejected
+    explicitly, mirroring --backtest's existing 'requires --htf-csv/
+    --htf-symbol' pattern — Order Block confluence has no H4 purge to
+    credit against without HTF present."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    daily_path = tmp_path / "eurusd_d.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(daily_path)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            "--csv", str(ltf_path), "--symbol", "EURUSD",
+            "--daily-csv", str(daily_path), "--daily-symbol", "EURUSD",
+            "--output-dir", str(output_dir),
+        ]
+    )
+
+    assert exit_code == 1
+    assert "--htf-csv" in capsys.readouterr().err
+
+
+def test_main_returns_1_for_mismatched_daily_instrument(tmp_path, capsys):
+    """ADR-F: --daily-symbol must match --symbol (mirrors load_pair's own
+    instrument-match check), naming both in the error."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    daily_path = tmp_path / "gbpusd_d.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(htf_path)
+    _write_daily_csv(daily_path)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            "--csv", str(ltf_path), "--symbol", "EURUSD",
+            "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+            "--daily-csv", str(daily_path), "--daily-symbol", "GBPUSD",
+            "--output-dir", str(output_dir),
+        ]
+    )
+
+    stderr = capsys.readouterr().err
+    assert exit_code == 1
+    assert "EURUSD" in stderr
+    assert "GBPUSD" in stderr
+
+
+def test_main_produces_overlay_png_for_valid_daily_csv(tmp_path):
+    """REQ-67.1: --daily-csv/--daily-symbol accepted alongside --htf-csv,
+    run still succeeds end-to-end."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    daily_path = tmp_path / "eurusd_d.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(htf_path)
+    _write_daily_csv(daily_path)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            "--csv", str(ltf_path), "--symbol", "EURUSD",
+            "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+            "--daily-csv", str(daily_path), "--daily-symbol", "EURUSD",
+            "--output-dir", str(output_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    assert (output_dir / "overlay.png").exists()
+
+
 def test_main_returns_1_and_prints_error_for_missing_csv_file(tmp_path, capsys):
     """A nonexistent --csv path must fail via the CLI's normal clean
     `error: ...` stderr contract, not an uncaught FileNotFoundError
@@ -335,7 +432,7 @@ def test_detect_all_no_longer_takes_a_types_parameter_and_never_nulls_aligned_si
         instrument="EURUSD", timeframe="D",
     )
 
-    detections = cli._detect_all(ltf_series, htf_series, DetectorConfig())
+    detections = cli._detect_all(ltf_series, htf_series, None, DetectorConfig())
 
     assert detections.aligned_signals is not None
     assert detections.model1_signals is not None

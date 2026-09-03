@@ -8,6 +8,7 @@ from fixtures.synthetic import CandleSeriesBuilder
 
 from alignment.htf_ltf import AlignedSignal
 from composite.mss import MSSEvent
+from core.key_level import KeyLevel
 from core.results import DetectionStatus
 from entries.model1 import Model1Signal
 from primitives.crt_range import CRTRange
@@ -15,7 +16,7 @@ from primitives.fvg import FVG
 from primitives.swing import SwingPoint
 from viz.table import write_detections_csv
 
-_HEADER = ["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned"]
+_HEADER = ["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source"]
 
 
 def _series():
@@ -148,6 +149,66 @@ def test_aligned_signals_populate_aligned_column_and_replace_plain_model1(tmp_pa
     assert rows[1][6] == "aligned"
 
 
+def test_ict_order_block_credited_signal_writes_kind_in_key_level_source(tmp_path):
+    """REQ-24.2: an aligned Model-1 signal credited to an ICTOrderBlock-
+    sourced Key Level writes "ict_order_block" in key_level_source."""
+    aligned_signals = [
+        AlignedSignal(
+            ltf_signal=Model1Signal(
+                anchor_index=1, direction="bullish", purge_target=0.9990,
+                confirmation_type="purge_engulf", entry_type="wick", entry_price=0.9995,
+                retest_index=2, status=DetectionStatus.PENDING,
+                confirmation_index=2, origin_index=0,
+            ),
+            htf_context=None,
+            aligned="aligned",
+            key_level=KeyLevel(kind="ict_order_block", top=1.01, bottom=1.00, origin_index=0),
+        )
+    ]
+    output_path = tmp_path / "detections.csv"
+
+    write_detections_csv(_series(), str(output_path), aligned_signals=aligned_signals)
+
+    rows = _read(output_path)
+    assert rows[1][7] == "ict_order_block"
+
+
+def test_non_model1_rows_leave_key_level_source_empty(tmp_path):
+    """REQ-24.3: non-Model-1 rows (swing/fvg/crt_range/mss) always leave
+    key_level_source empty — the concept doesn't apply to them."""
+    swings = [SwingPoint(index=1, price=1.0020, kind="high")]
+    output_path = tmp_path / "detections.csv"
+
+    write_detections_csv(_series(), str(output_path), swings=swings)
+
+    rows = _read(output_path)
+    assert rows[1][1] == "swing"
+    assert rows[1][7] == ""
+
+
+def test_aligned_signal_with_no_key_level_leaves_key_level_source_empty(tmp_path):
+    """REQ-24.3 (edge): an aligned Model-1 signal credited to no Key Level
+    at all also leaves key_level_source empty."""
+    aligned_signals = [
+        AlignedSignal(
+            ltf_signal=Model1Signal(
+                anchor_index=1, direction="bullish", purge_target=0.9990,
+                confirmation_type="purge_engulf", entry_type="wick", entry_price=0.9995,
+                retest_index=2, status=DetectionStatus.PENDING,
+                confirmation_index=2, origin_index=0,
+            ),
+            htf_context=None,
+            aligned="aligned",
+        )
+    ]
+    output_path = tmp_path / "detections.csv"
+
+    write_detections_csv(_series(), str(output_path), aligned_signals=aligned_signals)
+
+    rows = _read(output_path)
+    assert rows[1][7] == ""
+
+
 def test_include_signal_id_appends_trailing_column_to_header(tmp_path):
     """REQ-41/45: include_signal_id=True (the --backtest run) appends a
     trailing 8th signal_id column; the default False stays at 7 columns,
@@ -176,7 +237,7 @@ def test_model1_row_carries_signal_id_only_when_include_signal_id_is_true(tmp_pa
 
     rows = _read(output_path)
     assert rows[0] == _HEADER + ["signal_id"]
-    assert rows[1][7] == "0-1-bullish-purge_engulf-wick"
+    assert rows[1][8] == "0-1-bullish-purge_engulf-wick"
 
 
 def test_non_model1_rows_write_empty_signal_id_when_include_signal_id_is_true(tmp_path):
@@ -189,7 +250,7 @@ def test_non_model1_rows_write_empty_signal_id_when_include_signal_id_is_true(tm
 
     rows = _read(output_path)
     assert rows[1][1] == "swing"
-    assert rows[1][7] == ""
+    assert rows[1][8] == ""
 
 
 def test_two_signals_sharing_origin_index_but_different_confirmation_type_never_collide(tmp_path):
@@ -220,7 +281,7 @@ def test_two_signals_sharing_origin_index_but_different_confirmation_type_never_
     write_detections_csv(_series(), str(output_path), aligned_signals=aligned_signals, include_signal_id=True)
 
     rows = _read(output_path)
-    signal_ids = {row[7] for row in rows[1:]}
+    signal_ids = {row[8] for row in rows[1:]}
     assert len(signal_ids) == 2
 
 

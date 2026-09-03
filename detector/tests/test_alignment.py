@@ -235,10 +235,12 @@ def test_low_side_breach_credited_when_extreme_inside_unexpired_zone():
     assert signal_tag.key_level == key_level
 
 
-def test_both_sides_breached_each_evaluated_independently_lower_origin_wins():
-    """REQ-55.6: a purge candle breaching BOTH sides has each extreme
-    evaluated independently against its own matching Key Level; the level
-    with the LOWER origin_index is recorded across both extremes."""
+def test_both_sides_breached_each_evaluated_independently_higher_origin_wins():
+    """REQ-63.4 (V3, was REQ-55.6/lower-wins under V2): a purge candle
+    breaching BOTH sides has each extreme evaluated independently against
+    its own matching Key Level; the level with the HIGHER origin_index
+    (most recent) is recorded across both extremes — flipped from V2's
+    oldest-wins so the most recent Daily Key Level takes priority."""
     htf_specs = [
         (1.1000, 1.1010, 1.0995, 1.1005),  # 0 — filler
         (1.1005, 1.1010, 1.0995, 1.1002),  # 1 — filler
@@ -257,7 +259,141 @@ def test_both_sides_breached_each_evaluated_independently_lower_origin_wins():
 
     signal_tag = _bearish_signal_tag(tags)
     assert signal_tag.aligned == "aligned"
-    assert signal_tag.key_level == low_side_level  # lower origin_index (3 < 10) wins
+    assert signal_tag.key_level == high_side_level  # higher origin_index (2 > 0) wins
+
+
+_DAILY_HTF_SPECS = [
+    (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+    (1.1010, 1.1035, 1.1000, 1.1005),  # 1 — purges High(1.1035), closes back inside
+    (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — closes below Low -> true_break
+]
+_DAILY_ZONE = {"top": 1.1050, "bottom": 1.1030}  # contains the purge wick extreme, 1.1035
+
+
+def _daily_htf_series():
+    """H4 series purging at index 1, 09:00-13:00-17:00 on 2026-01-01 —
+    same shape as test_high_side_breach_credited_when_extreme_inside_unexpired_zone,
+    timestamps chosen so a Daily boundary of 2026-01-01 00:00 lands AT/BEFORE
+    candle 0 and a Daily boundary of 2026-01-02 00:00 lands AFTER candle 2."""
+    return _htf_series(
+        candle_specs=_DAILY_HTF_SPECS, start=datetime(2026, 1, 1, 9, 0, 0),
+        step=timedelta(hours=4), timeframe="4H",
+    )
+
+
+def _daily_series():
+    """2 Daily candles: confirmation on index 0 (2025-12-31) closes at
+    2026-01-01 00:00 (<= the HTF series' own first candle); confirmation on
+    index 1 (2026-01-01) closes at 2026-01-02 00:00 (after the HTF series'
+    last candle, 17:00 on 2026-01-01) — i.e. index 1 is "not yet knowable"
+    against the HTF purge below."""
+    return _htf_series(
+        candle_specs=[(1.1, 1.1, 1.1, 1.1), (1.1, 1.1, 1.1, 1.1)],
+        start=datetime(2025, 12, 31, 0, 0, 0), step=timedelta(days=1), timeframe="D",
+    )
+
+
+def test_daily_key_level_confirmed_before_purge_boundary_is_credited():
+    """REQ-63.5: a Daily-sourced KeyLevel confirmed on Daily candle 0 (whose
+    close boundary lands at/before the HTF purge candle) IS reindexed into
+    H4-index-space and credited, exactly like an H4-native KeyLevel would
+    be at the same effective time."""
+    htf_series = _daily_htf_series()
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    daily_key_level = KeyLevel(kind="ict_order_block", origin_index=0, **_DAILY_ZONE)
+
+    tags = tag_alignment(
+        htf_series, ltf_series, daily_series=_daily_series(), daily_key_levels=[daily_key_level],
+    )
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level is not None
+    assert signal_tag.key_level.kind == "ict_order_block"
+
+
+def test_daily_key_level_not_yet_knowable_at_purge_time_is_not_credited():
+    """REQ-63.5 (edge): a Daily-sourced KeyLevel confirmed on Daily candle 1
+    (whose close boundary lands AFTER every HTF candle in this fixture) is
+    reindexed to an out-of-range H4 index and is NEVER credited — proves
+    the reindex is not a no-op / always-match."""
+    htf_series = _daily_htf_series()
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    daily_key_level = KeyLevel(kind="ict_order_block", origin_index=1, **_DAILY_ZONE)
+
+    tags = tag_alignment(
+        htf_series, ltf_series, daily_series=_daily_series(), daily_key_levels=[daily_key_level],
+    )
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level is None
+
+
+_EARLY_TOUCH_HTF_SPECS = [
+    (1.1010, 1.1035, 1.1000, 1.1005),  # 0 — EARLY TOUCH: high=1.1035 lands inside _DAILY_ZONE
+    (1.1000, 1.1020, 1.0980, 1.1010),  # 1 — range establish H=1.1020 L=1.0980
+    (1.1005, 1.1015, 1.0990, 1.1000),  # 2 — trapped
+    (1.1010, 1.1035, 1.1000, 1.1005),  # 3 — purges High(1.1035) -- ALSO lands inside the zone
+    (1.1000, 1.1005, 1.0950, 1.0960),  # 4 — closes below Low -> true_break
+]
+
+
+def _early_touch_htf_series():
+    """5 H4 candles, 09:00/13:00/17:00/21:00/next-day-01:00 on 2026-01-01 —
+    candle 0 (the reindexed origin) touches the zone immediately; the real
+    CRT purge only happens later, at candle 3, which ALSO touches the zone
+    but must be excluded once expiry is set at candle 0."""
+    return _htf_series(
+        candle_specs=_EARLY_TOUCH_HTF_SPECS, start=datetime(2026, 1, 1, 9, 0, 0),
+        step=timedelta(hours=4), timeframe="4H",
+    )
+
+
+def test_daily_key_level_expiry_is_the_first_htf_candle_that_overlaps_the_zone():
+    """REQ-63.7 (V4): expiry_index for a Daily-sourced KeyLevel is NOT a
+    translated Daily-native boundary (V3's bug) — it's the first H4 candle,
+    scanning from the reindexed origin, whose OWN range overlaps the zone.
+    Here that's candle 0 itself (touches immediately) — so the level is
+    already expired by the time the real CRT purge happens at candle 3,
+    even though candle 3's wick would otherwise match the zone too."""
+    htf_series = _early_touch_htf_series()
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(hours=8), timeframe="5M")
+    daily_key_level = KeyLevel(kind="ict_order_block", origin_index=0, **_DAILY_ZONE)
+
+    tags = tag_alignment(
+        htf_series, ltf_series, daily_series=_daily_series(), daily_key_levels=[daily_key_level],
+    )
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level is None
+
+
+def test_wick_extreme_just_outside_zone_yields_no_confluence():
+    """REQ-63.6 (V3 reconfirmation, not a behaviour change): a purge wick
+    extreme that misses a Key Level's zone by any margin, however small,
+    yields no confluence — exact overlap only, no tolerance. Locks the
+    existing `level.bottom <= extreme <= level.top` check in as a
+    regression guard against the tempting-but-rejected 10%-tolerance
+    alternative (spec.md REQ-63, `htf_confluence.py` precedent)."""
+    htf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 1 — purges High(1.1035), closes back inside
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    # Zone top is 0.0001 below the purge wick extreme (1.1035) — a near-miss.
+    key_level = KeyLevel(kind="fvg", top=1.1034, bottom=1.1020, origin_index=0)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[key_level])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.aligned == "aligned"
+    assert signal_tag.key_level is None
 
 
 def test_direction_based_wick_selection_must_fail_this_scenario():

@@ -55,6 +55,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--symbol", required=True, help="Instrument identity, e.g. EURUSD (LTF in pair mode)")
     parser.add_argument("--htf-csv", help="Path to the HTF CSV — enables pair mode with --htf-symbol")
     parser.add_argument("--htf-symbol", help="HTF instrument identity — enables pair mode with --htf-csv")
+    parser.add_argument("--daily-csv", help="Path to the Daily CSV — enables Daily-tier ICTOrderBlock Key Levels with --daily-symbol (requires --htf-csv/--htf-symbol)")
+    parser.add_argument("--daily-symbol", help="Daily instrument identity — enables Daily-tier Key Levels with --daily-csv")
     parser.add_argument("--output-dir", required=True, help="Directory for overlay.png/detections.csv")
     parser.add_argument("--from-date", help="YYYY-MM-DD — filters RESULTS, never the input series")
     parser.add_argument("--to-date", help="YYYY-MM-DD — filters RESULTS, never the input series")
@@ -88,6 +90,14 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --htf-csv and --htf-symbol must be provided together", file=sys.stderr)
         return 1
 
+    if bool(args.daily_csv) != bool(args.daily_symbol):
+        print("error: --daily-csv and --daily-symbol must be provided together", file=sys.stderr)
+        return 1
+
+    if args.daily_csv and not (args.htf_csv and args.htf_symbol):
+        print("error: --daily-csv requires both --htf-csv and --htf-symbol", file=sys.stderr)
+        return 1
+
     if args.backtest and not (args.htf_csv and args.htf_symbol):
         print("error: --backtest requires both --htf-csv and --htf-symbol", file=sys.stderr)
         return 1
@@ -109,12 +119,27 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             htf_series, ltf_series = None, load_mt5_csv(args.csv, symbol=args.symbol)
+
+        # ADR-F: Daily loads via plain load_mt5_csv, NEVER load_pair —
+        # load_pair's validate_pairing enforces Charter-2's D->1H CRT
+        # pairing rule, which would always reject Daily-vs-M15 (Daily is a
+        # Key-Level-source series here, not a CRT execution-timeframe pair).
+        daily_series = None
+        if args.daily_csv:
+            if args.daily_symbol != args.symbol:
+                print(
+                    f"error: mismatched instrument pairing: daily_symbol={args.daily_symbol} "
+                    f"symbol={args.symbol}",
+                    file=sys.stderr,
+                )
+                return 1
+            daily_series = load_mt5_csv(args.daily_csv, symbol=args.daily_symbol)
     except (LoadError, PairingError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
     config = DetectorConfig(backtest=backtest_config)
-    detections = _detect_all(ltf_series, htf_series, config)
+    detections = _detect_all(ltf_series, htf_series, daily_series, config)
     ltf_swings = detections.swings  # captured before the filter chain below may narrow/clear detections.swings
     detections = _filter_by_date_range(detections, ltf_series, htf_series, from_date, to_date)
     detections = _filter_by_session(detections, ltf_series, htf_series, session, config.kill_zone)
@@ -161,7 +186,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _detect_all(
-    ltf_series: OHLCSeries, htf_series: OHLCSeries | None, config: DetectorConfig
+    ltf_series: OHLCSeries, htf_series: OHLCSeries | None, daily_series: OHLCSeries | None,
+    config: DetectorConfig,
 ) -> _Detections:
     """LTF crt_ranges/fvgs and (in pair mode) HTF crt_ranges are each
     computed exactly ONCE here and reused by `detect_model1_signals`/
@@ -185,15 +211,32 @@ def _detect_all(
         # Same config.fvg as the LTF pass (design §8.6) — min_size_atr is
         # ATR-relative, so it self-scales to the HTF series' own
         # volatility; never a _Detections field (REQ-58.1).
-        htf_order_blocks = detect_ict_order_blocks(htf_series, config.ict_order_block)
-        htf_key_levels = (
-            to_key_levels(detect_fvgs(htf_series, config.fvg))
-            + ict_order_block_to_key_levels(htf_order_blocks)
+        #
+        # V3 (REQ-63): Order Block Key Levels are Daily-tier when
+        # --daily-csv is given, falling back to the HTF series otherwise
+        # (V2 behavior, byte-identical — REQ-67.2). order_block_key_levels
+        # is ALWAYS computed (never conditionally dropped) — see design.md
+        # §4a's correction note for why gating it on daily_series being
+        # present is a bug (it silently drops V2's existing ICTOrderBlock
+        # contribution when Daily is omitted).
+        htf_order_blocks = detect_ict_order_blocks(
+            daily_series if daily_series is not None else htf_series, config.ict_order_block
         )
-        aligned_signals = tag_alignment(
-            htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
-            ltf_signals=model1_signals, htf_ranges=htf_crt_ranges, htf_key_levels=htf_key_levels,
-        )
+        order_block_key_levels = ict_order_block_to_key_levels(htf_order_blocks)
+        fvg_key_levels = to_key_levels(detect_fvgs(htf_series, config.fvg))
+
+        if daily_series is not None:
+            aligned_signals = tag_alignment(
+                htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
+                ltf_signals=model1_signals, htf_ranges=htf_crt_ranges, htf_key_levels=fvg_key_levels,
+                daily_series=daily_series, daily_key_levels=order_block_key_levels,
+            )
+        else:
+            aligned_signals = tag_alignment(
+                htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
+                ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
+                htf_key_levels=fvg_key_levels + order_block_key_levels,
+            )
 
     return _Detections(
         swings=ltf_swings,
