@@ -1,8 +1,8 @@
 # Specs: CRT/ICT Pattern Detector
 
-**Spec version**: V5 | **Status**: signed | **Domain**: detector
+**Spec version**: V6 | **Status**: signed | **Domain**: detector
 
-**Scope note**: Covers 5 of 7 originally-named setup types (Swing, FVG, CRT range, MSS, Model-1), plus a candle-by-candle trade backtest simulator over Model-1 signals (single take-profit level; partial exits/equity curve/drawdown deferred to `crt-detector-backtest-partial-exits`). Standalone Order Block + Breaker Block deliberately deferred (pending change `crt-detector-order-block-breaker`), ratified at the steward foresight gate.
+**Scope note**: Covers 5 of 7 originally-named setup types (Swing, FVG, CRT range, MSS, Model-1), plus a candle-by-candle trade backtest simulator over Model-1 signals (single take-profit level; partial exits/equity curve/drawdown deferred to `crt-detector-backtest-partial-exits`), plus a classical ICT Order Block detector wired as a second Key Level confluence source (Daily-tier, `crt-detector-ict-order-block`) — HTF-only, computed-not-rendered, mirroring FVG's own Key Level treatment: no standalone `detections.csv` row/type, no `overlay.png` marker. Breaker Block remains deferred (pending change `crt-detector-order-block-breaker`, superseded in sequencing by the `crt-detector-key-level-confluence` program's sub-change #3), ratified at the steward foresight gate.
 
 ---
 
@@ -277,7 +277,7 @@ The system MUST compute win rate as `wins / (wins + losses)` over CLOSED trades 
 The system MUST assign every `Model1Signal` a stable `signal_id: str`, computed as `f"{origin_index}-{anchor_index}-{direction}-{confirmation_type}-{entry_type}"`, where `origin_index` is the originating `CRTRange.start_index` or `FVG.start_index`. Injectivity is INHERITED from `detect_crt_ranges`/`detect_fvgs` emitting at most one structure per `start_index` — not independently enforced (accepted risk, followup registered for hardening). WHEN `--backtest` is passed, `detections.csv` MUST gain a trailing `signal_id` column; non-model1 rows write `""`. WHEN `--backtest` is NOT passed, `detections.csv` MUST NOT include this column.
 - **REQ-41.1** (happy): GIVEN two signals sharing the same `anchor_index` but originating from different `CRTRange`s, WHEN `signal_id` is computed, THEN the two ids are distinct.
 - **REQ-41.2** (edge): GIVEN an `fvg_fill`-confirmed signal, WHEN `signal_id` is computed, THEN it is stable and does not collide with a `purge_engulf`-confirmed signal at the same `origin_index`.
-- **REQ-41.3** (edge): GIVEN a detector run WITHOUT `--backtest`, WHEN `detections.csv` is written, THEN it has no `signal_id` column and matches the 7-column header exactly.
+- **REQ-41.3** (edge): GIVEN a detector run WITHOUT `--backtest`, WHEN `detections.csv` is written, THEN it has no `signal_id` column and matches the 8-column header exactly (the 7 prior columns plus `key_level_source`, REQ-24).
 
 ### REQ-42: Trade-to-detection traceability
 Every row in `trades.csv` MUST carry the `signal_id` (REQ-41) of the `Model1Signal` it originated from, joining to EXACTLY ONE row in `detections.csv`. Because the backtest computes its own entry price independently of `detections.csv`'s `entry_price` (REQ-47), a joined pair's `entry_price` values MAY legitimately differ for wick-type signals — `metrics_summary` MUST disclose this as an explicit note.
@@ -291,8 +291,66 @@ Every row in `trades.csv` MUST carry the `signal_id` (REQ-41) of the `Model1Sign
 - **REQ-23.1**: multi-week series, all 6 types — each visually distinct.
 
 ### REQ-24: Companion CSV table
-Columns `timestamp,type,direction,price_high,price_low,status` (+`aligned` for Model-1 rows). Zero detections → header-only CSV, exit 0.
+Columns `timestamp,type,direction,price_high,price_low,status,aligned,key_level_source` (8 columns; `aligned` and `key_level_source` populated for Model-1 rows only). `key_level_source` is populated ONLY for Model-1 rows tagged `aligned` with a Key Level recorded, carrying that Key Level's `kind` (`fvg` or `ict_order_block`); empty for every other row. Zero detections → header-only CSV, exit 0.
 - **REQ-24.1**: scannable for e.g. "any PENDING Model-1" without re-parsing the image.
+- **REQ-24.2** (happy): GIVEN an `aligned` Model-1 signal credited to an ICTOrderBlock-sourced Key Level, WHEN `detections.csv` is written, THEN its `key_level_source` cell is exactly `"ict_order_block"`.
+- **REQ-24.3** (edge): GIVEN a non-Model-1 row (swing/fvg/crt_range/mss), WHEN `detections.csv` is written, THEN its `key_level_source` cell is empty.
+
+## Domain: ict-order-block-detection
+
+### REQ-61: Detect ICT Order Block (immediate-engulfing rule)
+The system MUST detect an `ICTOrderBlock` for every pair of consecutive candles `(i, i+1)` in the source series, checked unconditionally in BOTH directions — no external bias input, no structure-break/MSS dependency:
+- **Bullish Order Block**: candle `i` closes bearish (`i.close < i.open`) AND candle `i+1` fully engulfs `i`'s range (`i+1.high >= i.high` AND `i+1.low <= i.low`) AND candle `i+1` closes bullish (`i+1.close > i+1.open`).
+- **Bearish Order Block**: mirror — `i` closes bullish, `i+1` fully engulfs `i`, `i+1` closes bearish.
+- The zone is candle `i`'s own BODY — `top = max(i.open, i.close)`, `bottom = min(i.open, i.close)`.
+- A pair that does not satisfy all three conditions for either direction yields no Order Block for that pair — never an error.
+- **REQ-61.1** (happy, bullish): GIVEN candle `i` closes bearish and candle `i+1` fully engulfs `i`'s range and closes bullish, WHEN detected, THEN a bullish `ICTOrderBlock` is emitted anchored at `i`, zone = candle `i`'s body, confirmed at `i+1`.
+- **REQ-61.2** (happy, bearish): mirror of REQ-61.1 — candle `i` closes bullish, candle `i+1` fully engulfs `i` and closes bearish.
+- **REQ-61.3** (edge, partial engulf — no OB): GIVEN candle `i` closes bearish and candle `i+1` closes bullish but `i+1` does NOT fully engulf `i`'s range (e.g. `i+1.high < i.high`), WHEN evaluated, THEN no `ICTOrderBlock` is emitted for that pair.
+- **REQ-61.4** (edge, wrong confirmation close — no OB): GIVEN candle `i` closes bearish and candle `i+1` fully engulfs `i`'s range but `i+1` itself closes bearish (not bullish), WHEN evaluated, THEN no `ICTOrderBlock` is emitted for that pair.
+- **REQ-61.5** (edge, doji excluded): GIVEN candle `i` has `open == close` (doji), WHEN evaluated as a potential anchor, THEN it never qualifies for either direction — the strict `close < open` / `close > open` inequalities a doji can satisfy neither.
+- **REQ-61.6** (edge, adjacent pairs are independent): GIVEN candle `B` is simultaneously the confirmation of a bullish Order Block anchored at `A` (pair `A,B`) AND itself closes bullish so that `B` also satisfies the bearish-OB anchor condition for the adjacent pair `(B, C)`, and `C` fully engulfs `B` and closes bearish, WHEN detected, THEN BOTH Order Blocks are emitted independently — no exclusivity constraint between overlapping matches.
+
+### REQ-62: Invalidation by first touch
+The system MUST mark an `ICTOrderBlock` `invalidated` at the FIRST candle strictly after its confirmation candle (`i+1`) — i.e. starting the scan at `i+2` — whose range overlaps the zone AT ALL: `candle.high >= bottom AND candle.low <= top`, for either direction. This is a touch test (wick or body, any overlap), not a close-through test. An Order Block never invalidated by series end remains `status="open"`, `invalidation_index=None`.
+- **REQ-62.1** (happy): GIVEN a bullish Order Block with `bottom=1.0950, top=1.0980`, confirmed at `i+1`, and the candle at index `i+2` has `low=1.0955` (inside the zone), WHEN evaluated, THEN `status="invalidated"` at index `i+2`.
+- **REQ-62.2** (edge, wick-only touch invalidates): GIVEN a later candle's wick merely dips to the zone boundary while its CLOSE remains entirely outside the zone, WHEN evaluated, THEN the Order Block IS invalidated at that candle — a mere touch mitigates it.
+- **REQ-62.3** (edge, boundary-inclusive): GIVEN a later candle's `high` exactly equals `bottom` (or `low` exactly equals `top`), WHEN evaluated, THEN it counts as an overlap and invalidates.
+- **REQ-62.4** (edge, confirmation candle excluded from the scan): GIVEN the confirmation candle `i+1` — which by definition already overlaps the zone, since full engulfment implies `i+1.high >= i.high` and `i+1.low <= i.low` — WHEN evaluated, THEN it is NEVER treated as the invalidating candle; the invalidation scan begins strictly at `i+2`, never at `i+1`.
+- **REQ-62.5** (edge, never invalidated): GIVEN no candle from `i+2` onward ever overlaps the zone, WHEN evaluated at series end, THEN `status="open"`, `invalidation_index=None`.
+
+### REQ-63: Registration as a Key Level source (Daily-tier source, H4-native invalidation, most-recent tie-break)
+`core.key_level.KeyLevel.kind` includes `"ict_order_block"` alongside `"fvg"`. The system MUST expose `to_key_levels(blocks: list[ICTOrderBlock]) -> list[KeyLevel]` producing, for every `ICTOrderBlock`, a `KeyLevel` with `kind="ict_order_block"`, `top`/`bottom` = the Order Block's own zone, `origin_index` = the CONFIRMATION candle's index (`i+1`), and `expiry_index` = `invalidation_index` when invalidated, absent when open.
+
+`detect_ict_order_blocks` runs against the Daily series, not the HTF (H4) series — Order Block Key Levels are Daily-tier, matching the 3-tier hierarchy (Daily Key Level → H4 CRT signal/purge → M15 execution). `origin_index` is an index into the Daily series, reindexed to H4-index-space (the confirming day's CLOSE).
+
+**Invalidation granularity**: for a Daily-sourced Order Block, whether and when it becomes invalidated is determined by scanning the H4 series candle-by-candle — starting at the reindexed `origin_index` (inclusive) — for the first H4 candle whose range overlaps the zone `[bottom, top]`, NOT by asking whether some Daily candle's full-day range touched it. The Order Block's own Daily-native `invalidation_index`/`status` (from `detect_ict_order_blocks`'s generic same-series scan) are NOT used for the Daily-tier flow — they are computed but discarded, replaced entirely by the H4-native scan's result.
+
+**Confluence matching**: `alignment/htf_ltf.py`'s `_key_level_credit_map` selects the MOST RECENT qualifying Key Level (by `origin_index`) among candidates for a given purge, not the oldest. A Daily Key Level qualifies for an H4 purge when the purge candle's own wick extreme (`_purge_wick_extremes`) falls inside the Key Level's zone `[bottom, top]` inclusive of both edges, with NO tolerance — exact overlap only.
+
+- **REQ-63.1** (happy, origin is the confirmation candle, not the anchor): GIVEN a bullish `ICTOrderBlock` anchored at Daily candle `i=13`, confirmed at candle `i+1=14`, WHEN presented as a `KeyLevel`, THEN `origin_index=14`, not `13`.
+- **REQ-63.2** (alternate, expiry is H4-native): GIVEN a Daily-sourced Order Block whose zone is first touched by the H4 candle at H4 index `102` (not by asking which Daily candle touched it), WHEN the Key Level is credited, THEN `expiry_index=102`, an H4 index, derived from the H4-native scan (REQ-63.7).
+- **REQ-63.3** (structural, regression): GIVEN `alignment/htf_ltf.py`'s own import statements, WHEN inspected, THEN they import only `core.key_level`.
+- **REQ-63.4** (most-recent tie-break): GIVEN two Daily Key Levels both qualify for the same H4 purge (both overlap the purge candle's wick extreme), WHEN credited, THEN the one with the GREATER `origin_index` (more recent) is selected, not the lesser.
+- **REQ-63.5** (Daily-tier source): GIVEN a Daily series is provided (REQ-67), WHEN Order Blocks are detected for Key Level registration, THEN they are computed from the Daily series' own candles — never from the H4 series.
+- **REQ-63.6** (exact overlap): GIVEN a purge candle's wick extreme lies outside a Daily Key Level's zone by any margin, however small, WHEN credited, THEN NO confluence is recorded for that Key Level — no tolerance is applied, regardless of how close the miss.
+- **REQ-63.7** (H4-native invalidation scan): GIVEN a Daily-sourced Order Block confirmed on Daily candle `D`, reindexed to H4 origin index `X`, WHEN checking for invalidation, THEN the system scans H4 candles starting at index `X` (inclusive) and marks the Order Block invalidated at the FIRST H4 candle whose range overlaps `[bottom, top]` — never at a Daily candle, and never by translating the Daily-native `invalidation_index`. If no H4 candle ever overlaps, the Order Block has no `expiry_index` (open indefinitely, same as an un-invalidated H4-native Order Block).
+
+### REQ-64: No-lookahead (ICT Order Block)
+`detect_ict_order_blocks(series.up_to(n))` MUST match the full-series output for every `ICTOrderBlock` whose confirmation candle (`i+1`) has index `< n` — a fixed `k=1` boundary-equality property. Invalidation status for an already-knowable Order Block MUST be re-derivable from any prefix that includes the invalidating candle, and MUST remain `open` in any shorter prefix.
+- **REQ-64.1** (property test): prefix-consistency at fixed `k=1`, mirroring the existing per-detector property tests in `tests/property/test_no_lookahead.py`.
+
+### REQ-66: ICTOrderBlock's own discrimination number (real-data comparison)
+The system's real-data validation runs on the SAME 3 instruments (EURUSDm, GBPUSDm, DXYm) as the FVG confluence gate, WITH `--daily-csv`/`--daily-symbol` provided (REQ-67), gating confluence SOLELY on ICTOrderBlock-sourced Key Levels detected on the Daily series with H4-native invalidation (REQ-63.7), and the run's evidence records, per instrument: the count of `aligned`, non-`fvg_fill` Model-1 signals; how many were credited an ICTOrderBlock Key Level; how many were not; the resulting `excluded_no_key_level` count; and `trades_opened`. This REQ does NOT gate pass/fail on any specific threshold — the number itself is the deliverable.
+- **REQ-66.1** (happy): GIVEN the real EURUSDm H4/M15/Daily triple with `--backtest`, WHEN run gating on ICTOrderBlock alone, THEN the evidence records all counts above.
+- **REQ-66.2** (edge, no threshold gate): GIVEN any resulting discrimination percentage, WHEN evidence is recorded, THEN the run does NOT fail or halt based on that percentage's value alone.
+- **REQ-66.3** (edge, full coverage): GIVEN all 3 instruments run, WHEN evidence is compiled, THEN a complete count set exists for each of EURUSDm, GBPUSDm, and DXYm — not a subset.
+
+### REQ-67: Daily series CLI input
+The system MUST accept an optional Daily-timeframe series input via `--daily-csv`/`--daily-symbol`, mirroring the existing optional `--htf-csv`/`--htf-symbol` pair-mode precedent: both flags MUST be provided together (error if only one is given), and omitting both is valid — the run proceeds without Daily-tier ICTOrderBlock Key Levels rather than failing.
+- **REQ-67.1** (happy): GIVEN `--daily-csv` and `--daily-symbol` are both provided, WHEN the detector runs, THEN Order Block Key Levels are computed from the Daily series per REQ-63.
+- **REQ-67.2** (edge, omitted): GIVEN both `--daily-csv` and `--daily-symbol` are omitted, WHEN the detector runs, THEN no ICTOrderBlock Key Levels are registered (FVG-only confluence) and the run does NOT fail.
+- **REQ-67.3** (edge, partial pair rejected): GIVEN only ONE of `--daily-csv`/`--daily-symbol` is provided, WHEN the CLI parses arguments, THEN it exits with an error before any detection runs — mirroring `--htf-csv`/`--htf-symbol`'s existing validation.
 
 ---
 
