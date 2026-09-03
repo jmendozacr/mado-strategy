@@ -1,13 +1,13 @@
 {
   "change": "crt-detector-ict-order-block",
   "triage": "M",
-  "phase": "archive-pending",
+  "phase": "archived",
   "spec_status": "signed-v4",
   "slices": true,
   "plan_verify": "none",
   "verify_final": "pass-with-followups",
   "arch_audit": "none",
   "outcome": "delivered-pending-activation",
-  "updated_at": "2026-09-03T00:30:00Z",
+  "updated_at": "2026-09-03T01:00:00Z",
   "viz_url": "none"
 }
