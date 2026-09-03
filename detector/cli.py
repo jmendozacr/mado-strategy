@@ -226,17 +226,15 @@ def _detect_all(
         fvg_key_levels = to_key_levels(detect_fvgs(htf_series, config.fvg))
 
         if daily_series is not None:
-            aligned_signals = tag_alignment(
-                htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
-                ltf_signals=model1_signals, htf_ranges=htf_crt_ranges, htf_key_levels=fvg_key_levels,
-                daily_series=daily_series, daily_key_levels=order_block_key_levels,
-            )
+            htf_key_levels, daily_key_levels = fvg_key_levels, order_block_key_levels
         else:
-            aligned_signals = tag_alignment(
-                htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
-                ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
-                htf_key_levels=fvg_key_levels + order_block_key_levels,
-            )
+            htf_key_levels, daily_key_levels = fvg_key_levels + order_block_key_levels, None
+
+        aligned_signals = tag_alignment(
+            htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
+            ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
+            htf_key_levels=htf_key_levels, daily_series=daily_series, daily_key_levels=daily_key_levels,
+        )
 
     return _Detections(
         swings=ltf_swings,

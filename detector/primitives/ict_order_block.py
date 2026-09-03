@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from core.candle import Candle, OHLCSeries
+from core.candle import Candle, OHLCSeries, first_overlap_index
 from core.config import ICTOrderBlockConfig
 from core.key_level import KeyLevel
 
@@ -65,11 +65,8 @@ def _invalidation(
     zone by definition of full engulfment, so starting at i+1 would
     trivially self-invalidate every Order Block the instant it forms
     (REQ-62.4)."""
-    for i in range(anchor_index + 2, len(candles)):
-        candle = candles[i]
-        if candle.high >= bottom and candle.low <= top:
-            return "invalidated", i
-    return "open", None
+    i = first_overlap_index(candles, anchor_index + 2, top, bottom)
+    return ("invalidated", i) if i is not None else ("open", None)
 
 
 def to_key_levels(blocks: list[ICTOrderBlock]) -> list[KeyLevel]:

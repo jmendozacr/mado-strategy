@@ -3,7 +3,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Literal
 
-from core.candle import Candle, OHLCSeries
+from core.candle import Candle, OHLCSeries, first_overlap_index
 from core.config import CRTRangeConfig, FVGConfig, Model1Config
 from core.key_level import KeyLevel
 from core.pairing_table import TIMEFRAME_DURATIONS
@@ -67,7 +67,9 @@ def tag_alignment(
     purge_index_to_range = _purge_index_map(htf_candles, htf_ranges)
     all_key_levels = list(htf_key_levels or [])
     if daily_series is not None and daily_key_levels:
-        all_key_levels += _reindex_daily_key_levels(daily_key_levels, daily_series.candles, htf_candles)
+        all_key_levels += _reindex_daily_key_levels(
+            daily_key_levels, daily_series.candles, htf_candles, htf_timestamps
+        )
     key_level_credit_map = _key_level_credit_map(
         htf_candles, purge_index_to_range, all_key_levels
     )
@@ -152,6 +154,7 @@ def _key_level_credit_map(
 
 def _reindex_daily_key_levels(
     levels: list[KeyLevel], daily_candles: tuple[Candle, ...], htf_candles: tuple[Candle, ...],
+    htf_timestamps: list[datetime],
 ) -> list[KeyLevel]:
     """V4/REQ-63.7: translates Daily-sourced KeyLevels into H4-index-space.
     origin_index reindexes from the CONFIRMATION daily candle's CLOSE
@@ -161,7 +164,6 @@ def _reindex_daily_key_levels(
     movement into one blunt touch test) — it is freshly computed by
     scanning H4 candles one by one, starting at the reindexed origin_index,
     for the first H4 candle whose OWN range overlaps the zone."""
-    htf_timestamps = [c.timestamp for c in htf_candles]
     reindexed = []
     for level in levels:
         origin = _ceiling_htf_index(htf_timestamps, _daily_close(daily_candles, level.origin_index))
@@ -203,11 +205,7 @@ def _htf_expiry_index(
     here is a reindexed ORIGIN boundary, not a same-series confirmation
     candle guaranteed to overlap the zone by construction (full
     engulfment) — there is no structural reason to exclude it."""
-    for i in range(start_index, len(htf_candles)):
-        candle = htf_candles[i]
-        if candle.high >= bottom and candle.low <= top:
-            return i
-    return None
+    return first_overlap_index(htf_candles, start_index, top, bottom)
 
 
 def _purge_index_map(
