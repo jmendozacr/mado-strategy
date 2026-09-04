@@ -1,0 +1,13 @@
+{
+  "change": "crt-detector-key-level-confluence-core",
+  "triage": "L",
+  "phase": "apply",
+  "spec_status": "signed",
+  "slices": false,
+  "plan_verify": "ready",
+  "verify_final": "none",
+  "arch_audit": "none",
+  "outcome": "none",
+  "updated_at": "2026-08-31T21:02:00Z",
+  "viz_url": "none"
+}

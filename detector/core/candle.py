@@ -23,3 +23,13 @@ class OHLCSeries:
             instrument=self.instrument,
             timeframe=self.timeframe,
         )
+
+
+def first_overlap_index(candles: tuple[Candle, ...], start: int, top: float, bottom: float) -> int | None:
+    """First candle index from `start` onward whose range overlaps
+    `[bottom, top]` (wick or body, boundary-inclusive)."""
+    for i in range(start, len(candles)):
+        candle = candles[i]
+        if candle.high >= bottom and candle.low <= top:
+            return i
+    return None

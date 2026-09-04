@@ -222,6 +222,8 @@ def test_render_chart_adds_one_arrow_and_entry_line_per_model1_signal(tmp_path):
             entry_price=0.9995,
             retest_index=2,
             status=DetectionStatus.CONFIRMED,
+            confirmation_index=2,
+            origin_index=0,
         )
     ]
     output_path = tmp_path / "overlay.png"
@@ -261,6 +263,8 @@ def test_render_chart_colors_model1_marker_border_by_alignment_state(tmp_path):
                 entry_price=0.9995,
                 retest_index=2,
                 status=DetectionStatus.CONFIRMED,
+                confirmation_index=2,
+                origin_index=0,
             ),
             htf_context=None,
             aligned="aligned",

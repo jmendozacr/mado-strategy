@@ -1,9 +1,12 @@
+from datetime import datetime
+
 from fixtures.synthetic import (
     model1_body_tiebreak_aligned_color_bullish_setup,
     model1_body_tiebreak_aligned_color_setup,
     model1_body_tiebreak_big_body_setup,
     model1_body_tiebreak_small_body_setup,
     model1_confirmed_setup,
+    model1_delayed_confirmation_after_retest_setup,
     model1_delayed_engulf_charter2_setup,
     model1_dual_purge_and_fvg_fill_charter2_setup,
     model1_invalidated_setup,
@@ -13,9 +16,11 @@ from fixtures.synthetic import (
     model1_wick_priority_setup,
 )
 
+from core.candle import Candle, OHLCSeries
 from core.config import Model1Config
 from core.results import DetectionStatus
 from entries.model1 import detect_model1_signals
+from primitives.crt_range import CRTRange
 
 
 def _find(signals, anchor_index, direction, confirmation_type="purge_engulf"):
@@ -249,3 +254,66 @@ def test_dual_purge_and_fvg_fill_matches_charter2_example3():
         assert signal.entry_price == 1.1005
         assert signal.retest_index == 6
         assert signal.status == DetectionStatus.CONFIRMED
+
+
+# --- signal_id / confirmation_index (REQ-41.1, REQ-43.1) ---
+
+
+def _series_with_shared_purge_candle() -> OHLCSeries:
+    """3 candles, one bearish purge candle (index 2) whose high breaches
+    two DIFFERENT hand-built CRTRanges' `high` (1.1010 and 1.1005) — both
+    ranges report the SAME anchor_index/direction/confirmation_type, only
+    `origin_index` (the range's own `start_index`) differs. Candle 3 closes
+    beyond the anchor's protected extreme (1.1050) before any confirmation
+    -> pre-confirmation INVALIDATED for both, which still computes
+    signal_id (REQ-41's id is set regardless of terminal status).
+    """
+    candles = (
+        Candle(timestamp=datetime(2026, 1, 1, 12, 0, 0), open=1.0995, high=1.1010, low=1.0985, close=1.1000),
+        Candle(timestamp=datetime(2026, 1, 1, 13, 0, 0), open=1.0990, high=1.1005, low=1.0980, close=1.0995),
+        Candle(timestamp=datetime(2026, 1, 1, 14, 0, 0), open=1.1020, high=1.1050, low=1.1010, close=1.1030),
+        Candle(timestamp=datetime(2026, 1, 1, 15, 0, 0), open=1.1040, high=1.1060, low=1.1035, close=1.1055),
+    )
+    return OHLCSeries(candles=candles, instrument="EURUSD", timeframe="1H")
+
+
+def test_signal_id_distinguishes_signals_sharing_an_anchor_from_different_crt_ranges():
+    """REQ-41.1: two signals sharing the same anchor_index/direction but
+    originating from different CRTRanges (different `start_index`) get
+    distinct signal_id values."""
+    series = _series_with_shared_purge_candle()
+    range_a = CRTRange(
+        model="2-candle", high=1.1010, low=1.0985, start_index=0, end_index=2,
+        resolution="true_break", resolved_at_index=3,
+    )
+    range_b = CRTRange(
+        model="2-candle", high=1.1005, low=1.0980, start_index=1, end_index=2,
+        resolution="true_break", resolved_at_index=3,
+    )
+
+    signals = detect_model1_signals(series, crt_ranges=[range_a, range_b], fvgs=[])
+
+    signal_a = _find(signals, anchor_index=2, direction="bearish")
+    signal_b = next(
+        s for s in signals
+        if s.anchor_index == 2 and s.direction == "bearish" and s.origin_index == 1
+    )
+
+    assert signal_a.origin_index == 0
+    assert signal_a.status == DetectionStatus.INVALIDATED
+    assert signal_a.signal_id != signal_b.signal_id
+    assert signal_a.signal_id == "0-2-bearish-purge_engulf-wick"
+    assert signal_b.signal_id == "1-2-bearish-purge_engulf-wick"
+
+
+def test_confirmation_index_is_the_confirming_candle_not_the_retest_candle():
+    """REQ-43.1: confirmation lands 6 candles after the retest touch ->
+    confirmation_index equals the confirming candle's own index (9),
+    distinct from retest_index (3)."""
+    series = model1_delayed_confirmation_after_retest_setup()
+
+    signal = _find(detect_model1_signals(series), anchor_index=1, direction="bearish")
+
+    assert signal.status == DetectionStatus.CONFIRMED
+    assert signal.retest_index == 3
+    assert signal.confirmation_index == 9

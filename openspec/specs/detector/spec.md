@@ -1,8 +1,8 @@
 # Specs: CRT/ICT Pattern Detector
 
-**Spec version**: V4 | **Status**: signed | **Domain**: detector
+**Spec version**: V6 | **Status**: signed | **Domain**: detector
 
-**Scope note**: Covers 5 of 7 originally-named setup types (Swing, FVG, CRT range, MSS, Model-1). Standalone Order Block + Breaker Block deliberately deferred (pending change `crt-detector-order-block-breaker`), ratified at the steward foresight gate.
+**Scope note**: Covers 5 of 7 originally-named setup types (Swing, FVG, CRT range, MSS, Model-1), plus a candle-by-candle trade backtest simulator over Model-1 signals (single take-profit level; partial exits/equity curve/drawdown deferred to `crt-detector-backtest-partial-exits`), plus a classical ICT Order Block detector wired as a second Key Level confluence source (Daily-tier, `crt-detector-ict-order-block`) — HTF-only, computed-not-rendered, mirroring FVG's own Key Level treatment: no standalone `detections.csv` row/type, no `overlay.png` marker. Breaker Block remains deferred (pending change `crt-detector-order-block-breaker`, superseded in sequencing by the `crt-detector-key-level-confluence` program's sub-change #3), ratified at the steward foresight gate.
 
 ---
 
@@ -116,6 +116,15 @@ CONFIRMED (retest + respect), INVALIDATED (Respect Rule breach OR retest-then-cl
 ### REQ-22: No-lookahead (Model-1)
 k=`max_retest_lookback`.
 
+### REQ-43: `confirmation_index` field
+`Model1Signal` MUST carry a `confirmation_index: int` field — the index of the candle at which the signal's terminal `status` (CONFIRMED, INVALIDATED, or the `PENDING` window-close fallback) first became determinable, distinct from `retest_index` (the earlier index at which the retest touch itself occurred). This field is a TRACEABILITY/AUDIT field only — it records when a signal's fate became knowable, for reporting and kill-zone-timing evidence, but is NOT consumed by the backtest fill, stop-loss, or take-profit mechanism (REQ-50's unified fill-window search begins at `retest_index` for every candidate type, never at `confirmation_index + 1`).
+- **REQ-43.1** (happy): GIVEN a signal whose engulfing close confirms 6 candles after its retest touch, WHEN `confirmation_index` is set, THEN it equals the index of that confirming candle.
+
+### REQ-44: HTF alignment requirement for take-profit sourcing
+A trade candidate MUST be sourced ONLY from an `AlignedSignal` whose `aligned == "aligned"` — take-profit is read directly from that `AlignedSignal.htf_context` (REQ-32), never independently recomputed or re-derived from the LTF series. A signal tagged `unaligned` or `insufficient_htf_data` MUST NOT become a candidate, regardless of its `Model1Signal.status`.
+- **REQ-44.1** (happy): GIVEN an aligned CONFIRMED signal, WHEN take-profit is sourced, THEN it is read from that signal's own `AlignedSignal.htf_context`'s opposite extreme — never a freshly recomputed value.
+- **REQ-44.2** (edge): GIVEN a signal tagged `aligned="unaligned"`, WHEN the candidate population is built, THEN it is excluded, regardless of its underlying `Model1Signal.status`.
+
 ## Domain: configurable-parameters
 
 ### REQ-25: Discretionary thresholds are configurable, never hardcoded
@@ -136,6 +145,145 @@ FVG, CRT range, MSS, and HTF/LTF alignment satisfy the same property as Swing/Mo
 - **REQ-28.1**: `--types fvg,model1` — only those markers/rows appear; CRT range still computed internally (Model-1 dependency) but not shown.
 - **REQ-28.2**: no filters — full unfiltered output.
 
+### REQ-29: Kill Zone session filter
+`--session ny-killzone` filters RESULTS (same post-detection pattern as REQ-28, never the input series) to detections anchored inside the New York Kill Zone (charter-3 [00:07:52]: 7:00-10:00/11:00am NY-local; `KillZoneConfig` defaults to the wider 11:00 upper bound). Converted via real `America/New_York` tz rules against UTC candle timestamps — not a fixed UTC offset, since the boundary shifts with US DST.
+- **REQ-29.1**: a candle at a UTC hour that maps to 07:00-10:59 NY-local, WHEN filtered, THEN kept.
+- **REQ-29.2**: the same UTC hour maps to inside the kill zone during EDT but outside during EST (11:00 UTC → 07:00 EDT vs. 06:00 EST) — the filter follows the DST-correct local hour, not a fixed UTC window.
+- **REQ-29.3**: `--session bogus` — rejected, naming the unknown token.
+
+### REQ-45: `--backtest` flag and trades.csv contract
+The system MUST accept a `--backtest` boolean flag, composable with the existing `--from-date`/`--to-date`/`--session`/`--types` filter chain. WHEN `--backtest` is supplied, the system MUST write `trades.csv` with exactly these 13 columns in this order: `signal_id, anchor_timestamp, entry_timestamp, direction, entry_price, stop_loss, take_profit, exit_timestamp, exit_price, outcome, r_multiple, ambiguous_bar, gap_filled`. WHEN `--backtest` is supplied, `detections.csv` gains a trailing `signal_id` column (REQ-41) and no other change; `overlay.png` is unaffected. WHEN `--backtest` is NOT supplied, the system MUST reproduce today's exact byte-for-byte output for both `detections.csv` and `overlay.png` — no carve-out applies.
+- **REQ-45.1** (happy, regression): GIVEN `--session ny-killzone --backtest`, WHEN the run completes, THEN trades are filtered accordingly AND `overlay.png` is byte-identical to an equivalent non-backtest run.
+- **REQ-45.2** (edge, contract): GIVEN any `--backtest` run producing at least one trade, WHEN `trades.csv` is inspected, THEN its header is exactly the 13 columns above in that order, and `entry_timestamp` is the timestamp of the candle at `fill_index` (REQ-50).
+- **REQ-45.3** (edge, byte-for-byte without carve-out): GIVEN a detector run WITHOUT `--backtest`, WHEN `detections.csv` and `overlay.png` are inspected, THEN both are byte-for-byte identical to the equivalent pre-backtest-feature output, with no `signal_id` column present in `detections.csv`.
+
+### REQ-51: BacktestConfig CLI overrides
+The system MUST accept 5 CLI flags, each overriding exactly one `BacktestConfig` field when `--backtest` is used, falling back to that field's default when the flag is omitted: `--sl-buffer` (REQ-31's `sl_buffer_price`, default `0.0002`, a raw price-unit offset, never a pip count), `--min-rr` (REQ-35's `min_risk_reward`), `--trading-cost` (REQ-48's `trading_cost_price`), `--kill-zone-gated` (REQ-36's gate, boolean), `--max-fill-wait` (REQ-50's `max_fill_wait`). 1:1 flag-to-field mapping — no new configuration abstraction beyond it.
+- **REQ-51.1** (happy): GIVEN `--backtest --min-rr 3.0`, WHEN a run executes, THEN `excluded_rr_floor` is computed against `3.0`, not the `2.0` default, and downstream trade counts differ measurably from an equivalent run using the `2.0` default on the same input.
+- **REQ-51.2** (edge): GIVEN `--backtest` with none of the 5 override flags supplied, WHEN a run executes, THEN all 5 fields use `BacktestConfig`'s defaults, producing output identical to a run with all 5 flags set explicitly to those same default values.
+- **REQ-51.3** (edge): GIVEN `--backtest` invoked with an override flag value that violates that flag's constraint — `--max-fill-wait` set to zero or negative, or `--sl-buffer`, `--min-rr`, or `--trading-cost` set to a negative value — WHEN the run starts, THEN the system MUST reject with exit 1, naming the offending flag and the constraint it violates.
+
+## Domain: backtest-simulation
+
+### REQ-30: Tradeable candidate population selection
+The system MUST select as a trade CANDIDATE (subject to fill simulation, REQ-50) every `AlignedSignal` whose `aligned == "aligned"` AND whose `ltf_signal` is eligible to be entered: `status == CONFIRMED`, `status == INVALIDATED` with `retest_index` not `None`, OR `status == PENDING` with `retest_index` not `None`. The system MUST NOT select any signal whose `retest_index is None` — regardless of status — nor `fvg_fill`-confirmed signals (no CRT range at all), nor `unaligned`/`insufficient_htf_data` signals, as candidates. All three eligible candidate types share the same fill-timing mechanism (REQ-50): the fill-window search is `[retest_index, retest_index + max_fill_wait]` for all of them.
+- **REQ-30.1** (happy): GIVEN an `aligned` CONFIRMED signal, WHEN the candidate population is built, THEN it becomes a trade candidate, subject to REQ-50's unified fill-window search starting at `retest_index`.
+- **REQ-30.2** (edge): GIVEN an `aligned` INVALIDATED signal with `retest_index` set, WHEN the candidate population is built, THEN it becomes a trade candidate subject to REQ-50's SAME unified fill-window search starting at `retest_index`. Some INVALIDATED+retest candidates correctly fail to fill within the window and land in `excluded_never_filled` instead of being forced into a loss (see REQ-50.4).
+- **REQ-30.3** (edge): GIVEN a signal with `retest_index is None`, regardless of status, WHEN the candidate population is built, THEN no candidate is created; counted under `excluded_never_confirmed` (REQ-40, stage 3).
+- **REQ-30.4** (edge): GIVEN a CONFIRMED `fvg_fill` signal, WHEN the candidate population is built, THEN no candidate is created; counted under "no CRT range" (REQ-40).
+- **REQ-30.5** (edge): GIVEN a CONFIRMED signal tagged `unaligned` or `insufficient_htf_data`, WHEN the candidate population is built, THEN no candidate is created; counted under "unaligned" (REQ-40).
+- **REQ-30.6** (edge): GIVEN an `aligned` PENDING signal with `retest_index` set (entry touched, confirmation never resolved within `max_retest_lookback`), WHEN the candidate population is built, THEN it becomes a trade candidate subject to REQ-50's same unified fill-window search starting at `retest_index` — mirroring REQ-30.2. Closes a survivorship-bias gap: excluding these entirely would silently drop exactly the setups most likely to resolve as losses or opens.
+
+### REQ-31: Stop-loss placement
+The system MUST place SL beyond a real structural level, computed relative to the REQ-47 entry price (never equal to it, subject to REQ-47.4's documented exception): the purge (anchor) candle's own swept extreme (`protected_extreme`) by default, offset further by `BacktestConfig.sl_buffer_price` away from entry; OR, when one or more swing highs/lows exist beyond `protected_extreme` between the CRT purge and the entry (`retest_index`, never `fill_index` — using `fill_index` would introduce lookahead), the DEEPEST such qualifying swing, offset the same way. `BacktestConfig.sl_buffer_price` defaults to `0.0002` — a raw PRICE-UNIT offset (2 pips on a 5-digit EURUSD quote), never a pip count.
+- **REQ-31.1** (grounded, charter-2 [00:18:46], happy — purge-extreme branch): GIVEN bullish signal, `protected_extreme=1.0990`, no swing low beyond it, `sl_buffer_price=0.0002`, WHEN SL computed, THEN `stop_loss=1.0988`.
+- **REQ-31.2** (grounded, single-swing branch): GIVEN the same signal, but a swing low at `1.0975` exists beyond `protected_extreme=1.0990`, WHEN SL computed, THEN `stop_loss` anchors to the swing low: `1.0975 - 0.0002 = 1.0973`.
+- **REQ-31.3** (edge, regression): GIVEN a wick-type signal whose entry price is the REQ-47.2 retest price (`1.1002`), WHEN entry and SL are both computed (`stop_loss=1.0988`), THEN `risk = 0.0014` — 14 pips.
+- **REQ-31.4** (edge): GIVEN two swing lows beyond `protected_extreme=1.0990` — `1.0975` and `1.0960` — WHEN SL computed with `sl_buffer_price=0.0002`, THEN `stop_loss` anchors to the deeper swing: `1.0960 - 0.0002 = 1.0958`.
+
+### REQ-32: Take-profit sourcing and HTF pair-mode requirement
+The system MUST compute a trade candidate's take-profit price as the HTF CRT range's opposite extreme, sourced from `AlignedSignal.htf_context` (REQ-44) — never independently recomputed from the LTF series. The system MUST require HTF pair mode (`--htf-csv` and `--htf-symbol` both supplied) whenever `--backtest` is used; WHEN either flag is missing, THEN the system MUST fail fast at start, exiting 1 and naming both missing flags, before any candidate is evaluated.
+- **REQ-32.1** (happy): GIVEN an aligned CONFIRMED signal whose `htf_context` is a CRTRange with `high=1.1050`/`low=1.0900` (bullish direction), WHEN take-profit is computed, THEN `take_profit=1.1050`.
+- **REQ-32.2** (edge): GIVEN `--backtest` invoked without `--htf-csv`, WHEN the run starts, THEN the system exits 1, naming both `--htf-csv` and `--htf-symbol` as required.
+
+### REQ-33: Same-candle SL+TP tie-break
+WHEN a single candle's range touches both a trade's stop-loss and take-profit levels, the system MUST resolve the trade as a loss at the stop-loss price (pessimistic tie-break). Every such resolution MUST be counted and disclosed in `metrics_summary` as a distinct count of "same-candle SL+TP resolutions". Resolution order: (1) an unresolved-by-series-end trade is `open`, no gap check runs; (2) the resolving level is chosen first — SL wins whenever `sl_index <= tp_index`; (3) only after the level is chosen does the system check whether that candle's open already lies beyond the CHOSEN level (REQ-34).
+- **REQ-33.1** (happy): GIVEN a candle whose range touches both SL and TP, WHEN resolved, THEN `outcome="loss"` at the SL price, and `ambiguous_bar=True`.
+- **REQ-33.2** (edge, disclosure): GIVEN a backtest run in which 4 trades resolve via this tie-break, WHEN `metrics_summary` is written, THEN it states "same-candle SL+TP resolutions: 4".
+- **REQ-33.3** (edge, structural precedence over REQ-34): GIVEN a bullish candle whose open lies above take-profit AND whose low also reaches stop-loss, WHEN resolved, THEN `outcome="loss"` at `stop_loss`, `gap_filled=False`.
+
+### REQ-34: Gap-through-both-levels exit fill
+WHEN the resolving exit candle's open price already lies beyond the chosen exit level, the system MUST fill the exit at the candle's actual open price, NOT at the SL/TP level itself. This rule applies to EXITS only; REQ-47 governs entry fills independently.
+- **REQ-34.1** (happy): GIVEN a bearish trade whose stop-loss is `1.0970`, and the resolving exit candle opens beyond SL with take-profit untouched that candle, WHEN the exit is resolved, THEN `exit_price` is the actual gap-open price, `gap_filled=True`.
+
+### REQ-35: Risk:reward floor filter
+The system MUST exclude, before fill simulation, any candidate whose risk:reward ratio (signed distances, entry to stop-loss vs. entry to take-profit) falls below `BacktestConfig.min_risk_reward` (default `2.0`). A structurally negative ratio (take-profit behind entry) MUST be excluded under this SAME rule.
+- **REQ-35.1** (happy): GIVEN a candidate whose computed R:R is `1.4` and `min_risk_reward=2.0`, WHEN the floor filter runs, THEN the candidate is excluded under `rr_floor`.
+- **REQ-35.2** (edge, floor not inert): GIVEN a candidate with 14-pip risk and a 20-pip reward (R:R=`1.43`), WHEN the floor filter runs against the `2.0` default, THEN excluded.
+- **REQ-35.3** (edge, negative ratio, no separate bucket): GIVEN a candidate whose take-profit sits behind its entry (signed R:R = `-0.5`), WHEN the floor filter runs, THEN excluded under the SAME `rr_floor` bucket as REQ-35.1.
+
+### REQ-36: Kill-zone gating
+The system MUST, by default, exclude signals anchored outside the NY Kill Zone (REQ-29's predicate), evaluated against `anchor_index` timestamp. Counted under "outside kill zone" (REQ-40). WHEN `--session` has already narrowed the population, this internal gate MUST auto-disable — `excluded_kill_zone` MUST be `0` by construction. `metrics_summary` MUST additionally state the gate's own state as one of three literal lines: (a) enabled (default, gate active); (b) auto-disabled (because `--session` already narrowed the population); (c) disabled (because `--kill-zone-gated false` was supplied WITHOUT `--session`).
+- **REQ-36.1** (grounded, charter-3 [00:13:17]): GIVEN a signal anchored 5:30am NY-local, no `--session` filter applied, WHEN the default gate is applied, THEN excluded.
+- **REQ-36.2** (edge): GIVEN `--backtest --session ny-killzone`, WHEN the reconciliation report is generated, THEN `excluded_kill_zone = 0`.
+- **REQ-36.3** (edge): GIVEN a signal anchored inside the kill zone whose confirmation lands later outside it, WHEN the default gate is applied, THEN NOT excluded under `kill_zone` — anchor time is the only basis evaluated.
+- **REQ-36.4** (edge): GIVEN `--backtest --session ny-killzone`, WHEN `metrics_summary` is written, THEN it includes an explicit line stating the gate auto-disabled for this run.
+- **REQ-36.5** (edge): GIVEN `--backtest --kill-zone-gated false` supplied WITHOUT `--session`, WHEN `metrics_summary` is written, THEN it includes the third literal rendering, distinct from both "enabled" and "auto-disabled".
+
+### REQ-37: No-lookahead simulation entry point
+The system's fill/SL/TP resolution MUST use ONLY price data that genuinely exists in the candle series at the index being evaluated. Once a candidate is in the population, checking whether price touched its REQ-47 entry price at any index from `retest_index` onward is reading historical price data, not simulating a decision that could not have known the future. The REQ-50 fill-window search MAY begin at `retest_index` for all candidate types uniformly. The SL/TP resolution sweep MUST begin at `fill_index + 1`, never earlier.
+- **REQ-37.1** (grounded): GIVEN a CONFIRMED-path candidate whose true confirmation lags `retest_index` by up to 6 candles, WHEN simulated, THEN the REQ-50 fill-window search begins at `retest_index`, not `confirmation_index + 1`.
+- **REQ-37.2** (edge): GIVEN an INVALIDATED+retest or PENDING+retest candidate, WHEN simulated, THEN its fill is searched via REQ-50's window starting at `retest_index`, and the SL/TP sweep begins at `fill_index + 1`, never earlier.
+
+### REQ-38: Trade terminal states
+Every simulated trade MUST resolve to EXACTLY one of three terminal states: `win`, `loss`, or `open` (neither SL nor TP touched by series end). An `open` trade MUST have `exit_index=None`, `exit_price=None`, `r_multiple=None`, `ambiguous_bar=False`, `gap_filled=False`.
+- **REQ-38.1** (edge, open trade): GIVEN a trade whose SL and TP are never touched, WHEN simulation ends, THEN `outcome="open"`, exit fields `None`/`False`, and the trade is excluded from win-rate computation (REQ-39) but still counted as `trades_opened` (REQ-40).
+
+### REQ-40: Population-reconciliation report
+The system MUST report, for every `--backtest` run, a `ReconciliationReport` whose `signals_considered` count is measured strictly AFTER the full CLI filter chain has already run. Every signal admitted to `signals_considered` MUST land in EXACTLY ONE of `trades_opened` or seven exclusion buckets — `excluded_no_crt_range`, `excluded_unaligned`, `excluded_never_confirmed`, `excluded_duplicate`, `excluded_kill_zone`, `excluded_rr_floor`, `excluded_never_filled` — evaluated in that fixed precedence order.
+- **REQ-40.1** (edge, invariant): GIVEN any `--backtest` run, WHEN the reconciliation report is generated, THEN `trades_opened + sum(all 7 exclusion buckets) == signals_considered`, exactly.
+- **REQ-40.2** (grounded, e2e): GIVEN a session filter narrows the population, WHEN `--backtest` runs, THEN `signals_considered` reflects the post-CLI-filter count, not the raw detected count.
+- **REQ-40.3** (edge, precedence): GIVEN a signal that is BOTH unaligned AND anchored outside the kill zone, WHEN reconciled, THEN it lands in `excluded_unaligned`, never `excluded_kill_zone`.
+- **REQ-40.4** (edge): GIVEN a `PENDING` signal whose `retest_index` is set, WHEN the candidate population is built, THEN it is admitted as a REQ-30.6 candidate — never silently dropped — and resolves through stages 4-7, landing in `trades_opened` or one of the stage 4-7 buckets.
+
+### REQ-46: Signal deduplication
+Before simulation, the system MUST collapse candidates sharing an identical `(anchor_index, direction, entry_price, entry_type)` tuple into ONE trade candidate — the one with the LOWEST `origin_index` survives; the rest are counted under `excluded_duplicate` (REQ-40, stage 4). Deduplication MUST run BEFORE the kill-zone and R:R-floor cuts.
+- **REQ-46.1** (happy): GIVEN 3 candidates sharing an identical identity tuple, WHEN deduplicated, THEN exactly 1 trade candidate survives (lowest `origin_index`) and 2 are counted under `excluded_duplicate`.
+- **REQ-46.2** (edge): GIVEN two candidates sharing the same `anchor_index`/`entry_price` but with DIFFERENT `entry_type`, WHEN deduplicated, THEN both survive as distinct candidates.
+
+### REQ-47: Entry price definition
+The system MUST compute a candidate's entry price independently of `Model1Signal.entry_price`/`detections.csv`: for `entry_type="body"`, `anchor.open`; for `entry_type="wick"`, the retest-side body-zone boundary (`max(anchor.open, anchor.close)` bullish, `min(...)` bearish) — never `protected_extreme`. For a non-degenerate anchor candle, entry price MUST NOT equal `protected_extreme`. A doji anchor is the one documented exception, but `risk >= sl_buffer_price > 0` MUST still hold. WHEN the fill candle's open already lies beyond the entry price, the system MUST fill at the entry price itself — never at the candle's open.
+- **REQ-47.1** (happy, body): GIVEN a body-type signal, WHEN entry price is computed, THEN it equals `anchor.open`.
+- **REQ-47.2** (happy, wick): GIVEN a wick-type signal whose anchor body spans `[1.0998, 1.1002]` (bullish), WHEN entry price is computed, THEN it equals `1.1002`.
+- **REQ-47.3** (edge, non-degeneracy, property-tested): GIVEN a non-degenerate wick anchor, WHEN entry price and `protected_extreme` are compared, THEN they are never equal.
+- **REQ-47.4** (edge, doji carve-out): GIVEN a doji anchor, WHEN entry price is computed, THEN equality between entry-adjacent levels is permitted, but `risk >= sl_buffer_price` still holds.
+- **REQ-47.5** (edge, entry-side gap): GIVEN a fill candle that opens above a bullish candidate's entry price, WHEN the fill is resolved, THEN the trade fills at the entry price itself.
+
+### REQ-48: Trading cost
+`BacktestConfig` MUST expose `trading_cost_price: float` (default `0.0`, TOTAL per-trade cost covering spread+slippage+commission). The system MUST net this cost out of every closed trade's `r_multiple` exactly once, at closure: `r_multiple = (signed_move - trading_cost_price) / risk`. `metrics_summary` MUST always disclose the configured trading cost.
+- **REQ-48.1** (happy): GIVEN `trading_cost_price=0.00007`, risk=`0.0014`, a gross R of `3.0`, WHEN net R is computed, THEN it equals `2.95`.
+- **REQ-48.2** (edge, default neutrality): GIVEN the default `trading_cost_price=0.0`, WHEN metrics are computed, THEN they are bit-identical to a cost-free computation.
+- **REQ-48.3** (edge, disclosure): GIVEN any `--backtest` run, WHEN `metrics_summary` is written, THEN it states either "trading cost: 0.0 (frictionless)" or "trading cost: {price} per trade".
+
+### REQ-50: Entry-fill simulation window
+`BacktestConfig` MUST expose `max_fill_wait` (positive integer, candles) — the window after `retest_index` within which a candidate's REQ-47 entry price MUST be touched for the trade to open, applying uniformly to ALL candidate types. The system MUST check the inclusive window `[retest_index, retest_index + max_fill_wait]`. The first touching index becomes `fill_index`. A candidate never touched within the window MUST be excluded under `excluded_never_filled` and MUST NOT be counted as win/loss/open.
+- **REQ-50.1** (happy, wick-type): GIVEN a wick-type candidate whose retest candle itself touches the entry price, WHEN fill is simulated, THEN `fill_index = retest_index`.
+- **REQ-50.2** (happy, body-type): GIVEN a body-type candidate whose entry touches 3 candles after `retest_index`, `max_fill_wait=10`, WHEN fill is simulated, THEN `fill_index` is that later index.
+- **REQ-50.3** (edge, boundary): GIVEN `retest_index=95`, `max_fill_wait=10`, WHEN the fill window is evaluated, THEN candle index 106 is NOT considered — the window closes at index 105 inclusive.
+- **REQ-50.4** (edge): GIVEN an INVALIDATED+retest or PENDING+retest candidate whose entry is never touched within its fill window, WHEN fill is simulated, THEN the candidate IS excluded under `excluded_never_filled` — NOT counted as a loss.
+
+### REQ-52: Kill-zone gate relocation and dead-parameter removal preserve existing behavior
+The system SHALL preserve `in_ny_kill_zone`'s existing behavior when relocated from `cli.py` into `core/kill_zone.py`: for any given input, the relocated function MUST produce the same output as the original `cli.py` implementation. The system SHALL remove the dead `types` parameter from `_detect_all` with no change to its observable output for any input.
+- **REQ-52.1** (happy, relocation preserves behavior): GIVEN a timestamp classified by the original `in_ny_kill_zone`, WHEN evaluated via the relocated `core/kill_zone.py` version, THEN the classification is identical.
+- **REQ-52.2** (edge, dead-param removal is a no-op): GIVEN any valid `_detect_all` invocation, WHEN its returned detections are compared before and after the unused `types` parameter is removed, THEN the result is identical.
+
+## Domain: backtest-metrics
+
+### REQ-39: Win rate
+The system MUST compute win rate as `wins / (wins + losses)` over CLOSED trades only (`open` trades excluded from both numerator and denominator). WHEN zero trades have closed, win rate MUST be `None`/"n/a" — never `0.0`.
+- **REQ-39.1** (edge, no substitution): GIVEN zero closed trades, WHEN win rate is computed, THEN `win_rate` is `None`/"n/a", never `0.0`.
+- **REQ-39.2** (happy): GIVEN 3 wins and 2 losses (5 closed trades), WHEN win rate is computed, THEN it equals `0.6`.
+
+### REQ-49: Aggregate profitability disclosure
+`metrics_summary` MUST report an aggregate profitability figure alongside per-trade metrics: the AVERAGE `r_multiple` across all CLOSED trades, AND the TOTAL R (sum) — both `None`/"n/a" when zero trades have closed. Both figures MUST be accompanied by an explicit note that they assume unlimited capital with no cap on concurrently open positions. `metrics_summary` MUST also disclose the count of trades still `open` at series end as its own explicit line.
+- **REQ-49.1** (happy): GIVEN 3 closed trades with r_multiples `+2, +2, -1`, WHEN aggregate profitability is computed, THEN `average_r_multiple=1.0` and `total_r=3.0`.
+- **REQ-49.2** (edge, no substitution): GIVEN zero closed trades, WHEN aggregate profitability is computed, THEN both figures are "n/a" — never `0.0`.
+- **REQ-49.3** (edge, disclosure wording): GIVEN 5 closed trades averaging `1.0`, WHEN `metrics_summary` is written, THEN it states the average "over 5 closed trades" plus the unlimited-capital note.
+- **REQ-49.4** (edge): GIVEN a run in which 7 trades remain `open` at series end, WHEN `metrics_summary` is written, THEN it includes an explicit "open trades: 7" line.
+
+## Domain: signal-traceability
+
+### REQ-41: Signal/anchor identifier
+The system MUST assign every `Model1Signal` a stable `signal_id: str`, computed as `f"{origin_index}-{anchor_index}-{direction}-{confirmation_type}-{entry_type}"`, where `origin_index` is the originating `CRTRange.start_index` or `FVG.start_index`. Injectivity is INHERITED from `detect_crt_ranges`/`detect_fvgs` emitting at most one structure per `start_index` — not independently enforced (accepted risk, followup registered for hardening). WHEN `--backtest` is passed, `detections.csv` MUST gain a trailing `signal_id` column; non-model1 rows write `""`. WHEN `--backtest` is NOT passed, `detections.csv` MUST NOT include this column.
+- **REQ-41.1** (happy): GIVEN two signals sharing the same `anchor_index` but originating from different `CRTRange`s, WHEN `signal_id` is computed, THEN the two ids are distinct.
+- **REQ-41.2** (edge): GIVEN an `fvg_fill`-confirmed signal, WHEN `signal_id` is computed, THEN it is stable and does not collide with a `purge_engulf`-confirmed signal at the same `origin_index`.
+- **REQ-41.3** (edge): GIVEN a detector run WITHOUT `--backtest`, WHEN `detections.csv` is written, THEN it has no `signal_id` column and matches the 8-column header exactly (the 7 prior columns plus `key_level_source`, REQ-24).
+
+### REQ-42: Trade-to-detection traceability
+Every row in `trades.csv` MUST carry the `signal_id` (REQ-41) of the `Model1Signal` it originated from, joining to EXACTLY ONE row in `detections.csv`. Because the backtest computes its own entry price independently of `detections.csv`'s `entry_price` (REQ-47), a joined pair's `entry_price` values MAY legitimately differ for wick-type signals — `metrics_summary` MUST disclose this as an explicit note.
+- **REQ-42.1** (happy): GIVEN any `trades.csv` row, WHEN its `signal_id` is looked up in `detections.csv`, THEN exactly one row matches.
+- **REQ-42.2** (edge, disclosure): GIVEN a joined pair of a wick-type trade row and its detection row with differing `entry_price` values, WHEN `metrics_summary` is written, THEN it includes a note that the two are independently computed and may differ for wick-type signals.
+
 ## Domain: chart-overlay-viz
 
 ### REQ-23: Chart image overlay
@@ -143,8 +291,66 @@ FVG, CRT range, MSS, and HTF/LTF alignment satisfy the same property as Swing/Mo
 - **REQ-23.1**: multi-week series, all 6 types — each visually distinct.
 
 ### REQ-24: Companion CSV table
-Columns `timestamp,type,direction,price_high,price_low,status` (+`aligned` for Model-1 rows). Zero detections → header-only CSV, exit 0.
+Columns `timestamp,type,direction,price_high,price_low,status,aligned,key_level_source` (8 columns; `aligned` and `key_level_source` populated for Model-1 rows only). `key_level_source` is populated ONLY for Model-1 rows tagged `aligned` with a Key Level recorded, carrying that Key Level's `kind` (`fvg` or `ict_order_block`); empty for every other row. Zero detections → header-only CSV, exit 0.
 - **REQ-24.1**: scannable for e.g. "any PENDING Model-1" without re-parsing the image.
+- **REQ-24.2** (happy): GIVEN an `aligned` Model-1 signal credited to an ICTOrderBlock-sourced Key Level, WHEN `detections.csv` is written, THEN its `key_level_source` cell is exactly `"ict_order_block"`.
+- **REQ-24.3** (edge): GIVEN a non-Model-1 row (swing/fvg/crt_range/mss), WHEN `detections.csv` is written, THEN its `key_level_source` cell is empty.
+
+## Domain: ict-order-block-detection
+
+### REQ-61: Detect ICT Order Block (immediate-engulfing rule)
+The system MUST detect an `ICTOrderBlock` for every pair of consecutive candles `(i, i+1)` in the source series, checked unconditionally in BOTH directions — no external bias input, no structure-break/MSS dependency:
+- **Bullish Order Block**: candle `i` closes bearish (`i.close < i.open`) AND candle `i+1` fully engulfs `i`'s range (`i+1.high >= i.high` AND `i+1.low <= i.low`) AND candle `i+1` closes bullish (`i+1.close > i+1.open`).
+- **Bearish Order Block**: mirror — `i` closes bullish, `i+1` fully engulfs `i`, `i+1` closes bearish.
+- The zone is candle `i`'s own BODY — `top = max(i.open, i.close)`, `bottom = min(i.open, i.close)`.
+- A pair that does not satisfy all three conditions for either direction yields no Order Block for that pair — never an error.
+- **REQ-61.1** (happy, bullish): GIVEN candle `i` closes bearish and candle `i+1` fully engulfs `i`'s range and closes bullish, WHEN detected, THEN a bullish `ICTOrderBlock` is emitted anchored at `i`, zone = candle `i`'s body, confirmed at `i+1`.
+- **REQ-61.2** (happy, bearish): mirror of REQ-61.1 — candle `i` closes bullish, candle `i+1` fully engulfs `i` and closes bearish.
+- **REQ-61.3** (edge, partial engulf — no OB): GIVEN candle `i` closes bearish and candle `i+1` closes bullish but `i+1` does NOT fully engulf `i`'s range (e.g. `i+1.high < i.high`), WHEN evaluated, THEN no `ICTOrderBlock` is emitted for that pair.
+- **REQ-61.4** (edge, wrong confirmation close — no OB): GIVEN candle `i` closes bearish and candle `i+1` fully engulfs `i`'s range but `i+1` itself closes bearish (not bullish), WHEN evaluated, THEN no `ICTOrderBlock` is emitted for that pair.
+- **REQ-61.5** (edge, doji excluded): GIVEN candle `i` has `open == close` (doji), WHEN evaluated as a potential anchor, THEN it never qualifies for either direction — the strict `close < open` / `close > open` inequalities a doji can satisfy neither.
+- **REQ-61.6** (edge, adjacent pairs are independent): GIVEN candle `B` is simultaneously the confirmation of a bullish Order Block anchored at `A` (pair `A,B`) AND itself closes bullish so that `B` also satisfies the bearish-OB anchor condition for the adjacent pair `(B, C)`, and `C` fully engulfs `B` and closes bearish, WHEN detected, THEN BOTH Order Blocks are emitted independently — no exclusivity constraint between overlapping matches.
+
+### REQ-62: Invalidation by first touch
+The system MUST mark an `ICTOrderBlock` `invalidated` at the FIRST candle strictly after its confirmation candle (`i+1`) — i.e. starting the scan at `i+2` — whose range overlaps the zone AT ALL: `candle.high >= bottom AND candle.low <= top`, for either direction. This is a touch test (wick or body, any overlap), not a close-through test. An Order Block never invalidated by series end remains `status="open"`, `invalidation_index=None`.
+- **REQ-62.1** (happy): GIVEN a bullish Order Block with `bottom=1.0950, top=1.0980`, confirmed at `i+1`, and the candle at index `i+2` has `low=1.0955` (inside the zone), WHEN evaluated, THEN `status="invalidated"` at index `i+2`.
+- **REQ-62.2** (edge, wick-only touch invalidates): GIVEN a later candle's wick merely dips to the zone boundary while its CLOSE remains entirely outside the zone, WHEN evaluated, THEN the Order Block IS invalidated at that candle — a mere touch mitigates it.
+- **REQ-62.3** (edge, boundary-inclusive): GIVEN a later candle's `high` exactly equals `bottom` (or `low` exactly equals `top`), WHEN evaluated, THEN it counts as an overlap and invalidates.
+- **REQ-62.4** (edge, confirmation candle excluded from the scan): GIVEN the confirmation candle `i+1` — which by definition already overlaps the zone, since full engulfment implies `i+1.high >= i.high` and `i+1.low <= i.low` — WHEN evaluated, THEN it is NEVER treated as the invalidating candle; the invalidation scan begins strictly at `i+2`, never at `i+1`.
+- **REQ-62.5** (edge, never invalidated): GIVEN no candle from `i+2` onward ever overlaps the zone, WHEN evaluated at series end, THEN `status="open"`, `invalidation_index=None`.
+
+### REQ-63: Registration as a Key Level source (Daily-tier source, H4-native invalidation, most-recent tie-break)
+`core.key_level.KeyLevel.kind` includes `"ict_order_block"` alongside `"fvg"`. The system MUST expose `to_key_levels(blocks: list[ICTOrderBlock]) -> list[KeyLevel]` producing, for every `ICTOrderBlock`, a `KeyLevel` with `kind="ict_order_block"`, `top`/`bottom` = the Order Block's own zone, `origin_index` = the CONFIRMATION candle's index (`i+1`), and `expiry_index` = `invalidation_index` when invalidated, absent when open.
+
+`detect_ict_order_blocks` runs against the Daily series, not the HTF (H4) series — Order Block Key Levels are Daily-tier, matching the 3-tier hierarchy (Daily Key Level → H4 CRT signal/purge → M15 execution). `origin_index` is an index into the Daily series, reindexed to H4-index-space (the confirming day's CLOSE).
+
+**Invalidation granularity**: for a Daily-sourced Order Block, whether and when it becomes invalidated is determined by scanning the H4 series candle-by-candle — starting at the reindexed `origin_index` (inclusive) — for the first H4 candle whose range overlaps the zone `[bottom, top]`, NOT by asking whether some Daily candle's full-day range touched it. The Order Block's own Daily-native `invalidation_index`/`status` (from `detect_ict_order_blocks`'s generic same-series scan) are NOT used for the Daily-tier flow — they are computed but discarded, replaced entirely by the H4-native scan's result.
+
+**Confluence matching**: `alignment/htf_ltf.py`'s `_key_level_credit_map` selects the MOST RECENT qualifying Key Level (by `origin_index`) among candidates for a given purge, not the oldest. A Daily Key Level qualifies for an H4 purge when the purge candle's own wick extreme (`_purge_wick_extremes`) falls inside the Key Level's zone `[bottom, top]` inclusive of both edges, with NO tolerance — exact overlap only.
+
+- **REQ-63.1** (happy, origin is the confirmation candle, not the anchor): GIVEN a bullish `ICTOrderBlock` anchored at Daily candle `i=13`, confirmed at candle `i+1=14`, WHEN presented as a `KeyLevel`, THEN `origin_index=14`, not `13`.
+- **REQ-63.2** (alternate, expiry is H4-native): GIVEN a Daily-sourced Order Block whose zone is first touched by the H4 candle at H4 index `102` (not by asking which Daily candle touched it), WHEN the Key Level is credited, THEN `expiry_index=102`, an H4 index, derived from the H4-native scan (REQ-63.7).
+- **REQ-63.3** (structural, regression): GIVEN `alignment/htf_ltf.py`'s own import statements, WHEN inspected, THEN they import only `core.key_level`.
+- **REQ-63.4** (most-recent tie-break): GIVEN two Daily Key Levels both qualify for the same H4 purge (both overlap the purge candle's wick extreme), WHEN credited, THEN the one with the GREATER `origin_index` (more recent) is selected, not the lesser.
+- **REQ-63.5** (Daily-tier source): GIVEN a Daily series is provided (REQ-67), WHEN Order Blocks are detected for Key Level registration, THEN they are computed from the Daily series' own candles — never from the H4 series.
+- **REQ-63.6** (exact overlap): GIVEN a purge candle's wick extreme lies outside a Daily Key Level's zone by any margin, however small, WHEN credited, THEN NO confluence is recorded for that Key Level — no tolerance is applied, regardless of how close the miss.
+- **REQ-63.7** (H4-native invalidation scan): GIVEN a Daily-sourced Order Block confirmed on Daily candle `D`, reindexed to H4 origin index `X`, WHEN checking for invalidation, THEN the system scans H4 candles starting at index `X` (inclusive) and marks the Order Block invalidated at the FIRST H4 candle whose range overlaps `[bottom, top]` — never at a Daily candle, and never by translating the Daily-native `invalidation_index`. If no H4 candle ever overlaps, the Order Block has no `expiry_index` (open indefinitely, same as an un-invalidated H4-native Order Block).
+
+### REQ-64: No-lookahead (ICT Order Block)
+`detect_ict_order_blocks(series.up_to(n))` MUST match the full-series output for every `ICTOrderBlock` whose confirmation candle (`i+1`) has index `< n` — a fixed `k=1` boundary-equality property. Invalidation status for an already-knowable Order Block MUST be re-derivable from any prefix that includes the invalidating candle, and MUST remain `open` in any shorter prefix.
+- **REQ-64.1** (property test): prefix-consistency at fixed `k=1`, mirroring the existing per-detector property tests in `tests/property/test_no_lookahead.py`.
+
+### REQ-66: ICTOrderBlock's own discrimination number (real-data comparison)
+The system's real-data validation runs on the SAME 3 instruments (EURUSDm, GBPUSDm, DXYm) as the FVG confluence gate, WITH `--daily-csv`/`--daily-symbol` provided (REQ-67), gating confluence SOLELY on ICTOrderBlock-sourced Key Levels detected on the Daily series with H4-native invalidation (REQ-63.7), and the run's evidence records, per instrument: the count of `aligned`, non-`fvg_fill` Model-1 signals; how many were credited an ICTOrderBlock Key Level; how many were not; the resulting `excluded_no_key_level` count; and `trades_opened`. This REQ does NOT gate pass/fail on any specific threshold — the number itself is the deliverable.
+- **REQ-66.1** (happy): GIVEN the real EURUSDm H4/M15/Daily triple with `--backtest`, WHEN run gating on ICTOrderBlock alone, THEN the evidence records all counts above.
+- **REQ-66.2** (edge, no threshold gate): GIVEN any resulting discrimination percentage, WHEN evidence is recorded, THEN the run does NOT fail or halt based on that percentage's value alone.
+- **REQ-66.3** (edge, full coverage): GIVEN all 3 instruments run, WHEN evidence is compiled, THEN a complete count set exists for each of EURUSDm, GBPUSDm, and DXYm — not a subset.
+
+### REQ-67: Daily series CLI input
+The system MUST accept an optional Daily-timeframe series input via `--daily-csv`/`--daily-symbol`, mirroring the existing optional `--htf-csv`/`--htf-symbol` pair-mode precedent: both flags MUST be provided together (error if only one is given), and omitting both is valid — the run proceeds without Daily-tier ICTOrderBlock Key Levels rather than failing.
+- **REQ-67.1** (happy): GIVEN `--daily-csv` and `--daily-symbol` are both provided, WHEN the detector runs, THEN Order Block Key Levels are computed from the Daily series per REQ-63.
+- **REQ-67.2** (edge, omitted): GIVEN both `--daily-csv` and `--daily-symbol` are omitted, WHEN the detector runs, THEN no ICTOrderBlock Key Levels are registered (FVG-only confluence) and the run does NOT fail.
+- **REQ-67.3** (edge, partial pair rejected): GIVEN only ONE of `--daily-csv`/`--daily-symbol` is provided, WHEN the CLI parses arguments, THEN it exits with an error before any detection runs — mirroring `--htf-csv`/`--htf-symbol`'s existing validation.
 
 ---
 

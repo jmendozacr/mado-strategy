@@ -1,10 +1,11 @@
 import bisect
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from typing import Literal
 
-from core.candle import Candle, OHLCSeries
+from core.candle import Candle, OHLCSeries, first_overlap_index
 from core.config import CRTRangeConfig, FVGConfig, Model1Config
+from core.key_level import KeyLevel
 from core.pairing_table import TIMEFRAME_DURATIONS
 from entries.model1 import Model1Signal, detect_model1_signals
 from primitives.crt_range import CRTRange, detect_crt_ranges, first_breach_index
@@ -17,6 +18,7 @@ class AlignedSignal:
     ltf_signal: Model1Signal
     htf_context: CRTRange | None
     aligned: Alignment
+    key_level: KeyLevel | None = None
 
 
 def tag_alignment(
@@ -27,6 +29,9 @@ def tag_alignment(
     model1_config: Model1Config = Model1Config(),
     ltf_signals: list[Model1Signal] | None = None,
     htf_ranges: list[CRTRange] | None = None,
+    htf_key_levels: list[KeyLevel] | None = None,
+    daily_series: OHLCSeries | None = None,
+    daily_key_levels: list[KeyLevel] | None = None,
 ) -> list[AlignedSignal]:
     """Tag each LTF Model-1 signal against the HTF CRT purge window it
     falls in (REQ-05). A resolved HTF CRTRange's "purge candle" is the
@@ -40,6 +45,18 @@ def tag_alignment(
     (see `detect_model1_signals`'s `crt_ranges`/`fvgs` params for the same
     pattern). `None` (the default) preserves the original self-contained
     behavior.
+
+    `htf_key_levels` breaks that convention deliberately (ADR-012): `None`
+    means "no Key Level sources registered" (every `key_level` stays
+    `None`), NOT "self-compute FVG key levels" — the caller (`cli.py`)
+    injects sources so this module never imports a source detector.
+
+    `daily_series`/`daily_key_levels` (V3, ADR-E): `daily_key_levels` carry
+    indices into `daily_series`, a DIFFERENT series than `htf_series` —
+    they are reindexed into H4-index-space (`_reindex_daily_key_levels`)
+    before joining `htf_key_levels` in the credit map. Both must be
+    provided together; either omitted means no Daily-sourced Key Levels
+    (mirrors `htf_key_levels`'s own None-means-none convention).
     """
     htf_candles = htf_series.candles
     htf_timestamps = [c.timestamp for c in htf_candles]
@@ -48,6 +65,14 @@ def tag_alignment(
     if htf_ranges is None:
         htf_ranges = detect_crt_ranges(htf_series, crt_config)
     purge_index_to_range = _purge_index_map(htf_candles, htf_ranges)
+    all_key_levels = list(htf_key_levels or [])
+    if daily_series is not None and daily_key_levels:
+        all_key_levels += _reindex_daily_key_levels(
+            daily_key_levels, daily_series.candles, htf_candles, htf_timestamps
+        )
+    key_level_credit_map = _key_level_credit_map(
+        htf_candles, purge_index_to_range, all_key_levels
+    )
     htf_duration = TIMEFRAME_DURATIONS[htf_series.timeframe]
     last_htf_index = len(htf_candles) - 1
 
@@ -70,11 +95,117 @@ def tag_alignment(
 
         crt_range = purge_index_to_range.get(relevant_index)
         if crt_range is not None:
-            tags.append(AlignedSignal(ltf_signal=signal, htf_context=crt_range, aligned="aligned"))
+            tags.append(
+                AlignedSignal(
+                    ltf_signal=signal, htf_context=crt_range, aligned="aligned",
+                    key_level=key_level_credit_map.get(relevant_index),
+                )
+            )
         else:
             tags.append(AlignedSignal(ltf_signal=signal, htf_context=None, aligned="unaligned"))
 
     return tags
+
+
+def _purge_wick_extremes(purge_candle: Candle, crt_range: CRTRange) -> tuple[float, ...]:
+    """The extreme(s) on the side(s) actually breached — the breach(es)
+    that made this the purge candle (REQ-55.6/.7). Both sides can breach on
+    the same candle (~14.1% of real H4 purges); NEVER derived from a
+    signal's `direction` — that mapping is exactly what REQ-55.7 exists to
+    catch as wrong."""
+    extremes = []
+    if purge_candle.high > crt_range.high:
+        extremes.append(purge_candle.high)
+    if purge_candle.low < crt_range.low:
+        extremes.append(purge_candle.low)
+    return tuple(extremes)
+
+
+def _key_level_credit_map(
+    candles: tuple[Candle, ...],
+    purge_index_to_range: dict[int, CRTRange],
+    key_levels: list[KeyLevel],
+) -> dict[int, KeyLevel]:
+    """Eager, keyed by purge index — O(purges x levels x extremes<=2),
+    independent of LTF signal count (design §12). A level qualifies for a
+    purge if some credited extreme satisfies all three: knowable before the
+    purge (REQ-54.4), unexpired at-or-before the purge (REQ-55.9/.10/.11,
+    right-closed), and inside the level's zone inclusive of both edges
+    (REQ-55.4). Both extremes are evaluated independently and their
+    qualifying levels pooled; the HIGHEST origin_index (most recent) wins
+    across the pool (REQ-63.4, V3 — was lowest/oldest under V2's REQ-55.6,
+    flipped because the most-recent Key Level is the more relevant one for
+    a Daily-tier source, ADR-E)."""
+    credit_map: dict[int, KeyLevel] = {}
+    for purge_index, crt_range in purge_index_to_range.items():
+        extremes = _purge_wick_extremes(candles[purge_index], crt_range)
+        qualifying = [
+            level
+            for extreme in extremes
+            for level in key_levels
+            if level.origin_index < purge_index
+            and (level.expiry_index is None or purge_index <= level.expiry_index)
+            and level.bottom <= extreme <= level.top
+        ]
+        if qualifying:
+            credit_map[purge_index] = max(qualifying, key=lambda level: level.origin_index)
+    return credit_map
+
+
+def _reindex_daily_key_levels(
+    levels: list[KeyLevel], daily_candles: tuple[Candle, ...], htf_candles: tuple[Candle, ...],
+    htf_timestamps: list[datetime],
+) -> list[KeyLevel]:
+    """V4/REQ-63.7: translates Daily-sourced KeyLevels into H4-index-space.
+    origin_index reindexes from the CONFIRMATION daily candle's CLOSE
+    (conservative: never knowable earlier) — unchanged from V3. expiry_index
+    is NOT translated from a Daily-native invalidation boundary at all
+    (that was V3's mistake — a Daily candle's high/low blends 24h of
+    movement into one blunt touch test) — it is freshly computed by
+    scanning H4 candles one by one, starting at the reindexed origin_index,
+    for the first H4 candle whose OWN range overlaps the zone."""
+    reindexed = []
+    for level in levels:
+        origin = _ceiling_htf_index(htf_timestamps, _daily_close(daily_candles, level.origin_index))
+        expiry = _htf_expiry_index(htf_candles, origin, level.top, level.bottom)
+        reindexed.append(replace(level, origin_index=origin, expiry_index=expiry))
+    return reindexed
+
+
+def _daily_close(daily_candles: tuple[Candle, ...], index: int) -> datetime:
+    """A Daily candle's own close = the next Daily candle's open when one
+    exists; falls back to +1 day for the series' own last candle (Daily
+    bars are UTC-daily per the confirmed broker-is-UTC+0 finding)."""
+    if index + 1 < len(daily_candles):
+        return daily_candles[index + 1].timestamp
+    return daily_candles[index].timestamp + timedelta(days=1)
+
+
+def _ceiling_htf_index(htf_timestamps: list[datetime], timestamp: datetime) -> int:
+    """First H4 index whose own timestamp >= `timestamp` — the mirror image
+    of `_enclosing_htf_index`'s floor lookup. Returns `len(htf_timestamps)`
+    (an out-of-range sentinel, never a real H4 index) when the boundary is
+    beyond the last available H4 candle — `_htf_expiry_index`'s scan below
+    then naturally covers zero candles and returns `None`, and
+    `_key_level_credit_map`'s `level.origin_index < purge_index` correctly
+    never matches — both the intended 'not yet knowable within this
+    series' outcome."""
+    return bisect.bisect_left(htf_timestamps, timestamp)
+
+
+def _htf_expiry_index(
+    htf_candles: tuple[Candle, ...], start_index: int, top: float, bottom: float,
+) -> int | None:
+    """REQ-63.7 (V4): the H4-native invalidation scan a Daily-sourced Order
+    Block needs — NOT a translation of `detect_ict_order_blocks`'s own
+    Daily-native invalidation_index. Scans H4 candles from `start_index`
+    (inclusive) onward for the first whose range overlaps `[bottom, top]`.
+    Starts AT start_index, not start_index + 1 — unlike
+    `detect_ict_order_blocks`'s own i+2 exclusion (REQ-62.4), `start_index`
+    here is a reindexed ORIGIN boundary, not a same-series confirmation
+    candle guaranteed to overlap the zone by construction (full
+    engulfment) — there is no structural reason to exclude it."""
+    return first_overlap_index(htf_candles, start_index, top, bottom)
 
 
 def _purge_index_map(

@@ -35,7 +35,7 @@ When adding new charters, preserve this progression and keep terminology consist
 
 ## `detector/` Subproject
 
-A CRT/ICT price-action pattern detector for MetaTrader 5-exported OHLC data, encoding the methodology from `docs/charter-1..5.md` as detection rules (Swing, FVG, CRT range, MSS, Model-1) plus HTF↔LTF alignment, a chart overlay, and a CSV detections table. Layered pure-function pipeline (`core` → `primitives` → `composite`/`entries` → `alignment` → `viz`/`cli`; `ingestion` is a leaf) — full design at `openspec/changes/crt-pattern-detector-v1/design.md`.
+A CRT/ICT price-action pattern detector for MetaTrader 5-exported OHLC data, encoding the methodology from `docs/charter-1..5.md` as detection rules (Swing, FVG, CRT range, MSS, Model-1) plus HTF↔LTF alignment, a chart overlay, a CSV detections table, and a candle-by-candle trade backtest simulator. Layered pure-function pipeline (`core` → `primitives` → `composite`/`entries` → `alignment` → `backtest` → `viz`/`cli`; `ingestion` is a leaf) — full design at `openspec/changes/archive/2026-08-20-crt-pattern-detector-v1/design.md` (v1) and `openspec/changes/archive/2026-08-29-crt-detector-backtest-engine/design.md` (backtest engine).
 
 - **Stack**: Python 3.12, managed with `uv`. Dependencies: pandas, numpy, matplotlib (runtime); pytest, hypothesis, import-linter (dev).
 - **Setup**: `cd detector && uv sync --extra dev`.

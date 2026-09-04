@@ -1,0 +1,13 @@
+{
+  "change": "crt-detector-htf-timezone-anchor",
+  "triage": "L",
+  "phase": "triage",
+  "spec_status": "none",
+  "slices": false,
+  "plan_verify": "none",
+  "verify_final": "none",
+  "arch_audit": "none",
+  "outcome": "none",
+  "updated_at": "2026-08-31T21:02:00Z",
+  "viz_url": "none"
+}

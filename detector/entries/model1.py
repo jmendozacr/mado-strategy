@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from core.candle import Candle, OHLCSeries
@@ -20,6 +20,16 @@ class Model1Signal:
     entry_price: float
     retest_index: int | None
     status: DetectionStatus
+    confirmation_index: int
+    origin_index: int
+    signal_id: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "signal_id",
+            f"{self.origin_index}-{self.anchor_index}-{self.direction}-{self.confirmation_type}-{self.entry_type}",
+        )
 
 
 def detect_model1_signals(
@@ -57,13 +67,17 @@ def _purge_signals(
     signals = []
     anchor_index = first_breach_index(candles, crt_range.start_index, crt_range.resolved_at_index, high=crt_range.high)
     if anchor_index is not None:
-        signal = _track_anchor(candles, anchor_index, "bearish", crt_range.high, "purge_engulf", config)
+        signal = _track_anchor(
+            candles, anchor_index, "bearish", crt_range.high, "purge_engulf", config, crt_range.start_index
+        )
         if signal is not None:
             signals.append(signal)
 
     anchor_index = first_breach_index(candles, crt_range.start_index, crt_range.resolved_at_index, low=crt_range.low)
     if anchor_index is not None:
-        signal = _track_anchor(candles, anchor_index, "bullish", crt_range.low, "purge_engulf", config)
+        signal = _track_anchor(
+            candles, anchor_index, "bullish", crt_range.low, "purge_engulf", config, crt_range.start_index
+        )
         if signal is not None:
             signals.append(signal)
 
@@ -81,7 +95,7 @@ def _fvg_fill_signal(
         return None
     direction: Direction = "bullish" if fvg.direction == "bullish" else "bearish"
     purge_target = fvg.bottom if fvg.direction == "bullish" else fvg.top
-    return _track_anchor(candles, fvg.fill_index, direction, purge_target, "fvg_fill", config)
+    return _track_anchor(candles, fvg.fill_index, direction, purge_target, "fvg_fill", config, fvg.start_index)
 
 
 def _track_anchor(
@@ -91,6 +105,7 @@ def _track_anchor(
     purge_target: float,
     confirmation_type: Literal["purge_engulf", "fvg_fill"],
     config: Model1Config,
+    origin_index: int,
 ) -> Model1Signal | None:
     anchor = candles[anchor_index]
     protected_extreme = anchor.low if direction == "bullish" else anchor.high
@@ -103,7 +118,7 @@ def _track_anchor(
     retest_index: int | None = None
     retest_open: float | None = None
 
-    def signal(retest_index: int | None, status: DetectionStatus) -> Model1Signal:
+    def signal(retest_index: int | None, status: DetectionStatus, confirmation_index: int) -> Model1Signal:
         return Model1Signal(
             anchor_index=anchor_index,
             direction=direction,
@@ -113,6 +128,8 @@ def _track_anchor(
             entry_price=entry_price,
             retest_index=retest_index,
             status=status,
+            confirmation_index=confirmation_index,
+            origin_index=origin_index,
         )
 
     window_end = min(anchor_index + config.max_retest_lookback, len(candles) - 1)
@@ -131,8 +148,8 @@ def _track_anchor(
                 # protected extreme, not a planned entry — no
                 # confirmation/engulf ever occurred for this signal.
                 entry_type, entry_price = "wick", protected_extreme
-                return signal(None, DetectionStatus.INVALIDATED)
-            return signal(retest_index, DetectionStatus.INVALIDATED)
+                return signal(None, DetectionStatus.INVALIDATED, j)
+            return signal(retest_index, DetectionStatus.INVALIDATED, j)
 
         if not confirmed:
             if _closes_beyond(candle.close, body_high, body_low, direction):
@@ -144,11 +161,11 @@ def _track_anchor(
             retest_index = j
             retest_open = candle.open
         if retest_index is not None and _closes_beyond_open(candle.close, retest_open, direction):
-            return signal(retest_index, DetectionStatus.CONFIRMED)
+            return signal(retest_index, DetectionStatus.CONFIRMED, j)
 
     if not confirmed:
         return None
-    return signal(retest_index, DetectionStatus.PENDING)
+    return signal(retest_index, DetectionStatus.PENDING, window_end)
 
 
 def _breaches_protected_extreme(

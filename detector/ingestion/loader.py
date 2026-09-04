@@ -5,7 +5,7 @@ import pandas as pd
 from core.candle import Candle, OHLCSeries
 from core.pairing_table import TIMEFRAME_DURATIONS
 
-REQUIRED_COLUMNS = ("<DATE>", "<TIME>", "<OPEN>", "<HIGH>", "<LOW>", "<CLOSE>")
+REQUIRED_COLUMNS = ("<DATE>", "<OPEN>", "<HIGH>", "<LOW>", "<CLOSE>")
 
 _TIMEFRAME_REFERENCE_DELTAS = tuple(
     (delta, timeframe) for timeframe, delta in TIMEFRAME_DURATIONS.items()
@@ -33,9 +33,15 @@ def load_mt5_csv(path: str, symbol: str) -> OHLCSeries:
         raise LoadError(f"missing required column(s): {', '.join(missing)}")
 
     try:
-        timestamps = pd.to_datetime(
-            df["<DATE>"] + " " + df["<TIME>"], format="%Y.%m.%d %H:%M:%S"
-        )
+        # V3/REQ-67: MT5's Daily (D1) export omits <TIME> entirely — no
+        # intraday time on a daily bar. When absent, default to midnight;
+        # when present (H4/M15/etc.), parse it same as before.
+        if "<TIME>" in df.columns:
+            timestamps = pd.to_datetime(
+                df["<DATE>"] + " " + df["<TIME>"], format="%Y.%m.%d %H:%M:%S"
+            )
+        else:
+            timestamps = pd.to_datetime(df["<DATE>"], format="%Y.%m.%d")
     except ValueError as e:
         raise LoadError(f"malformed date/time: {e}")
 
