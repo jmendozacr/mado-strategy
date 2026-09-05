@@ -108,6 +108,44 @@ def test_invalidated_and_pending_with_retest_use_the_same_fill_mechanism():
         assert trades[0].outcome == "open"
 
 
+def test_two_leg_trade_blends_partial_and_remainder_r_multiple():
+    """REQ-68.1/69.1/38.2 (S-000 walking skeleton, happy path): the partial
+    level resolves strictly before SL, then the remainder rides to the
+    original take_profit -- leg 1 closes at partial_price, leg 2 closes at
+    take_profit, and r_multiple is the fraction-weighted blend of both
+    legs' net_r_multiple (default partial_fraction=0.5)."""
+    series = (
+        _base_bullish_series()  # 0-5, the last (5) already past fill_index(4)+1, untouched
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1015, high=1.1027, low=1.1010, close=1.1020)  # 7 — touches partial_price (1.1025) only
+        .candle(open=1.1020, high=1.1040, low=1.1015, close=1.1030)  # 8 — filler, no touch of SL/TP
+        .candle(open=1.1050, high=1.1105, low=1.1045, close=1.1095)  # 9 — touches take_profit (1.1100)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0988  # protected_extreme(anchor.low=1.0990) - sl_buffer_price(0.0002)
+    r_leg1 = (1.1025 - entry) / (entry - stop)
+    r_leg2 = (1.1100 - entry) / (entry - stop)
+    expected_blended = 0.5 * r_leg1 + 0.5 * r_leg2
+
+    assert trade.partial_exit_index == 7
+    assert trade.partial_exit_price == 1.1025
+    assert abs(trade.partial_r_multiple - r_leg1) < 1e-9
+    assert trade.partial_gap_filled is False
+    assert trade.exit_index == 9
+    assert trade.exit_price == 1.1100
+    assert abs(trade.r_multiple - expected_blended) < 1e-9
+    assert trade.outcome == "win"
+
+
 def test_same_candle_sl_and_tp_resolves_as_loss_with_ambiguous_flag():
     """REQ-33.1: a single candle touching both SL and TP resolves as a loss
     at the SL price, flagged ambiguous_bar."""

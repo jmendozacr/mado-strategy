@@ -10,6 +10,7 @@ from alignment.htf_ltf import AlignedSignal
 from backtest.levels import Direction
 from backtest.levels import entry_price as _entry_price
 from backtest.levels import net_r_multiple as _net_r_multiple
+from backtest.levels import partial_price as _partial_price
 from backtest.levels import risk_reward as _risk_reward
 from backtest.levels import stop_loss as _stop_loss
 from backtest.levels import take_profit as _take_profit
@@ -34,6 +35,7 @@ class Candidate:
     entry_price: float
     stop_loss: float
     take_profit: float
+    partial_price: float
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,10 @@ class Trade:
     r_multiple: float | None
     ambiguous_bar: bool
     gap_filled: bool
+    partial_exit_index: int | None
+    partial_exit_price: float | None
+    partial_r_multiple: float | None
+    partial_gap_filled: bool
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,7 @@ def _build_candidate(
         anchor, signal.direction, swings, indices, signal.anchor_index, signal.retest_index, backtest_config
     )
     tp = _take_profit(tagged.htf_context, signal.direction)
+    pp = _partial_price(tagged.htf_context, signal.direction)
     return Candidate(
         signal_id=signal.signal_id,
         anchor_index=signal.anchor_index,
@@ -100,6 +107,7 @@ def _build_candidate(
         entry_price=ep,
         stop_loss=sl,
         take_profit=tp,
+        partial_price=pp,
     )
 
 
@@ -141,6 +149,15 @@ def _sl_sides() -> tuple[SweepSide, SweepSide]:
 def _tp_sides() -> tuple[SweepSide, SweepSide]:
     return _directional_sides(
         lambda pair: pair[0].take_profit, lambda pair: pair[0].direction, invert_bullish=True
+    )
+
+
+def _partial_sides() -> tuple[SweepSide, SweepSide]:
+    """REQ-68: the equilibrium level sits on the SAME side of entry as
+    take_profit (same-side/monotonic geometry) -- mirrors `_tp_sides()`
+    exactly, reading `partial_price` instead of `take_profit`."""
+    return _directional_sides(
+        lambda pair: pair[0].partial_price, lambda pair: pair[0].direction, invert_bullish=True
     )
 
 
@@ -234,18 +251,22 @@ def _fill_pass(
     return filled, len(fill_order) - len(filled)
 
 
-def _resolve_trade(
+def _resolve_single_leg(
     candidate: Candidate, fill_index: int, sl_index: int | None, tp_index: int | None,
     candles: tuple, trading_cost_price: float,
 ) -> Trade:
     """REQ-33/34/38: fixed-order resolution — open, else SL-wins-ties,
-    else gap-through-the-chosen-level fill."""
+    else gap-through-the-chosen-level fill. This is this codebase's
+    original, pre-REQ-68 resolution -- unchanged -- reused by
+    `_resolve_trade` both when no partial level is in play and, byte-for-
+    byte, at `partial_fraction=0.0` (REQ-68.5)."""
     if sl_index is None and tp_index is None:
         return Trade(
             signal_id=candidate.signal_id, anchor_index=candidate.anchor_index, direction=candidate.direction,
             entry_index=fill_index, entry_price=candidate.entry_price, stop_loss=candidate.stop_loss,
             take_profit=candidate.take_profit, exit_index=None, exit_price=None, outcome="open",
             r_multiple=None, ambiguous_bar=False, gap_filled=False,
+            partial_exit_index=None, partial_exit_price=None, partial_r_multiple=None, partial_gap_filled=False,
         )
 
     sl_wins = tp_index is None or (sl_index is not None and sl_index <= tp_index)
@@ -268,14 +289,87 @@ def _resolve_trade(
         # TP-first resolution into a net loss). Breakeven counts as "loss".
         outcome="win" if r_multiple > 0 else "loss", r_multiple=r_multiple,
         ambiguous_bar=ambiguous_bar, gap_filled=gap_filled,
+        partial_exit_index=None, partial_exit_price=None, partial_r_multiple=None, partial_gap_filled=False,
+    )
+
+
+def _resolve_trade(
+    candidate: Candidate, fill_index: int, sl_index: int | None, tp_index: int | None,
+    partial_index: int | None, candles: tuple, trading_cost_price: float, partial_fraction: float,
+) -> Trade:
+    """REQ-68/69: extends REQ-33's pessimistic SL-wins-ties precedent to
+    the partial level. The stop-loss winning at or before the partial index
+    collapses to `_resolve_single_leg`'s exact pre-existing behavior -- no
+    partial leg recorded. Otherwise leg 1 closes at `partial_price` (or its
+    gap-open price, REQ-34 applied identically), and leg 2 re-resolves the
+    SAME, unmoved stop-loss/take-profit -- reusing `sl_index`/`tp_index`
+    from the one sweep already run from `fill_index + 1` (ADR-02: same-
+    side/monotonic geometry means neither can resolve strictly before the
+    partial) -- restricted to indices strictly after `partial_index`."""
+    partial_fires = partial_index is not None and (sl_index is None or partial_index < sl_index)
+    if not partial_fires:
+        return _resolve_single_leg(candidate, fill_index, sl_index, tp_index, candles, trading_cost_price)
+
+    partial_exit_candle = candles[partial_index]
+    partial_gap_filled = _exit_gap_beyond(
+        partial_exit_candle.open, candidate.partial_price, candidate.direction, chosen_is_stop=False
+    )
+    partial_exit_price = partial_exit_candle.open if partial_gap_filled else candidate.partial_price
+    cost_leg1 = partial_fraction * trading_cost_price
+    partial_r_multiple = _net_r_multiple(
+        candidate.entry_price, partial_exit_price, candidate.stop_loss, candidate.direction, cost_leg1
+    )
+
+    # leg2_sl_index is guaranteed None or > partial_index, given partial_fires. TP,
+    # however, CAN tie with the partial index — same-side/monotonic geometry means a
+    # candle touching TP necessarily also touches the partial level, so the two can
+    # resolve within the very same bar (price travels through both intrabar); `>=`
+    # keeps that tie as leg 2's exit rather than losing it to "never resolves".
+    leg2_sl_index = sl_index
+    leg2_tp_index = tp_index if tp_index is not None and tp_index >= partial_index else None
+
+    if leg2_sl_index is None and leg2_tp_index is None:
+        return Trade(
+            signal_id=candidate.signal_id, anchor_index=candidate.anchor_index, direction=candidate.direction,
+            entry_index=fill_index, entry_price=candidate.entry_price, stop_loss=candidate.stop_loss,
+            take_profit=candidate.take_profit, exit_index=None, exit_price=None, outcome="open",
+            r_multiple=None, ambiguous_bar=False, gap_filled=False,
+            partial_exit_index=partial_index, partial_exit_price=partial_exit_price,
+            partial_r_multiple=partial_r_multiple, partial_gap_filled=partial_gap_filled,
+        )
+
+    leg2_sl_wins = leg2_tp_index is None or (leg2_sl_index is not None and leg2_sl_index <= leg2_tp_index)
+    leg2_exit_index = leg2_sl_index if leg2_sl_wins else leg2_tp_index
+    leg2_level = candidate.stop_loss if leg2_sl_wins else candidate.take_profit
+    ambiguous_bar = leg2_sl_index is not None and leg2_tp_index is not None and leg2_sl_index == leg2_tp_index
+
+    leg2_exit_candle = candles[leg2_exit_index]
+    leg2_gap_filled = _exit_gap_beyond(
+        leg2_exit_candle.open, leg2_level, candidate.direction, chosen_is_stop=leg2_sl_wins
+    )
+    leg2_exit_price = leg2_exit_candle.open if leg2_gap_filled else leg2_level
+    cost_leg2 = trading_cost_price - cost_leg1
+    leg2_r_multiple = _net_r_multiple(
+        candidate.entry_price, leg2_exit_price, candidate.stop_loss, candidate.direction, cost_leg2
+    )
+
+    blended_r = partial_fraction * partial_r_multiple + (1 - partial_fraction) * leg2_r_multiple
+    return Trade(
+        signal_id=candidate.signal_id, anchor_index=candidate.anchor_index, direction=candidate.direction,
+        entry_index=fill_index, entry_price=candidate.entry_price, stop_loss=candidate.stop_loss,
+        take_profit=candidate.take_profit, exit_index=leg2_exit_index, exit_price=leg2_exit_price,
+        outcome="win" if blended_r > 0 else "loss", r_multiple=blended_r,
+        ambiguous_bar=ambiguous_bar, gap_filled=leg2_gap_filled,
+        partial_exit_index=partial_index, partial_exit_price=partial_exit_price,
+        partial_r_multiple=partial_r_multiple, partial_gap_filled=partial_gap_filled,
     )
 
 
 def _resolve_exits(
-    filled: list[tuple[Candidate, int]], candles: tuple, trading_cost_price: float
+    filled: list[tuple[Candidate, int]], candles: tuple, trading_cost_price: float, partial_fraction: float
 ) -> list[Trade]:
-    """SL/TP resolution sweeps, eligible_at = fill_index + 1 for every
-    candidate (REQ-37)."""
+    """SL/TP/partial resolution sweeps, eligible_at = fill_index + 1 for
+    every candidate (REQ-37)."""
     exit_order = sorted(filled, key=lambda pair: pair[1])
     sl_results = two_heap_sweep(
         candles, exit_order, eligible_at=lambda pair: pair[1] + 1, sides=_sl_sides(), default=None
@@ -283,9 +377,15 @@ def _resolve_exits(
     tp_results = two_heap_sweep(
         candles, exit_order, eligible_at=lambda pair: pair[1] + 1, sides=_tp_sides(), default=None
     )
+    partial_results = two_heap_sweep(
+        candles, exit_order, eligible_at=lambda pair: pair[1] + 1, sides=_partial_sides(), default=None
+    )
     return [
-        _resolve_trade(candidate, fill_index, sl_index, tp_index, candles, trading_cost_price)
-        for (candidate, fill_index), sl_index, tp_index in zip(exit_order, sl_results, tp_results)
+        _resolve_trade(
+            candidate, fill_index, sl_index, tp_index, partial_index, candles, trading_cost_price, partial_fraction
+        )
+        for (candidate, fill_index), sl_index, tp_index, partial_index
+        in zip(exit_order, sl_results, tp_results, partial_results)
     ]
 
 
@@ -315,7 +415,9 @@ def simulate(
     candidates, excluded_rr_floor = _rr_floor_cut(candidates, config.backtest.min_risk_reward)
     filled, excluded_never_filled = _fill_pass(candidates, candles, config.backtest.max_fill_wait)
 
-    trades = _resolve_exits(filled, candles, config.backtest.trading_cost_price)
+    trades = _resolve_exits(
+        filled, candles, config.backtest.trading_cost_price, config.backtest.partial_fraction
+    )
     trades.sort(key=lambda t: (t.entry_index, t.signal_id))
 
     report = ReconciliationReport(

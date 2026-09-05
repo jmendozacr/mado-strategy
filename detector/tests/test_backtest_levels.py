@@ -6,9 +6,10 @@ from datetime import datetime
 
 from core.candle import Candle
 from core.config import BacktestConfig
+from primitives.crt_range import CRTRange
 from primitives.swing import SwingPoint
 
-from backtest.levels import entry_price, net_r_multiple, stop_loss
+from backtest.levels import entry_price, net_r_multiple, partial_price, stop_loss
 
 
 def _candle(open, high, low, close):
@@ -139,6 +140,20 @@ def test_net_r_multiple_nets_out_trading_cost_once_at_closure():
     net = net_r_multiple(entry, exit_price, stop, "bullish", trading_cost_price=0.00007)
 
     assert abs(net - 2.95) < 1e-9
+
+
+def test_partial_price_is_range_midpoint():
+    """REQ-68 (general): partial_price is the HTF CRT range's midpoint
+    (equilibrium), sourced the same way as take_profit() -- and, unlike
+    take_profit(), direction-independent (kept only for signature
+    symmetry)."""
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+
+    assert partial_price(htf_context, "bullish") == 1.10250
+    assert partial_price(htf_context, "bearish") == 1.10250
 
 
 def test_net_r_multiple_at_default_zero_cost_is_bit_identical_to_gross():

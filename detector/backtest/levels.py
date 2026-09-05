@@ -74,6 +74,13 @@ def take_profit(htf_context: CRTRange, direction: Direction) -> float:
     return htf_context.high if direction == "bullish" else htf_context.low
 
 
+def partial_price(htf_context: CRTRange, direction: Direction) -> float:
+    """REQ-68: the HTF CRT range's midpoint (equilibrium) -- direction is
+    kept only for signature symmetry with take_profit(); the midpoint
+    itself is direction-independent."""
+    return (htf_context.high + htf_context.low) / 2
+
+
 def risk_reward(entry: float, stop: float, target: float, direction: Direction) -> float:
     """REQ-35: signed distances — a target behind entry yields a negative
     ratio, caught by the same `< min_risk_reward` comparison (no separate

@@ -41,6 +41,7 @@ def _trade(signal_id: str, entry_index: int, outcome: str, r_multiple: float | N
         exit_index=None if outcome == "open" else entry_index + 1,
         exit_price=None if outcome == "open" else 1.1010,
         outcome=outcome, r_multiple=r_multiple, ambiguous_bar=False, gap_filled=False,
+        partial_exit_index=None, partial_exit_price=None, partial_r_multiple=None, partial_gap_filled=False,
     )
 
 

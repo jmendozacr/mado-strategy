@@ -21,14 +21,14 @@
 - THEN leg 1 closes at `partial_price`, leg 2 closes at `take_profit`, and `r_multiple` is the fraction-weighted blend of both legs' `net_r_multiple`
 
 ### Tasks
-- [ ] S-000.1 `levels.py`: `partial_price(htf_context, direction) -> float` = range midpoint
-- [ ] S-000.2 `simulate.py`: `Candidate.partial_price` field + `_partial_sides()` (mirrors `_tp_sides()`) + wire 3rd `two_heap_sweep` pass into `_resolve_exits`
-- [ ] S-000.3 `simulate.py`: `Trade` gains `partial_exit_index/price/r_multiple/gap_filled` fields
-- [ ] S-000.4 `core/config.py`: `BacktestConfig.partial_fraction: float = 0.5`
-- [ ] S-000.5 `_resolve_trade`: SL-wins-tie check extended to partial index; leg 1 closes at `partial_price` (or gap-open via existing `_exit_gap_beyond`)
-- [ ] S-000.6 `_resolve_trade`: leg 2 re-resolves the SAME unmoved SL/TP from `partial_index+1`; blend `r_multiple` per REQ-69, proportional cost allocation
-- [ ] S-000.7 `test_backtest_levels.py::test_partial_price_is_range_midpoint`
-- [ ] S-000.8 `test_backtest_simulate.py::test_two_leg_trade_blends_partial_and_remainder_r_multiple`
+- [x] S-000.1 `levels.py`: `partial_price(htf_context, direction) -> float` = range midpoint
+- [x] S-000.2 `simulate.py`: `Candidate.partial_price` field + `_partial_sides()` (mirrors `_tp_sides()`) + wire 3rd `two_heap_sweep` pass into `_resolve_exits`
+- [x] S-000.3 `simulate.py`: `Trade` gains `partial_exit_index/price/r_multiple/gap_filled` fields
+- [x] S-000.4 `core/config.py`: `BacktestConfig.partial_fraction: float = 0.5`
+- [x] S-000.5 `_resolve_trade`: SL-wins-tie check extended to partial index; leg 1 closes at `partial_price` (or gap-open via existing `_exit_gap_beyond`)
+- [x] S-000.6 `_resolve_trade`: leg 2 re-resolves the SAME unmoved SL/TP from `partial_index+1`; blend `r_multiple` per REQ-69, proportional cost allocation
+- [x] S-000.7 `test_backtest_levels.py::test_partial_price_is_range_midpoint`
+- [x] S-000.8 `test_backtest_simulate.py::test_two_leg_trade_blends_partial_and_remainder_r_multiple`
 
 ---
 
