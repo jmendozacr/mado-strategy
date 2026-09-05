@@ -1,13 +1,13 @@
 {
   "change": "crt-detector-backtest-partial-exits",
   "triage": "M",
-  "phase": "evaluate-pending",
+  "phase": "reckoning-pending",
   "spec_status": "signed",
   "slices": true,
   "plan_verify": "none",
-  "verify_final": "none",
+  "verify_final": "pass-with-followups",
   "arch_audit": "none",
   "outcome": "none",
-  "updated_at": "2026-09-05T00:30:00Z",
+  "updated_at": "2026-09-05T01:00:00Z",
   "viz_url": "none"
 }
