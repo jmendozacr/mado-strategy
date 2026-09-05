@@ -99,6 +99,7 @@
     ![Frame 00:08:29](assets/charter-1/00-08-29.png)
   * **Vela 3 (Distribución / Expansión):** **[00:08:37]** Expande el precio agresivamente hacia el extremo opuesto del rango inicial.
     ![Frame 00:08:37](assets/charter-1/00-08-37.png)
+* **[00:08:45]** Aclaración importante: no cualquier secuencia de tres velas constituye un CRT válido. Para que sea un CRT genuino, debe seguir un protocolo específico y cumplir características muy puntuales (rango bien definido, purga real de liquidez, rechazo y expansión hacia el lado opuesto). Esto es justamente lo que le da objetividad al concepto, en contraposición a marcar rangos de forma arbitraria.
 * **[00:09:07]** **Aplicación por Temporalidades / Teoría del Tiempo:**
   * **Gráfico Semanal:** **[00:09:07]** Semana 1 = Rango, Semana 2 = Manipulación, Semana 3 = Distribución.
     ![Frame 00:09:07](assets/charter-1/00-09-07.png)
@@ -130,12 +131,18 @@
 * **[00:12:02]** Los setups de CRT más confiables ocurren cuando la manipulación reacciona directamente en un *Key Level* de temporalidad mayor.
 
 ### Dinámica del Setup Teórico:
-1. **[00:12:34]** El mercado forma un Candle Range justo debajo o arriba de un *Key Level*, acumulando *Buyside Liquidity* por arriba y *Sellside Liquidity* por abajo.
+1. **[00:12:34]** El mercado forma un Candle Range justo debajo o arriba de un *Key Level*, acumulando *Buyside Liquidity* por arriba y *Sellside Liquidity* por abajo. De esta forma el mercado tiende una trampa: los participantes se posicionan en ambos lados del rango, esperando la expansión en cualquier dirección.
    ![Frame 00:12:34](assets/charter-1/00-12-34.png)
 2. **[00:12:59]** La Vela 2 purga el CRT High (limpia la BSL), toca/mitiga el *Key Level*, rechaza la zona y cierra de nuevo dentro del rango.
    ![Frame 00:12:59](assets/charter-1/00-12-59.png)
 3. **[00:13:16]** Fase de manipulación completada. La expectativa cambia inmediatamente a la fase de expansión hacia el extremo opuesto del rango (CRT Low).
    ![Frame 00:13:16](assets/charter-1/00-13-16.png)
+
+### Variante: la Vela 2 completa Manipulación y Expansión en un Solo Movimiento
+* **[00:13:45]** Segundo ejemplo teórico sobre el mismo *Key Level*: el mercado forma un Candle Range justo debajo de él, generando *Buyside Liquidity* y *Sellside Liquidity* en ambos extremos. El "dinero tonto" (*dumb money*) coloca stops y entradas en ambos lados del rango, esperando ser barrido — esa es la liquidez que el mercado va a tomar.
+* **[00:14:00]** La Vela 2 purga el CRT High (limpiando la BSL) y toca el *Key Level*, pero a diferencia del caso anterior, en lugar de rechazar y cerrar dentro del rango, se expande inmediatamente hacia abajo en el mismo movimiento, dirigiéndose directo al CRT Low.
+* **[00:14:25]** En este escenario la Vela 2 cumple una doble función: no solo ejecuta la manipulación, sino que también completa la expansión en un solo golpe. Este comportamiento es frecuente en eventos de noticias de alto impacto, cuando la volatilidad alcanza para barrer un lado y correr de inmediato hacia el otro.
+* **[00:14:40]** Lección clave que remarca Mado: si bien el CRT clásico se desarrolla en tres pasos claros (Rango → Manipulación → Expansión), bajo ciertas condiciones de mercado —especialmente en movimientos impulsados por noticias— la segunda vela por sí sola puede completar el ciclo entero.
 
 ---
 
@@ -146,7 +153,7 @@
   * Un bloque clave (*Key Level*) se encuentra por debajo del rango.
   * La Vela 1 crea liquidez en ambos extremos.
   * La Vela 2 baja, purga el CRT Low, reacciona contra el *Key Level* y cierra dentro del rango.
-  * **[00:15:42]** Tras la purga, se busca confirmación en *Lower Timeframe* (LTF) como un Order Block o modelo de entrada dentro de la Vela 2.
+  * **[00:15:42]** Tras la purga, se busca confirmación en *Lower Timeframe* (LTF) como un Order Block o modelo de entrada dentro de la Vela 2. Mado aclara que la elección de la LTF específica para la entrada se desarrollará recién en el Episodio 2; el objetivo de este episodio es solo dejar clara la relación entre CRT y Key Levels.
     ![Frame 00:15:42](assets/charter-1/00-15-42.png)
 
 * **[00:16:11] Ejemplo 2 - 3-Candle CRT con Rejection Block:**

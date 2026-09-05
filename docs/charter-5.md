@@ -51,7 +51,7 @@
     ![Frame 00:02:58](assets/charter-5/00-02-58.png)
   * **Semana 3:** Retroceso profundo OTE o Kiss of Death [00:03:06].
     ![Frame 00:03:06](assets/charter-5/00-03-06.png)
-  * **Semana 4:** Último Turtle Soup (capping) que da el cierre a la vela mensual [00:03:06].
+  * **Semana 4:** Último Turtle Soup (capping) que da el cierre a la vela mensual [00:03:08].
 
 ---
 
@@ -88,10 +88,13 @@
   ![Frame 00:05:03](assets/charter-5/00-05-03.png)
 * Dentro de esa sola mecha de HTF, se generan múltiples patrones de CRT en 4H limpios para operar [00:05:19].
   ![Frame 00:05:19](assets/charter-5/00-05-19.png)
+* **Regla de Oro:** La HTF da la dirección; la LTF da la ejecución. Así operan los traders profesionales [00:05:29]-[00:05:35].
 
 ---
 
 ## 📊 Ejemplo Gráfico Real en EUR/USD (Vela Mensual)
+
+* **Nota sobre Diagramas vs. Gráfico Real:** Los diagramas conceptuales muestran todo limpio y ordenado, pero al abrir el gráfico real, el precio se ve desordenado, con velas aleatorias y, muchas veces, aburridas. Sin embargo, son justamente esas velas "aburridas" las que terminan generando el dinero, así que no hay que ignorarlas [00:06:00]-[00:06:25].
 
 ### 1. Contexto Previo y Confirmación del Sesgo Mensual
 * **Marca de tiempo en video:** [00:06:24]
@@ -105,8 +108,10 @@
 ### 2. Desglose de la Secuencia TSQ dentro del Rango Mensual
 * **Marca de tiempo en video:** [00:06:53] *(Las líneas verticales representan un mes completo)*:
   ![Frame 00:06:53](assets/charter-5/00-06-53.png)
+  * **Contexto Previo (antes de la apertura del mes):** El precio había retrocedido y rellenado liquidez en la forma de un **Fair Value Gap** (*FVG*) por debajo, y luego cerró por encima de ese nivel. Ese cierre confirma un cambio en el precio (*shift in price*): el mercado entra en una fase de reversión, y a partir de ahí ya se puede empezar a esperar comportamiento alcista para la vela mensual que se está por formar [00:07:03]-[00:07:21].
   1. **Apertura y Turtle Soup:** Tras abrir el mes, el mercado purga el mínimo del rango de la vela previa y cierra por encima, confirmando la validez del Turtle Soup [00:07:32].
      ![Frame 00:07:32](assets/charter-5/00-07-32.png)
+     * **Matiz de Probabilidad:** Aunque se puede esperar un Turtle Soup sobre ese mínimo, la probabilidad de que ese nivel puntual llegue a tocarse es menor justamente porque ya hubo un cambio de sesgo previo; si el precio no hubiera logrado cerrar de vuelta por encima de ese mínimo, el Turtle Soup habría quedado invalidado [00:07:25]-[00:07:33].
   2. **Fase de Expansión:** Desplazamiento rápido e inmediato sin consolidaciones [00:07:53].
      ![Frame 00:07:53](assets/charter-5/00-07-53.png)
   3. **Activación del Breaker Block:** El precio cierra por encima del máximo a corto plazo (*short-term high*) [00:08:09].
@@ -115,6 +120,13 @@
      ![Frame 00:08:24](assets/charter-5/00-08-24.png)
   5. **Kiss of Death y Cierre:** Impulso final (*last push*), creación del último Turtle Soup en la parte superior para limitar la vela y cierre del mes completando el ciclo TSQ [00:08:42].
      ![Frame 00:08:42](assets/charter-5/00-08-42.png)
+
+---
+
+## 🎯 Cierre
+
+* Mado remarca que este tema puede sentirse denso o incluso aburrido a primera vista, pero es uno de sus capítulos favoritos de toda la mentoría por lo importante que es [00:09:07]-[00:09:16].
+* Recomienda volver a ver este episodio varias veces (tres o cuatro, si hace falta) y estudiarlo con calma, porque una vez que se internaliza esta lógica de fases dentro de la vela, la forma de leer el gráfico cambia por completo [00:09:19]-[00:09:31].
 
 ---
 

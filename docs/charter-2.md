@@ -20,6 +20,7 @@
   1. **Timing (Tiempo):** Cuándo entrar.
   2. **Clarity (Claridad):** Identifica los *Key Levels* exactos y el CRT específico desde el cual operar.
   3. **Purpose (Propósito):** Define el *porqué* detrás de la operación (¿está respaldada por liquidez de HTF, alineada con un Key Level y con una narrativa de tiempo y precio?). Sin estas respuestas, operar es simple azar.
+* **[00:03:02]** Analizar el gráfico y ejecutar la operación son dos habilidades completamente distintas: se puede tener el análisis de HTF perfecto, pero si la ejecución queda librada al azar, el resultado también lo será. Por eso el entry model importa tanto — aporta estructura, confluencia (*confluence*) y disciplina.
 
 ---
 
@@ -79,6 +80,7 @@
 ---
 
 ## ⚠️ La Única Desventaja de Model-1 y Cómo Gestionarla
+* **[00:08:31]** Antes de entrar en la desventaja puntual: todo concepto o modelo de trading tiene dos caras, fortalezas y debilidades. La mayoría de la gente solo vende el resultado positivo sin mencionar nunca el riesgo o las limitaciones; para ser un trader completo hace falta conocer ambos lados de la historia.
 * **[00:08:29]** **El Inconveniente Principal:** **[00:08:57]** Model-1 requiere un reproceso (*retest*) a la vela de purga/order block. Sin embargo, en mercados altamente impulsivos o volátiles, el precio puede despegar directamente tras la purga sin regresar a la vela.
   ![Frame 00:08:29](assets/charter-2/00-08-29.png)
   ![Frame 00:08:57](assets/charter-2/00-08-57.png)
@@ -89,6 +91,7 @@
   * ¿Era un entorno de tendencia fuerte?
   * ¿La liquidez ya estaba completamente balanceada?
   ![Frame 00:09:48](assets/charter-2/00-09-48.png)
+* **[00:10:06]** Cuanta más data se acumule en la bitácora, más patrones se empiezan a detectar, y con el tiempo se vuelve posible anticipar cuándo es menos probable que el mercado vuelva al retesteo. La clave de mentalidad: no hay que tenerle miedo a perderse operaciones, es parte del juego — el objetivo no es atrapar cada movimiento, sino atrapar los correctos con consistencia y disciplina.
 
 ---
 
@@ -105,6 +108,9 @@
 ### Casos para usar la Mecha (Wick):
 1. **[00:11:50]** Si la vela envolvente cierra **más allá del Alto o Bajo extremo** de la vela de purga, se marca la mecha (*High/Low*) para la entrada.
 2. **[00:12:02]** Si la vela de purga tiene un **cuerpo pequeño y una mecha muy larga**, la mecha lleva mayor peso estructural, por lo que el nivel de entrada se coloca en la mecha.
+
+### Principio Unificador
+* **[00:12:21]** Hay que seguir el comportamiento del precio, no la preferencia propia: si el cierre queda justo por encima/debajo del Open se usa el Open; si el cierre rompe más allá del Alto/Bajo se usa la mecha; si la vela es grande y fuerte pesa más el cuerpo; si la vela es de cuerpo chico y mecha larga pesa más la mecha. El trabajo del trader es leer lo que el precio está mostrando, no forzarlo a encajar en una regla fija.
 
 ---
 
@@ -133,6 +139,8 @@
 | **4-Hour CRT** (4 Horas) | **15-Minute** (15 Minutos) |
 | **1-Hour CRT** (1 Hora) | **5-Minute** (5 Minutos) |
 
+* **[00:15:42]** **Alcance de esta tabla:** esta alineación específica aplica solo para CRT y entradas Model-1. Más adelante en la mentoría se van a explorar otras formas de usar el timeframe alignment, como para análisis o para fases de expansión.
+
 ---
 
 ## 🛠️ Metodología en LTF: Proceso Paso a Paso
@@ -148,6 +156,12 @@
   * **Take Profit:** Extremo opuesto del CRT (100% del rango) o parciales en el 50% (*Equilibrium*).
   ![Frame 00:18:46](assets/charter-2/00-18-46.png)
 
+### Visualización Simplificada: Rango de Referencia y Manipulación
+* **[00:19:08]** Antes de pasar al ejemplo en gráfico real, un esquema simplificado para fijar el concepto: la primera vela en LTF (su Alto y su Bajo) se convierte en el rango de referencia inicial.
+* **[00:19:39]** Se espera pacientemente a que la siguiente vela haga su trabajo: que abra, purgue el Alto de esa primera vela, y genere una potencial oportunidad de entrada en forma de Model-1 (con su correspondiente bajo y cierre).
+* **[00:20:05]** Secuencia resumida: primero se define el rango, después se espera a que ocurra la manipulación (*manipulation*), y una vez que esa vela de manipulación cierra, queda una entrada limpia y basada en reglas.
+* **[00:20:22]** Esa es la esencia de CRT: es limpio, sistemático, y no hay apuro — se deja que el mercado muestre primero su jugada, y recién ahí se reacciona con estructura y alineación.
+
 ---
 
 ## 🎭 Comportamientos del Precio en LTF tras la Purga
@@ -155,8 +169,10 @@
   ![Frame 00:20:36](assets/charter-2/00-20-36.png)
   * **Reacción en forma de M (M-Shaped Reaction):** **[00:21:14]** Purga el CRT High, respeta un Key Level, crea un Model-1 limpio, retestea y cae.
     ![Frame 00:21:14](assets/charter-2/00-21-14.png)
+    * **[00:21:34]** **Cómo elegir la vela correcta cuando hay más de un candidato:** en este ejemplo, el mercado primero llenó liquidez con una vela que técnicamente también podría haberse marcado como Model-1. Sin embargo, inmediatamente después el precio purgó un Alto de corto plazo con otra vela distinta — y es esa vela de purga posterior la que se vuelve el Model-1 válido según el framework, no la primera que llenó liquidez.
   * **Reacción en forma de V (V-Shaped Reaction):** **[00:22:03]** Purga el CRT High, reacciona al Key Level, cierra abajo y se desploma rápidamente con retesteo violento.
     ![Frame 00:22:03](assets/charter-2/00-22-03.png)
+    * **[00:22:21]** **Precisión en la secuencia:** el retesteo en sí mismo no es lo violento — primero ocurre el regreso a retestear la vela que llenó liquidez, y es recién a partir de ese retesteo que se dispara el desplome pronunciado.
   * **Reacción en W o Consolidaciones Choppy:** Reacciones más lentas que requieren paciencia.
 
 ---
