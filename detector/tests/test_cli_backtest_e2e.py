@@ -6,8 +6,11 @@ fully-disclosed backtest run; detections.csv/overlay.png are unaffected.
 
 from datetime import datetime, timedelta
 
+import pytest
+
 from fixtures.mt5_csv import MT5_HEADER, _read_csv_rows, _row
 
+from backtest.levels import net_r_multiple
 from cli import main
 from core.candle import Candle, OHLCSeries
 from primitives.fvg import detect_fvgs
@@ -398,7 +401,7 @@ def test_min_rr_override_changes_rr_floor_exclusion(tmp_path):
 
 
 def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
-    """REQ-51.2: omitting all 5 override flags produces output byte-identical
+    """REQ-51.2: omitting all 6 override flags produces output byte-identical
     to setting every field explicitly to its BacktestConfig default."""
     implicit_exit, implicit_dir = _run_backtest(tmp_path / "implicit", extra_args=["--types", "model1"])
     explicit_exit, explicit_dir = _run_backtest(
@@ -406,7 +409,7 @@ def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
         extra_args=[
             "--types", "model1",
             "--sl-buffer", "0.0002", "--min-rr", "2.0", "--trading-cost", "0.0",
-            "--kill-zone-gated", "--max-fill-wait", "20",
+            "--kill-zone-gated", "--max-fill-wait", "20", "--partial-fraction", "0.5",
         ],
     )
 
@@ -446,6 +449,52 @@ def test_invalid_trading_cost_exits_1_naming_flag_and_constraint(tmp_path):
 
     assert exit_code == 1
     assert not (output_dir / "trades.csv").exists()
+
+
+def test_partial_fraction_zero_cli_reproduces_pre_change_output(tmp_path):
+    """REQ-51.4: --partial-fraction 0.0, wired through the CLI, collapses
+    the run to the exact single-leg (pre-this-change) behavior at the CLI
+    boundary — zero partial exits, all 4 trailing trades.csv columns blank/
+    False, and the reported r_multiple matches REQ-48's un-blended formula
+    computed independently from the row's own entry/stop/exit prices. The
+    resolution-level byte-identical guarantee this flag must reach is
+    already proven at the unit layer by
+    test_backtest_simulate.py::test_partial_fraction_zero_reproduces_single_leg_output
+    (REQ-68.5) — this test proves the CLI flag actually reaches that path."""
+    exit_code, output_dir = _run_backtest(
+        tmp_path, extra_args=["--types", "model1", "--partial-fraction", "0.0"]
+    )
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "trades.csv")
+    trade = rows[1]
+    direction = trade[3]
+    entry_price, stop_loss, take_profit = float(trade[4]), float(trade[5]), float(trade[6])
+    exit_price, r_multiple = float(trade[8]), float(trade[10])
+    partial_exit_timestamp, partial_exit_price, partial_r_multiple, partial_gap_filled = trade[13:17]
+
+    assert partial_exit_timestamp == ""
+    assert partial_exit_price == ""
+    assert partial_r_multiple == ""
+    assert partial_gap_filled == "False"
+
+    expected_r = net_r_multiple(entry_price, exit_price, stop_loss, direction, trading_cost_price=0.0)
+    assert r_multiple == pytest.approx(expected_r)
+
+    summary = (output_dir / "metrics_summary.txt").read_text()
+    assert "partial exits: 0" in summary
+
+
+def test_invalid_partial_fraction_exits_1_naming_flag_and_constraint(tmp_path):
+    """REQ-51.5: a negative --partial-fraction, or one >= 1.0, is rejected
+    the same way as the other 5 flags — exit 1, no trades.csv written."""
+    negative_exit, negative_dir = _run_backtest(tmp_path / "negative", extra_args=["--partial-fraction", "-0.1"])
+    at_one_exit, at_one_dir = _run_backtest(tmp_path / "at-one", extra_args=["--partial-fraction", "1.0"])
+
+    assert negative_exit == 1
+    assert not (negative_dir / "trades.csv").exists()
+    assert at_one_exit == 1
+    assert not (at_one_dir / "trades.csv").exists()
 
 
 _AMBIGUOUS_LTF_CANDLES = [

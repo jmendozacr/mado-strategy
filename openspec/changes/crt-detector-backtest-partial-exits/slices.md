@@ -96,10 +96,10 @@
 - THEN it reproduces the pre-change single-TP output trade-for-trade; an out-of-range value is rejected exit 1, naming the flag and constraint
 
 ### Tasks
-- [ ] S-003.1 `cli.py`: wire `--partial-fraction` to `BacktestConfig.partial_fraction`
-- [ ] S-003.2 `cli.py`: validate range `[0.0, 1.0)`, mirroring REQ-51.3's rejection pattern
-- [ ] S-003.3 `test_partial_fraction_zero_cli_reproduces_pre_change_output` (REQ-51.4)
-- [ ] S-003.4 `test_invalid_partial_fraction_exits_1_naming_flag_and_constraint` (REQ-51.5)
+- [x] S-003.1 `cli.py`: wire `--partial-fraction` to `BacktestConfig.partial_fraction`
+- [x] S-003.2 `cli.py`: validate range `[0.0, 1.0)`, mirroring REQ-51.3's rejection pattern
+- [x] S-003.3 `test_partial_fraction_zero_cli_reproduces_pre_change_output` (REQ-51.4)
+- [x] S-003.4 `test_invalid_partial_fraction_exits_1_naming_flag_and_constraint` (REQ-51.5)
 
 ---
 
