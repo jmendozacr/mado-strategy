@@ -1,13 +1,13 @@
 {
   "change": "crt-detector-backtest-partial-exits",
   "triage": "M",
-  "phase": "archive-pending",
-  "spec_status": "signed",
+  "phase": "archived",
+  "spec_status": "signed-v3",
   "slices": true,
   "plan_verify": "none",
   "verify_final": "pass-with-followups",
   "arch_audit": "none",
   "outcome": "delivered",
-  "updated_at": "2026-09-05T02:00:00Z",
+  "updated_at": "2026-09-05T02:30:00Z",
   "viz_url": "none"
 }
