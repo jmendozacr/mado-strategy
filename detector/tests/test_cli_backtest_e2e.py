@@ -143,11 +143,44 @@ def test_confirmed_signal_within_max_fill_wait_produces_one_trade_row(tmp_path):
         "signal_id", "anchor_timestamp", "entry_timestamp", "direction", "entry_price",
         "stop_loss", "take_profit", "exit_timestamp", "exit_price", "outcome",
         "r_multiple", "ambiguous_bar", "gap_filled",
+        "partial_exit_timestamp", "partial_exit_price", "partial_r_multiple", "partial_gap_filled",
     ]
     assert len(rows) - 1 == 1
     trade = rows[1]
     assert trade[3] == "bearish"
     assert float(trade[10]) > 0  # net r_multiple, positive on this fixture's win
+
+
+def test_trades_csv_header_has_17_columns_in_order(tmp_path):
+    """REQ-45.4: trades.csv header is exactly the 17 columns (13 existing +
+    4 trailing partial-disclosure columns), in that order."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--types", "model1"])
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "trades.csv")
+    assert rows[0] == [
+        "signal_id", "anchor_timestamp", "entry_timestamp", "direction", "entry_price",
+        "stop_loss", "take_profit", "exit_timestamp", "exit_price", "outcome",
+        "r_multiple", "ambiguous_bar", "gap_filled",
+        "partial_exit_timestamp", "partial_exit_price", "partial_r_multiple", "partial_gap_filled",
+    ]
+
+
+def test_trades_csv_partial_columns_populated_when_fired(tmp_path):
+    """REQ-45.5: a trade whose partial leg fired has its 4 trailing cells
+    populated (non-blank); this fixture's one trade fires its partial leg
+    under the default partial_fraction=0.5 (reaches take_profit within the
+    same candle the partial level resolves)."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--types", "model1"])
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "trades.csv")
+    trade = rows[1]
+    partial_exit_timestamp, partial_exit_price, partial_r_multiple, partial_gap_filled = trade[13:17]
+    assert partial_exit_timestamp != ""
+    assert float(partial_exit_price) > 0
+    assert float(partial_r_multiple) > 0
+    assert partial_gap_filled == "False"
 
 
 def test_trades_csv_signal_id_joins_exactly_one_detections_csv_row(tmp_path):
@@ -181,6 +214,18 @@ def test_metrics_summary_discloses_wick_entry_price_divergence_note(tmp_path):
         "trades.csv entry_price and detections.csv entry_price are independently computed "
         "and may differ for wick-type signals" in summary
     )
+
+
+def test_metrics_summary_discloses_partial_exits_count(tmp_path):
+    """REQ-49.5: metrics_summary.txt discloses the count of trades whose
+    partial leg fired, as its own explicit line. This fixture's one trade
+    reaches take_profit within the same candle its partial level resolves,
+    so its partial leg fires under the default partial_fraction=0.5."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--types", "model1"])
+
+    assert exit_code == 0
+    summary = (output_dir / "metrics_summary.txt").read_text()
+    assert "partial exits: 1" in summary
 
 
 def test_types_excluding_model1_produces_empty_zero_disclosure_run(tmp_path):
@@ -296,8 +341,8 @@ def test_default_run_discloses_kill_zone_gate_enabled_and_frictionless_cost(tmp_
     summary = (output_dir / "metrics_summary.txt").read_text()
     assert "kill-zone gate: enabled (evaluating anchor_index against the NY kill zone)" in summary
     assert "trading cost: 0.0 (frictionless)" in summary
-    assert "average R: 2.889 over 1 closed trades" in summary
-    assert "total R: 2.889 over 1 closed trades" in summary
+    assert "average R: 3.056 over 1 closed trades" in summary
+    assert "total R: 3.056 over 1 closed trades" in summary
     assert "note: average R and total R assume unlimited capital, no cap on concurrently open positions" in summary
     assert "same-candle SL+TP resolutions: 0" in summary
 

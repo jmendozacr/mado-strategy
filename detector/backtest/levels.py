@@ -74,11 +74,15 @@ def take_profit(htf_context: CRTRange, direction: Direction) -> float:
     return htf_context.high if direction == "bullish" else htf_context.low
 
 
-def partial_price(htf_context: CRTRange, direction: Direction) -> float:
-    """REQ-68: the HTF CRT range's midpoint (equilibrium) -- direction is
-    kept only for signature symmetry with take_profit(); the midpoint
-    itself is direction-independent."""
-    return (htf_context.high + htf_context.low) / 2
+def partial_price(entry_price: float, take_profit: float) -> float:
+    """REQ-68 (V2): the trade's OWN entry-to-target midpoint -- not the
+    HTF CRT range's midpoint (V1's formula, falsified by REQ-70's property
+    test: 6.7-12.6% real ordering violations across the 3-instrument
+    corpus, since the H4 range midpoint has no structural relationship to
+    the LTF trade's entry/stop). entry_price and take_profit are already
+    correctly ordered by REQ-35's R:R floor, so this formula satisfies
+    REQ-70's ordering invariant by construction."""
+    return (entry_price + take_profit) / 2
 
 
 def risk_reward(entry: float, stop: float, target: float, direction: Direction) -> float:

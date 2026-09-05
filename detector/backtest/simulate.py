@@ -96,7 +96,7 @@ def _build_candidate(
         anchor, signal.direction, swings, indices, signal.anchor_index, signal.retest_index, backtest_config
     )
     tp = _take_profit(tagged.htf_context, signal.direction)
-    pp = _partial_price(tagged.htf_context, signal.direction)
+    pp = _partial_price(ep, tp)
     return Candidate(
         signal_id=signal.signal_id,
         anchor_index=signal.anchor_index,
@@ -298,7 +298,9 @@ def _resolve_trade(
     partial_index: int | None, candles: tuple, trading_cost_price: float, partial_fraction: float,
 ) -> Trade:
     """REQ-68/69: extends REQ-33's pessimistic SL-wins-ties precedent to
-    the partial level. The stop-loss winning at or before the partial index
+    the partial level. `partial_fraction=0.0` (REQ-68.5) makes leg 1 never
+    eligible to fire regardless of index ordering -- the stop-loss winning
+    at or before the partial index has the same effect. Either way this
     collapses to `_resolve_single_leg`'s exact pre-existing behavior -- no
     partial leg recorded. Otherwise leg 1 closes at `partial_price` (or its
     gap-open price, REQ-34 applied identically), and leg 2 re-resolves the
@@ -306,7 +308,9 @@ def _resolve_trade(
     from the one sweep already run from `fill_index + 1` (ADR-02: same-
     side/monotonic geometry means neither can resolve strictly before the
     partial) -- restricted to indices strictly after `partial_index`."""
-    partial_fires = partial_index is not None and (sl_index is None or partial_index < sl_index)
+    partial_fires = (
+        partial_fraction > 0.0 and partial_index is not None and (sl_index is None or partial_index < sl_index)
+    )
     if not partial_fires:
         return _resolve_single_leg(candidate, fill_index, sl_index, tp_index, candles, trading_cost_price)
 

@@ -34,14 +34,20 @@ _ZERO_RECONCILIATION = ReconciliationReport(
 )
 
 
-def _trade(signal_id: str, entry_index: int, outcome: str, r_multiple: float | None = None) -> Trade:
+def _trade(
+    signal_id: str, entry_index: int, outcome: str, r_multiple: float | None = None,
+    partial_exit_index: int | None = None,
+) -> Trade:
     return Trade(
         signal_id=signal_id, anchor_index=0, direction="bullish", entry_index=entry_index,
         entry_price=1.1000, stop_loss=1.0990, take_profit=1.1020,
         exit_index=None if outcome == "open" else entry_index + 1,
         exit_price=None if outcome == "open" else 1.1010,
         outcome=outcome, r_multiple=r_multiple, ambiguous_bar=False, gap_filled=False,
-        partial_exit_index=None, partial_exit_price=None, partial_r_multiple=None, partial_gap_filled=False,
+        partial_exit_index=partial_exit_index,
+        partial_exit_price=None if partial_exit_index is None else 1.1005,
+        partial_r_multiple=None if partial_exit_index is None else 1.0,
+        partial_gap_filled=False,
     )
 
 
@@ -120,6 +126,22 @@ def test_metrics_denominators_exclude_opens_in_a_mixed_population():
     assert metrics.open_trades == 4
     assert metrics.average_r_multiple == 0.4
     assert metrics.total_r == 2.0
+
+
+def test_partial_exits_count_in_mixed_population():
+    """REQ-49.5: partial_exits counts exactly the trades whose partial leg
+    fired (partial_exit_index is not None), in a population mixing partial,
+    single-leg, and open trades."""
+    trades = [
+        _trade("a", 0, "win", 2.0, partial_exit_index=1),
+        _trade("b", 1, "win", 1.5, partial_exit_index=2),
+        _trade("c", 2, "loss", -1.0),
+        _trade("d", 3, "open"),
+    ]
+
+    metrics = compute_metrics(trades, _ZERO_RECONCILIATION, DetectorConfig().backtest, "enabled")
+
+    assert metrics.partial_exits == 2
 
 
 def test_reconciliation_buckets_plus_trades_opened_sum_to_signals_considered():

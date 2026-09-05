@@ -46,14 +46,14 @@
 - THEN behavior matches REQ-68/69/38 exactly, AND `partial_price` ordering holds across the real 3-instrument corpus with zero violations
 
 ### Tasks
-- [ ] S-001.1 `test_two_leg_trade_leg2_uses_unmoved_original_stop` (REQ-68.2)
-- [ ] S-001.2 `test_sl_wins_tie_against_partial_collapses_to_single_leg` (REQ-68.3/38.3/69.3)
-- [ ] S-001.3 `test_partial_leg_gap_through_fills_at_open` (REQ-68.4)
-- [ ] S-001.4 `test_partial_fraction_zero_reproduces_single_leg_output` (REQ-68.5/38.3)
-- [ ] S-001.5 `test_open_trade_has_no_partial_leg_fields` (REQ-68.6/38.1)
-- [ ] S-001.6 `test_two_leg_blended_r_zero_cost_is_bit_identical` (REQ-69.2)
-- [ ] S-001.7 Create `tests/property/test_partial_price_ordering.py::test_partial_price_ordering_holds_across_real_corpus` — real EURUSDm/GBPUSDm/DXYm corpus, public functions only (REQ-70.1)
-- [ ] S-001.8 `test_ordering_violation_fails_loudly_naming_candidate` (REQ-70.2)
+- [x] S-001.1 `test_two_leg_trade_leg2_uses_unmoved_original_stop` (REQ-68.2)
+- [x] S-001.2 `test_sl_wins_tie_against_partial_collapses_to_single_leg` (REQ-68.3/38.3/69.3)
+- [x] S-001.3 `test_partial_leg_gap_through_fills_at_open` (REQ-68.4)
+- [x] S-001.4 `test_partial_fraction_zero_reproduces_single_leg_output` (REQ-68.5/38.3) — found+fixed the real `partial_fires` bug (missing `partial_fraction > 0.0` guard)
+- [x] S-001.5 `test_open_trade_has_no_partial_leg_fields` (REQ-68.6/38.1)
+- [x] S-001.6 `test_two_leg_blended_r_zero_cost_is_bit_identical` (REQ-69.2)
+- [x] S-001.7 Create `tests/property/test_partial_price_ordering.py::test_partial_price_ordering_holds_across_real_corpus` — real EURUSDm/GBPUSDm/DXYm corpus, public functions only (REQ-70.1) — resolved: REQ-68 V2 corrected `partial_price` to the trade's own entry-to-target midpoint; the test's helper now calls `partial_price(ep, tp)` (was the old `partial_price(htf_context, direction)` signature) and passes with zero ordering violations across all 3 instruments, by construction.
+- [x] S-001.8 `test_ordering_violation_fails_loudly_naming_candidate` (REQ-70.2)
 
 ---
 
@@ -71,14 +71,14 @@
 - THEN the header is exactly 17 columns, trailing cells reflect the partial leg (populated/blank), and the partial-exit count is reported explicitly
 
 ### Tasks
-- [ ] S-002.1 `metrics.py`: `BacktestMetrics.partial_exits: int` + counting logic
-- [ ] S-002.2 `trades_table.py`: header 13→17 cols (4 trailing partial columns)
-- [ ] S-002.3 `trades_table.py`: write trailing cell values (blank/`False` when no partial)
-- [ ] S-002.4 metrics summary writer: emit literal `partial exits: {N}` line
-- [ ] S-002.5 `test_trades_csv_header_has_17_columns_in_order` (REQ-45.4)
-- [ ] S-002.6 `test_trades_csv_partial_columns_populated_when_fired` (REQ-45.5)
-- [ ] S-002.7 `test_partial_exits_count_in_mixed_population` (REQ-49.5)
-- [ ] S-002.8 `test_metrics_summary_discloses_partial_exits_count` (REQ-49.5)
+- [x] S-002.1 `metrics.py`: `BacktestMetrics.partial_exits: int` + counting logic
+- [x] S-002.2 `trades_table.py`: header 13→17 cols (4 trailing partial columns)
+- [x] S-002.3 `trades_table.py`: write trailing cell values (blank/`False` when no partial)
+- [x] S-002.4 metrics summary writer: emit literal `partial exits: {N}` line
+- [x] S-002.5 `test_trades_csv_header_has_17_columns_in_order` (REQ-45.4)
+- [x] S-002.6 `test_trades_csv_partial_columns_populated_when_fired` (REQ-45.5)
+- [x] S-002.7 `test_partial_exits_count_in_mixed_population` (REQ-49.5)
+- [x] S-002.8 `test_metrics_summary_discloses_partial_exits_count` (REQ-49.5)
 
 ---
 
