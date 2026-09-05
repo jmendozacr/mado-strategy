@@ -1,6 +1,6 @@
 # Design: Backtest Two-Stage (Partial) Exit Model
 
-**Design version**: V1 | **Spec**: signed (2026-09-04) | **Triage**: M
+**Design version**: V2 (partial_price signature corrected per spec V2/REQ-68) | **Spec**: signed (2026-09-04) | **Triage**: M
 **Architecture impact**: none — every touched module stays in its existing `.importlinter` layer; no new module/dependency/boundary, no `deviates` touchpoint.
 
 ## 4.1 — Architecture Overview
@@ -79,9 +79,16 @@ No new dataclass types. New fields carry no defaults (`_resolve_trade`/`_build_c
 ## 4.4 — Interface Contracts
 
 ```python
-def partial_price(htf_context: CRTRange, direction: Direction) -> float:
-    """REQ-68: (high+low)/2, direction-independent value; direction kept
-    only for signature symmetry with take_profit()."""
+def partial_price(entry_price: float, take_profit: float) -> float:
+    """REQ-68 (V2, revised): (entry_price+take_profit)/2 — the trade's OWN
+    entry-to-target midpoint, not the H4 range midpoint. V1's
+    partial_price(htf_context, direction) formula was falsified by REQ-70's
+    property test (6.7-12.6% real ordering violations, 3-instrument corpus)
+    — this shape satisfies the ordering invariant by construction, since
+    entry_price/take_profit are already correctly ordered by REQ-35's R:R
+    floor. Call site (_build_candidate) passes ep/tp, not tagged.htf_context —
+    crt_range.py is no longer read by this function (take_profit() still
+    reads it, unchanged)."""
 
 def _partial_sides() -> tuple[SweepSide, SweepSide]: ...  # mirrors _tp_sides()
 
