@@ -1,8 +1,8 @@
 {
   "change_name": "crt-detector-key-level-confluence",
   "triage": "XL",
-  "phase": "program-ready-for-build",
-  "phase_status": "XL triage (engram #412) halted for decomposition. Blind architect + pm council review found the triage's proposed 5-way decomposition structurally unsound (sub-change #1 wasn't a real walking skeleton, OB+BB wrongly parallelized despite sharing a kernel, Breaker Block miscategorized as a primitive when it depends on composite/mss.py, and two blocking product questions: Rejection Block has no charter definition, and a new 'Order Block' detector would name-collide with Model-1's already-shipped anchor concept). User resolved all 3: Rejection Block deferred out of this program entirely, new ICT concept named ICTOrderBlock explicitly, and the walking skeleton reordered to ship the confluence core (FVG+Swing, with a required swing-significance fix since raw fractal swings would pass ~100% of the population) FIRST rather than gating it behind 3 new detectors. Program artefact written (engram #413, openspec/changes/crt-detector-key-level-confluence/program.md) — 3 sub-changes: crt-detector-key-level-confluence-core (L, walking skeleton) -> crt-detector-ict-order-block (M) -> crt-detector-breaker-block (M, sequenced after ict-order-block for kernel reuse). Program-build agent crashed mid-persist (API error) right after writing the file; orchestrator verified the file and persisted engram manually. Next: /build the program (ask build_mode: all|next only|pick), starting with sub-change #1's own full /plan pipeline.",
+  "phase": "program-sub-change-2-starting",
+  "phase_status": "Sub-change #1 (crt-detector-key-level-confluence-core) PAUSED 2026-08-31 — S-000 walking skeleton built SEAM-01/SEAM-02 (branch wip/crt-detector-key-level-confluence-core-s000, commit 50daee0, NOT merged) but its own real-data gate failed: FVG-only confluence discriminates 1.5-3.0% across all 3 instruments, floor is 10% (obs #449). NOT a bug — a same-day suspected broker-timezone root cause (crt-detector-htf-timezone-anchor) was independently disproven by that change's own explore (obs #457, 2 blind personas, 4 orthogonal signals). User confirmed: defer #1's accept/tighten/reconsider decision until #2 and #3 exist, matching #1's own foresight checkpoint (obs #420). Program plan updated (engram #413, openspec/changes/crt-detector-key-level-confluence/program.md). Next: sdd-triage for crt-detector-ict-order-block (sub-change #2), building against #1's branch-held seam infrastructure.",
   "architecture_impact": null,
   "steward_foresight": null,
   "spec_status": "not-started",
@@ -26,12 +26,12 @@
   "archive_date": null,
   "lessons_count": 0,
   "adr_recommendations": 4,
-  "updated_at": "2026-08-29",
+  "updated_at": "2026-08-31",
   "is_program": true,
   "program_topic_key": "sdd/crt-detector-key-level-confluence/program",
   "build_mode": "all",
   "sub_changes": [
-    {"name": "crt-detector-key-level-confluence-core", "target_size": "L", "status": "pending", "depends_on": []},
+    {"name": "crt-detector-key-level-confluence-core", "target_size": "L", "status": "paused", "depends_on": []},
     {"name": "crt-detector-ict-order-block", "target_size": "M", "status": "pending", "depends_on": ["crt-detector-key-level-confluence-core"]},
     {"name": "crt-detector-breaker-block", "target_size": "M", "status": "pending", "depends_on": ["crt-detector-key-level-confluence-core", "crt-detector-ict-order-block"]}
   ],
