@@ -6,8 +6,11 @@ fully-disclosed backtest run; detections.csv/overlay.png are unaffected.
 
 from datetime import datetime, timedelta
 
+import pytest
+
 from fixtures.mt5_csv import MT5_HEADER, _read_csv_rows, _row
 
+from backtest.levels import net_r_multiple
 from cli import main
 from core.candle import Candle, OHLCSeries
 from primitives.fvg import detect_fvgs
@@ -143,11 +146,44 @@ def test_confirmed_signal_within_max_fill_wait_produces_one_trade_row(tmp_path):
         "signal_id", "anchor_timestamp", "entry_timestamp", "direction", "entry_price",
         "stop_loss", "take_profit", "exit_timestamp", "exit_price", "outcome",
         "r_multiple", "ambiguous_bar", "gap_filled",
+        "partial_exit_timestamp", "partial_exit_price", "partial_r_multiple", "partial_gap_filled",
     ]
     assert len(rows) - 1 == 1
     trade = rows[1]
     assert trade[3] == "bearish"
     assert float(trade[10]) > 0  # net r_multiple, positive on this fixture's win
+
+
+def test_trades_csv_header_has_17_columns_in_order(tmp_path):
+    """REQ-45.4: trades.csv header is exactly the 17 columns (13 existing +
+    4 trailing partial-disclosure columns), in that order."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--types", "model1"])
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "trades.csv")
+    assert rows[0] == [
+        "signal_id", "anchor_timestamp", "entry_timestamp", "direction", "entry_price",
+        "stop_loss", "take_profit", "exit_timestamp", "exit_price", "outcome",
+        "r_multiple", "ambiguous_bar", "gap_filled",
+        "partial_exit_timestamp", "partial_exit_price", "partial_r_multiple", "partial_gap_filled",
+    ]
+
+
+def test_trades_csv_partial_columns_populated_when_fired(tmp_path):
+    """REQ-45.5: a trade whose partial leg fired has its 4 trailing cells
+    populated (non-blank); this fixture's one trade fires its partial leg
+    under the default partial_fraction=0.5 (reaches take_profit within the
+    same candle the partial level resolves)."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--types", "model1"])
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "trades.csv")
+    trade = rows[1]
+    partial_exit_timestamp, partial_exit_price, partial_r_multiple, partial_gap_filled = trade[13:17]
+    assert partial_exit_timestamp != ""
+    assert float(partial_exit_price) > 0
+    assert float(partial_r_multiple) > 0
+    assert partial_gap_filled == "False"
 
 
 def test_trades_csv_signal_id_joins_exactly_one_detections_csv_row(tmp_path):
@@ -181,6 +217,18 @@ def test_metrics_summary_discloses_wick_entry_price_divergence_note(tmp_path):
         "trades.csv entry_price and detections.csv entry_price are independently computed "
         "and may differ for wick-type signals" in summary
     )
+
+
+def test_metrics_summary_discloses_partial_exits_count(tmp_path):
+    """REQ-49.5: metrics_summary.txt discloses the count of trades whose
+    partial leg fired, as its own explicit line. This fixture's one trade
+    reaches take_profit within the same candle its partial level resolves,
+    so its partial leg fires under the default partial_fraction=0.5."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--types", "model1"])
+
+    assert exit_code == 0
+    summary = (output_dir / "metrics_summary.txt").read_text()
+    assert "partial exits: 1" in summary
 
 
 def test_types_excluding_model1_produces_empty_zero_disclosure_run(tmp_path):
@@ -296,8 +344,8 @@ def test_default_run_discloses_kill_zone_gate_enabled_and_frictionless_cost(tmp_
     summary = (output_dir / "metrics_summary.txt").read_text()
     assert "kill-zone gate: enabled (evaluating anchor_index against the NY kill zone)" in summary
     assert "trading cost: 0.0 (frictionless)" in summary
-    assert "average R: 4.074 over 1 closed trades" in summary
-    assert "total R: 4.074 over 1 closed trades" in summary
+    assert "average R: 3.056 over 1 closed trades" in summary
+    assert "total R: 3.056 over 1 closed trades" in summary
     assert "note: average R and total R assume unlimited capital, no cap on concurrently open positions" in summary
     assert "same-candle SL+TP resolutions: 0" in summary
 
@@ -353,7 +401,7 @@ def test_min_rr_override_changes_rr_floor_exclusion(tmp_path):
 
 
 def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
-    """REQ-51.2: omitting all 5 override flags produces output byte-identical
+    """REQ-51.2: omitting all 6 override flags produces output byte-identical
     to setting every field explicitly to its BacktestConfig default."""
     implicit_exit, implicit_dir = _run_backtest(tmp_path / "implicit", extra_args=["--types", "model1"])
     explicit_exit, explicit_dir = _run_backtest(
@@ -361,7 +409,7 @@ def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
         extra_args=[
             "--types", "model1",
             "--sl-buffer", "0.0002", "--min-rr", "2.0", "--trading-cost", "0.0",
-            "--kill-zone-gated", "--max-fill-wait", "20",
+            "--kill-zone-gated", "--max-fill-wait", "20", "--partial-fraction", "0.5",
         ],
     )
 
@@ -401,6 +449,52 @@ def test_invalid_trading_cost_exits_1_naming_flag_and_constraint(tmp_path):
 
     assert exit_code == 1
     assert not (output_dir / "trades.csv").exists()
+
+
+def test_partial_fraction_zero_cli_reproduces_pre_change_output(tmp_path):
+    """REQ-51.4: --partial-fraction 0.0, wired through the CLI, collapses
+    the run to the exact single-leg (pre-this-change) behavior at the CLI
+    boundary — zero partial exits, all 4 trailing trades.csv columns blank/
+    False, and the reported r_multiple matches REQ-48's un-blended formula
+    computed independently from the row's own entry/stop/exit prices. The
+    resolution-level byte-identical guarantee this flag must reach is
+    already proven at the unit layer by
+    test_backtest_simulate.py::test_partial_fraction_zero_reproduces_single_leg_output
+    (REQ-68.5) — this test proves the CLI flag actually reaches that path."""
+    exit_code, output_dir = _run_backtest(
+        tmp_path, extra_args=["--types", "model1", "--partial-fraction", "0.0"]
+    )
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "trades.csv")
+    trade = rows[1]
+    direction = trade[3]
+    entry_price, stop_loss, take_profit = float(trade[4]), float(trade[5]), float(trade[6])
+    exit_price, r_multiple = float(trade[8]), float(trade[10])
+    partial_exit_timestamp, partial_exit_price, partial_r_multiple, partial_gap_filled = trade[13:17]
+
+    assert partial_exit_timestamp == ""
+    assert partial_exit_price == ""
+    assert partial_r_multiple == ""
+    assert partial_gap_filled == "False"
+
+    expected_r = net_r_multiple(entry_price, exit_price, stop_loss, direction, trading_cost_price=0.0)
+    assert r_multiple == pytest.approx(expected_r)
+
+    summary = (output_dir / "metrics_summary.txt").read_text()
+    assert "partial exits: 0" in summary
+
+
+def test_invalid_partial_fraction_exits_1_naming_flag_and_constraint(tmp_path):
+    """REQ-51.5: a negative --partial-fraction, or one >= 1.0, is rejected
+    the same way as the other 5 flags — exit 1, no trades.csv written."""
+    negative_exit, negative_dir = _run_backtest(tmp_path / "negative", extra_args=["--partial-fraction", "-0.1"])
+    at_one_exit, at_one_dir = _run_backtest(tmp_path / "at-one", extra_args=["--partial-fraction", "1.0"])
+
+    assert negative_exit == 1
+    assert not (negative_dir / "trades.csv").exists()
+    assert at_one_exit == 1
+    assert not (at_one_dir / "trades.csv").exists()
 
 
 _AMBIGUOUS_LTF_CANDLES = [

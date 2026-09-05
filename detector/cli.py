@@ -1,6 +1,6 @@
 """CLI entry point — single-series mode plus HTF/LTF pair mode
 (--htf-csv/--htf-symbol) and, when --backtest is passed, the backtest
-simulation path (trades.csv + metrics_summary.txt), including the 5
+simulation path (trades.csv + metrics_summary.txt), including the 6
 BacktestConfig CLI overrides and the 3-state kill-zone gate resolution
 (REQ-36, REQ-51).
 """
@@ -68,7 +68,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     # Deliberately no type=float/int/BooleanOptionalAction here: argparse's
     # own type= conversion raises and exits 2 before our code ever runs,
-    # bypassing the flag/value/constraint-naming ValueError path. All 5
+    # bypassing the flag/value/constraint-naming ValueError path. All 6
     # values arrive as raw strings (or None) and are converted, range- and
     # finiteness-checked in `_parse_backtest_config` instead.
     parser.add_argument("--sl-buffer", default=None, help="Override BacktestConfig.sl_buffer_price (raw price units)")
@@ -80,6 +80,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "omitting the value means true",
     )
     parser.add_argument("--max-fill-wait", default=None, help="Override BacktestConfig.max_fill_wait (candles)")
+    parser.add_argument(
+        "--partial-fraction", default=None,
+        help="Override BacktestConfig.partial_fraction (position-size fraction closing at the equilibrium level, range [0.0, 1.0))",
+    )
     return parser
 
 
@@ -417,7 +421,7 @@ def _parse_session(raw: str | None) -> str | None:
 
 
 def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
-    """REQ-51: each of the 5 flags overrides exactly one BacktestConfig
+    """REQ-51: each of the 6 flags overrides exactly one BacktestConfig
     field; an omitted flag falls through to that field's default. Validation
     order matches the design's flag table, top to bottom; the first
     violation wins (REQ-51.3). Every flag arrives as a raw string (argparse
@@ -444,9 +448,13 @@ def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
     if max_fill_wait <= 0:
         raise ValueError(f"invalid --max-fill-wait value: {args.max_fill_wait} (expected a positive integer)")
 
+    partial_fraction = _parse_float(args.partial_fraction, defaults.partial_fraction, "--partial-fraction")
+    if partial_fraction < 0.0 or partial_fraction >= 1.0:
+        raise ValueError(f"invalid --partial-fraction value: {args.partial_fraction} (expected a value in [0.0, 1.0))")
+
     return BacktestConfig(
         sl_buffer_price=sl_buffer, min_risk_reward=min_rr, trading_cost_price=trading_cost,
-        kill_zone_gated=kill_zone_gated, max_fill_wait=max_fill_wait,
+        kill_zone_gated=kill_zone_gated, max_fill_wait=max_fill_wait, partial_fraction=partial_fraction,
     )
 
 

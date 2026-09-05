@@ -50,6 +50,7 @@ class BacktestConfig:
     trading_cost_price: float = 0.0  # total per-trade cost, price units (REQ-48)
     kill_zone_gated: bool = True  # REQ-36
     max_fill_wait: int = 20  # candles (REQ-50)
+    partial_fraction: float = 0.5  # position-size fraction closing at the equilibrium level (REQ-68/51)
 
 
 @dataclass(frozen=True)

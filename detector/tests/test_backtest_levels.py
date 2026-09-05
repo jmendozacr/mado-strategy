@@ -8,7 +8,7 @@ from core.candle import Candle
 from core.config import BacktestConfig
 from primitives.swing import SwingPoint
 
-from backtest.levels import entry_price, net_r_multiple, stop_loss
+from backtest.levels import entry_price, net_r_multiple, partial_price, stop_loss
 
 
 def _candle(open, high, low, close):
@@ -139,6 +139,17 @@ def test_net_r_multiple_nets_out_trading_cost_once_at_closure():
     net = net_r_multiple(entry, exit_price, stop, "bullish", trading_cost_price=0.00007)
 
     assert abs(net - 2.95) < 1e-9
+
+
+def test_partial_price_is_entry_to_target_midpoint():
+    """REQ-68 (V2): partial_price is the midpoint between the trade's OWN
+    entry_price and take_profit -- not the HTF CRT range's midpoint (V1's
+    formula, falsified by REQ-70's property test on real data). Verified
+    for both a bullish (target above entry) and bearish (target below
+    entry) trade -- the formula itself is direction-agnostic, since
+    entry/take_profit already encode direction."""
+    assert abs(partial_price(entry_price=1.1010, take_profit=1.1100) - 1.10550) < 1e-9
+    assert abs(partial_price(entry_price=1.1010, take_profit=1.0900) - 1.09550) < 1e-9
 
 
 def test_net_r_multiple_at_default_zero_cost_is_bit_identical_to_gross():

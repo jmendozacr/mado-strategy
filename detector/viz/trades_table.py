@@ -15,6 +15,7 @@ _TRADES_HEADER = [
     "signal_id", "anchor_timestamp", "entry_timestamp", "direction", "entry_price",
     "stop_loss", "take_profit", "exit_timestamp", "exit_price", "outcome",
     "r_multiple", "ambiguous_bar", "gap_filled",
+    "partial_exit_timestamp", "partial_exit_price", "partial_r_multiple", "partial_gap_filled",
 ]
 
 _KILL_ZONE_GATE_LINES = {
@@ -30,6 +31,9 @@ def write_trades_csv(series: OHLCSeries, trades: list[Trade], output_path: str) 
 
 def _trade_row(series: OHLCSeries, trade: Trade) -> list:
     exit_timestamp = "" if trade.exit_index is None else series.candles[trade.exit_index].timestamp.isoformat()
+    partial_exit_timestamp = (
+        "" if trade.partial_exit_index is None else series.candles[trade.partial_exit_index].timestamp.isoformat()
+    )
     return [
         trade.signal_id,
         series.candles[trade.anchor_index].timestamp.isoformat(),
@@ -44,6 +48,10 @@ def _trade_row(series: OHLCSeries, trade: Trade) -> list:
         "" if trade.r_multiple is None else trade.r_multiple,
         trade.ambiguous_bar,
         trade.gap_filled,
+        partial_exit_timestamp,
+        "" if trade.partial_exit_price is None else trade.partial_exit_price,
+        "" if trade.partial_r_multiple is None else trade.partial_r_multiple,
+        trade.partial_gap_filled,
     ]
 
 
@@ -70,6 +78,7 @@ def write_metrics_summary(
         f"total R: {_ratio(metrics.total_r)} over {metrics.closed_trades} closed trades",
         "note: average R and total R assume unlimited capital, no cap on concurrently open positions",
         f"open trades: {metrics.open_trades}",
+        f"partial exits: {metrics.partial_exits}",
         f"same-candle SL+TP resolutions: {metrics.ambiguous_bar_count}",
         _trading_cost_line(metrics.config.trading_cost_price),
         _KILL_ZONE_GATE_LINES[metrics.kill_zone_gate_state],

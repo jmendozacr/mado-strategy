@@ -108,6 +108,235 @@ def test_invalidated_and_pending_with_retest_use_the_same_fill_mechanism():
         assert trades[0].outcome == "open"
 
 
+def test_two_leg_trade_blends_partial_and_remainder_r_multiple():
+    """REQ-68.1/69.1/38.2 (S-000 walking skeleton, happy path): the partial
+    level resolves strictly before SL, then the remainder rides to the
+    original take_profit -- leg 1 closes at partial_price, leg 2 closes at
+    take_profit, and r_multiple is the fraction-weighted blend of both
+    legs' net_r_multiple (default partial_fraction=0.5)."""
+    series = (
+        _base_bullish_series()  # 0-5, the last (5) already past fill_index(4)+1, untouched
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — touches partial_price (1.1050) only
+        .candle(open=1.1020, high=1.1040, low=1.1015, close=1.1030)  # 8 — filler, no touch of SL/TP
+        .candle(open=1.1050, high=1.1105, low=1.1045, close=1.1095)  # 9 — touches take_profit (1.1100)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0988  # protected_extreme(anchor.low=1.0990) - sl_buffer_price(0.0002)
+    r_leg1 = (1.1050 - entry) / (entry - stop)  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
+    r_leg2 = (1.1100 - entry) / (entry - stop)
+    expected_blended = 0.5 * r_leg1 + 0.5 * r_leg2
+
+    assert trade.partial_exit_index == 7
+    assert trade.partial_exit_price == 1.1050
+    assert abs(trade.partial_r_multiple - r_leg1) < 1e-9
+    assert trade.partial_gap_filled is False
+    assert trade.exit_index == 9
+    assert trade.exit_price == 1.1100
+    assert abs(trade.r_multiple - expected_blended) < 1e-9
+    assert trade.outcome == "win"
+
+
+def test_two_leg_trade_leg2_uses_unmoved_original_stop():
+    """REQ-68.2 (edge, two-leg win-then-loss): the partial fires at index 7
+    same as the win-win scenario, but the remainder then reverses and hits
+    the ORIGINAL stop-loss at index 8 -- never moved or re-based after the
+    partial fired."""
+    series = (
+        _base_bullish_series()
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — touches partial_price (1.1050) only
+        .candle(open=1.1020, high=1.1030, low=1.0985, close=1.0990)  # 8 — reverses, touches ORIGINAL SL (1.0988)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0988
+    r_leg1 = (1.1050 - entry) / (entry - stop)  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
+    r_leg2 = (stop - entry) / (entry - stop)  # exit at stop itself -> -1.0
+    expected_blended = 0.5 * r_leg1 + 0.5 * r_leg2
+
+    assert trade.stop_loss == stop  # unmoved, unchanged from the candidate's original stop
+    assert trade.exit_index == 8
+    assert trade.exit_price == stop  # leg 2 closed at the SAME original stop, never re-based
+    assert abs(trade.r_multiple - expected_blended) < 1e-9
+    assert trade.partial_exit_index == 7
+    assert trade.partial_exit_price == 1.1050
+
+
+def test_sl_wins_tie_against_partial_collapses_to_single_leg():
+    """REQ-68.3/38.3/69.3 (edge): stop-loss resolves at index 6, strictly
+    before the partial level would resolve at index 7 -- SL wins, matching
+    this codebase's pre-existing pessimistic tie-break (REQ-33), generalized
+    to the partial level. The trade collapses to EXACTLY the single-leg
+    resolution this codebase produced before REQ-68: no partial leg
+    recorded, r_multiple unblended."""
+    series = (
+        _base_bullish_series()
+        .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1000)  # 6 — touches SL (1.0988) only
+        .candle(open=1.1015, high=1.1027, low=1.1010, close=1.1020)  # 7 — SL already won at 6; irrelevant either way
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    # Explicit htf_context (not the module-level _HTF_CONTEXT, whose midpoint
+    # 1.1000 coincides with entry_price and would touch on the fill candle
+    # itself) -- partial_price=1.1050 here (entry-to-target midpoint, REQ-68
+    # V2), never even reached by this series; SL fires first at candle 6
+    # regardless.
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.exit_index == 6
+    assert trade.outcome == "loss"
+    assert trade.exit_price == trade.stop_loss
+    assert trade.r_multiple == -1.0  # unblended REQ-48 formula, exactly as before REQ-68
+    assert trade.partial_exit_index is None
+    assert trade.partial_exit_price is None
+    assert trade.partial_r_multiple is None
+    assert trade.partial_gap_filled is False
+
+
+def test_partial_leg_gap_through_fills_at_open():
+    """REQ-68.4 (edge): the resolving candle's open already lies beyond
+    partial_price (1.1050) -- leg 1 fills at the candle's actual open
+    (1.1060), not at partial_price itself, mirroring REQ-34's existing
+    gap-through rule applied identically to this level."""
+    series = (
+        _base_bullish_series()
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1060, high=1.1070, low=1.1055, close=1.1065)  # 7 — gaps through partial(1.1050) at open
+        .candle(open=1.1050, high=1.1105, low=1.1045, close=1.1095)  # 8 — touches take_profit (1.1100)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.partial_exit_index == 7
+    assert trade.partial_exit_price == 1.1060  # the candle's actual open, not partial_price(1.1050)
+    assert trade.partial_gap_filled is True
+
+
+def test_partial_fraction_zero_reproduces_single_leg_output():
+    """REQ-68.5/38.3: at partial_fraction=0.0, leg 1 must NEVER be eligible
+    to fire -- the resulting Trade (outcome/exit_index/exit_price/
+    r_multiple) matches this codebase's pre-existing single-leg resolution,
+    AND all 4 partial-leg fields stay None/False (they must NOT merely
+    equal a zero-weighted contribution -- the leg must never fire at all)."""
+    series = (
+        _base_bullish_series()
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1015, high=1.1027, low=1.1010, close=1.1020)  # 7 — touches partial_price (1.1025) only
+        .candle(open=1.1020, high=1.1040, low=1.1015, close=1.1030)  # 8 — filler, no touch of SL/TP
+        .candle(open=1.1050, high=1.1105, low=1.1045, close=1.1095)  # 9 — touches take_profit (1.1100)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+    config = DetectorConfig(backtest=BacktestConfig(partial_fraction=0.0))
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0988
+    expected_r = (1.1100 - entry) / (entry - stop)  # single-leg REQ-48 formula, entirely unblended
+
+    assert trade.exit_index == 9
+    assert trade.exit_price == 1.1100
+    assert trade.outcome == "win"
+    assert abs(trade.r_multiple - expected_r) < 1e-9
+    assert trade.partial_exit_index is None
+    assert trade.partial_exit_price is None
+    assert trade.partial_r_multiple is None
+    assert trade.partial_gap_filled is False
+
+
+def test_open_trade_has_no_partial_leg_fields():
+    """REQ-68.6/38.1: neither SL, TP, nor the partial level is ever touched
+    by series end -- the trade stays "open", and none of the 4 new
+    partial-leg fields are populated (mirrors REQ-38.1's pre-existing
+    all-None/False contract for an open trade)."""
+    series = _base_bullish_series().build()
+    # A wide HTF context keeps TP(1.1200) and partial(1.1050) both well
+    # beyond the remaining series' price action (max high=1.1010) -- unlike
+    # the module-level _HTF_CONTEXT, whose midpoint (1.1000) happens to
+    # coincide with entry_price and would touch immediately.
+    htf_context = CRTRange(
+        model="2-candle", high=1.1200, low=1.0900, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.outcome == "open"
+    assert trade.partial_exit_index is None
+    assert trade.partial_exit_price is None
+    assert trade.partial_r_multiple is None
+    assert trade.partial_gap_filled is False
+
+
+def test_two_leg_blended_r_zero_cost_is_bit_identical():
+    """REQ-69.2: at the default trading_cost_price=0.0, the blended
+    r_multiple is bit-identical to a zero-cost computation -- regardless of
+    partial_fraction (checked here at a non-default 0.3, not just the
+    default 0.5)."""
+    series = (
+        _base_bullish_series()
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — touches partial_price (1.1050) only
+        .candle(open=1.1020, high=1.1040, low=1.1015, close=1.1030)  # 8 — filler, no touch of SL/TP
+        .candle(open=1.1050, high=1.1105, low=1.1045, close=1.1095)  # 9 — touches take_profit (1.1100)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+    config = DetectorConfig(backtest=BacktestConfig(partial_fraction=0.3))
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0988
+    r_leg1 = (1.1050 - entry) / (entry - stop)  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
+    r_leg2 = (1.1100 - entry) / (entry - stop)
+    expected_blended = 0.3 * r_leg1 + 0.7 * r_leg2  # exact zero-cost formula, no cost term anywhere
+
+    assert trade.r_multiple == expected_blended  # bit-identical, not merely close
+
+
 def test_same_candle_sl_and_tp_resolves_as_loss_with_ambiguous_flag():
     """REQ-33.1: a single candle touching both SL and TP resolves as a loss
     at the SL price, flagged ambiguous_bar."""
