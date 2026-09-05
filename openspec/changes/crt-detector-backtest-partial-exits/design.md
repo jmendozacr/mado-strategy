@@ -5,7 +5,7 @@
 
 ## 4.1 — Architecture Overview
 
-Extends `backtest/`'s sweep-and-resolve pipeline (ADR-02, archived `crt-detector-backtest-engine` design) with a THIRD `two_heap_sweep` pass for the equilibrium (50%-of-range) partial level — same eligibility/geometry as TP. `_resolve_trade` gains one branch: when the partial resolves strictly before the original stop (SL still wins ties, generalizing REQ-33), leg 1 closes at the partial price and leg 2 re-evaluates the SAME, unmoved SL/TP sweep results (no new sweep, no re-based risk). `net_r_multiple` runs once per leg; `_resolve_trade` blends per REQ-69. Stays inside `backtest/`, `core/config.py` (one field), `viz/trades_table.py` (append-only) — no boundary/dependency change; `take_profit()`/`min_risk_reward` untouched.
+Extends `backtest/`'s sweep-and-resolve pipeline (ADR-02, archived `crt-detector-backtest-engine` design) with a THIRD `two_heap_sweep` pass for the trade's own entry-to-target midpoint partial level — same eligibility/geometry as TP. `_resolve_trade` gains one branch: when the partial resolves strictly before the original stop (SL still wins ties, generalizing REQ-33), leg 1 closes at the partial price and leg 2 re-evaluates the SAME, unmoved SL/TP sweep results (no new sweep, no re-based risk). `net_r_multiple` runs once per leg; `_resolve_trade` blends per REQ-69. Stays inside `backtest/`, `core/config.py` (one field), `viz/trades_table.py` (append-only) — no boundary/dependency change; `take_profit()`/`min_risk_reward` untouched.
 
 ## 4.1b — Pattern Check
 
@@ -114,7 +114,7 @@ None. The sweep/tie-break mechanism is REQ-68's own text (reusing ADR-02/REQ-33 
 
 | REQ-IDs / scenarios | Behaviour covered | Level | Test |
 |---|---|---|---|
-| REQ-68 (general) | `partial_price()` = range midpoint, direction-independent | unit | `test_backtest_levels.py::test_partial_price_is_range_midpoint` |
+| REQ-68 (general) | `partial_price()` = entry-to-target midpoint, direction-independent | unit | `test_backtest_levels.py::test_partial_price_is_entry_to_target_midpoint` |
 | REQ-68.1, REQ-69.1, REQ-38.2 | two-leg win-win; blended R = `0.5*R_leg1+0.5*R_leg2`; sign sets outcome | unit | `test_backtest_simulate.py::test_two_leg_trade_blends_partial_and_remainder_r_multiple` |
 | REQ-68.2 | two-leg win-loss; leg 2 uses ORIGINAL unmoved stop | unit | `test_backtest_simulate.py::test_two_leg_trade_leg2_uses_unmoved_original_stop` |
 | REQ-68.3, REQ-38.3, REQ-69.3 | SL wins tie vs partial → single-leg loss, unblended REQ-48 R | unit | `test_backtest_simulate.py::test_sl_wins_tie_against_partial_collapses_to_single_leg` |

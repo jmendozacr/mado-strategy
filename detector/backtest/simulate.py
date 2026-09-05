@@ -251,6 +251,31 @@ def _fill_pass(
     return filled, len(fill_order) - len(filled)
 
 
+def _resolve_level_exit(
+    sl_index: int | None, tp_index: int | None, candles: tuple,
+    entry_price: float, stop_loss: float, take_profit: float, direction: Direction, cost: float,
+) -> tuple[int | None, float | None, float | None, bool, bool]:
+    """REQ-33/34: given sl_index/tp_index already swept from some eligible
+    point, resolve which wins (SL-wins-ties) and compute the exit —
+    gap-through-the-chosen-level fill, net r_multiple. Returns
+    (exit_index, exit_price, r_multiple, ambiguous_bar, gap_filled), all
+    None/False when neither level is touched (open). Shared by
+    `_resolve_single_leg` and `_resolve_trade`'s leg-2 branch."""
+    if sl_index is None and tp_index is None:
+        return None, None, None, False, False
+
+    sl_wins = tp_index is None or (sl_index is not None and sl_index <= tp_index)
+    exit_index = sl_index if sl_wins else tp_index
+    level = stop_loss if sl_wins else take_profit
+    ambiguous_bar = sl_index is not None and tp_index is not None and sl_index == tp_index
+
+    exit_candle = candles[exit_index]
+    gap_filled = _exit_gap_beyond(exit_candle.open, level, direction, chosen_is_stop=sl_wins)
+    exit_price = exit_candle.open if gap_filled else level
+    r_multiple = _net_r_multiple(entry_price, exit_price, stop_loss, direction, cost)
+    return exit_index, exit_price, r_multiple, ambiguous_bar, gap_filled
+
+
 def _resolve_single_leg(
     candidate: Candidate, fill_index: int, sl_index: int | None, tp_index: int | None,
     candles: tuple, trading_cost_price: float,
@@ -260,7 +285,11 @@ def _resolve_single_leg(
     original, pre-REQ-68 resolution -- unchanged -- reused by
     `_resolve_trade` both when no partial level is in play and, byte-for-
     byte, at `partial_fraction=0.0` (REQ-68.5)."""
-    if sl_index is None and tp_index is None:
+    exit_index, exit_price, r_multiple, ambiguous_bar, gap_filled = _resolve_level_exit(
+        sl_index, tp_index, candles,
+        candidate.entry_price, candidate.stop_loss, candidate.take_profit, candidate.direction, trading_cost_price,
+    )
+    if exit_index is None:
         return Trade(
             signal_id=candidate.signal_id, anchor_index=candidate.anchor_index, direction=candidate.direction,
             entry_index=fill_index, entry_price=candidate.entry_price, stop_loss=candidate.stop_loss,
@@ -269,17 +298,6 @@ def _resolve_single_leg(
             partial_exit_index=None, partial_exit_price=None, partial_r_multiple=None, partial_gap_filled=False,
         )
 
-    sl_wins = tp_index is None or (sl_index is not None and sl_index <= tp_index)
-    exit_index = sl_index if sl_wins else tp_index
-    level = candidate.stop_loss if sl_wins else candidate.take_profit
-    ambiguous_bar = sl_index is not None and tp_index is not None and sl_index == tp_index
-
-    exit_candle = candles[exit_index]
-    gap_filled = _exit_gap_beyond(exit_candle.open, level, candidate.direction, chosen_is_stop=sl_wins)
-    exit_price = exit_candle.open if gap_filled else level
-    r_multiple = _net_r_multiple(
-        candidate.entry_price, exit_price, candidate.stop_loss, candidate.direction, trading_cost_price
-    )
     return Trade(
         signal_id=candidate.signal_id, anchor_index=candidate.anchor_index, direction=candidate.direction,
         entry_index=fill_index, entry_price=candidate.entry_price, stop_loss=candidate.stop_loss,
@@ -342,19 +360,10 @@ def _resolve_trade(
             partial_r_multiple=partial_r_multiple, partial_gap_filled=partial_gap_filled,
         )
 
-    leg2_sl_wins = leg2_tp_index is None or (leg2_sl_index is not None and leg2_sl_index <= leg2_tp_index)
-    leg2_exit_index = leg2_sl_index if leg2_sl_wins else leg2_tp_index
-    leg2_level = candidate.stop_loss if leg2_sl_wins else candidate.take_profit
-    ambiguous_bar = leg2_sl_index is not None and leg2_tp_index is not None and leg2_sl_index == leg2_tp_index
-
-    leg2_exit_candle = candles[leg2_exit_index]
-    leg2_gap_filled = _exit_gap_beyond(
-        leg2_exit_candle.open, leg2_level, candidate.direction, chosen_is_stop=leg2_sl_wins
-    )
-    leg2_exit_price = leg2_exit_candle.open if leg2_gap_filled else leg2_level
     cost_leg2 = trading_cost_price - cost_leg1
-    leg2_r_multiple = _net_r_multiple(
-        candidate.entry_price, leg2_exit_price, candidate.stop_loss, candidate.direction, cost_leg2
+    leg2_exit_index, leg2_exit_price, leg2_r_multiple, ambiguous_bar, leg2_gap_filled = _resolve_level_exit(
+        leg2_sl_index, leg2_tp_index, candles,
+        candidate.entry_price, candidate.stop_loss, candidate.take_profit, candidate.direction, cost_leg2,
     )
 
     blended_r = partial_fraction * partial_r_multiple + (1 - partial_fraction) * leg2_r_multiple
