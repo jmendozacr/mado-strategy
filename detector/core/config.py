@@ -45,7 +45,9 @@ class KillZoneConfig:
 
 @dataclass(frozen=True)
 class BacktestConfig:
-    sl_buffer_price: float = 0.0002  # raw PRICE-UNIT offset, never a pip count (REQ-31)
+    sl_buffer_atr_multiple: float = 0.3  # ATR(14)-relative offset, never a raw price constant (REQ-31) --
+    # 0.3 reproduces ~the same absolute buffer as the former 0.0002 on EURUSDm/GBPUSDm-scale M15 series
+    # (mean ATR(14) ~0.00067/~0.00088) while scaling correctly for a high-absolute-price instrument like DXYm
     min_risk_reward: float = 2.0  # REQ-35
     trading_cost_price: float = 0.0  # total per-trade cost, price units (REQ-48)
     kill_zone_gated: bool = True  # REQ-36

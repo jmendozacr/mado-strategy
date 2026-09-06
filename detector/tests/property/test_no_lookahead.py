@@ -397,11 +397,11 @@ def test_stop_loss_swing_window_has_no_lookahead(case):
 
     stop_full = stop_loss(
         anchor, direction, full_swings, [s.index for s in full_swings],
-        anchor_index, retest_index, config,
+        anchor_index, retest_index, series.candles, config,
     )
     stop_known = stop_loss(
         anchor, direction, known_swings, [s.index for s in known_swings],
-        anchor_index, retest_index, config,
+        anchor_index, retest_index, series.up_to(retest_index).candles, config,
     )
 
     assert stop_full == stop_known

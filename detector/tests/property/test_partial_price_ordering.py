@@ -108,7 +108,8 @@ def _real_rr_floor_survivors(instrument: str) -> list[_OrderingCandidate]:
         anchor = ltf_series.candles[signal.anchor_index]
         ep = entry_price(anchor, signal.direction, signal.entry_type)
         sl = stop_loss(
-            anchor, signal.direction, swings, indices, signal.anchor_index, signal.retest_index, config.backtest
+            anchor, signal.direction, swings, indices, signal.anchor_index, signal.retest_index,
+            ltf_series.candles, config.backtest,
         )
         tp = take_profit(tagged.htf_context, signal.direction)
         pp = partial_price(ep, tp)

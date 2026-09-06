@@ -83,7 +83,7 @@ def write_metrics_summary(
         _trading_cost_line(metrics.config.trading_cost_price),
         _KILL_ZONE_GATE_LINES[metrics.kill_zone_gate_state],
         f"max fill wait: {metrics.config.max_fill_wait}",
-        f"sl buffer: {_fixed_decimal(metrics.config.sl_buffer_price)}",
+        f"sl buffer (ATR multiple): {_fixed_decimal(metrics.config.sl_buffer_atr_multiple)}",
         f"min R:R: {_fixed_decimal(metrics.config.min_risk_reward)}",
         "note: trades.csv entry_price and detections.csv entry_price are independently computed "
         "and may differ for wick-type signals — see REQ-47",

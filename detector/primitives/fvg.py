@@ -1,12 +1,11 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from core.atr import atr
 from core.candle import Candle, OHLCSeries
 from core.config import FVGConfig
 from core.key_level import KeyLevel
 from core.sweep import SweepSide, two_heap_sweep
-
-_ATR_PERIOD = 14
 
 
 @dataclass(frozen=True)
@@ -28,7 +27,7 @@ def detect_fvgs(series: OHLCSeries, config: FVGConfig = FVGConfig()) -> list[FVG
         if formed is None:
             continue
         direction, top, bottom = formed
-        if (top - bottom) < config.min_size_atr * _atr(candles, i + 2):
+        if (top - bottom) < config.min_size_atr * atr(candles, i + 2):
             continue
         candidates.append((i, direction, top, bottom))
 
@@ -116,21 +115,3 @@ def _sweep_fill_status(
         sides=sides,
         default=("open", None),
     )
-
-
-def _true_range(candles: tuple[Candle, ...], index: int) -> float:
-    candle = candles[index]
-    if index == 0:
-        return candle.high - candle.low
-    prev_close = candles[index - 1].close
-    return max(
-        candle.high - candle.low,
-        abs(candle.high - prev_close),
-        abs(candle.low - prev_close),
-    )
-
-
-def _atr(candles: tuple[Candle, ...], index: int) -> float:
-    start = max(0, index - _ATR_PERIOD + 1)
-    true_ranges = [_true_range(candles, j) for j in range(start, index + 1)]
-    return sum(true_ranges) / len(true_ranges)

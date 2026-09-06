@@ -93,7 +93,8 @@ def _build_candidate(
     anchor = ltf_series.candles[signal.anchor_index]
     ep = _entry_price(anchor, signal.direction, signal.entry_type)
     sl = _stop_loss(
-        anchor, signal.direction, swings, indices, signal.anchor_index, signal.retest_index, backtest_config
+        anchor, signal.direction, swings, indices, signal.anchor_index, signal.retest_index,
+        ltf_series.candles, backtest_config,
     )
     tp = _take_profit(tagged.htf_context, signal.direction)
     pp = _partial_price(ep, tp)

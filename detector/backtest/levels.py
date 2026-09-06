@@ -6,6 +6,7 @@
 import bisect
 from typing import Literal
 
+from core.atr import atr
 from core.candle import Candle
 from core.config import BacktestConfig
 from primitives.crt_range import CRTRange
@@ -29,11 +30,18 @@ def stop_loss(
     indices: list[int],
     anchor_index: int,
     retest_index: int,
+    candles: tuple[Candle, ...],
     config: BacktestConfig,
 ) -> float:
     """REQ-31: stop beyond a real structural level — the deepest qualifying
     swing within `[anchor_index, retest_index - 2]`, or the anchor's own
-    swept extreme when none qualifies — offset by `sl_buffer_price`.
+    swept extreme when none qualifies — offset by `sl_buffer_atr_multiple *
+    atr(candles, anchor_index)` (REQ-31, scale-aware fix): a bare price-unit
+    constant is proportionally tiny on a high-absolute-price instrument
+    (e.g. DXY, ~90-110) relative to a ~1.05-1.20 FX pair, collapsing the
+    risk denominator (entry - stop) toward zero. ATR is measured at
+    `anchor_index` -- the same candle `protected_extreme` is drawn from --
+    so the buffer reflects the volatility regime in which that level formed.
 
     The upper bound is `retest_index - 2`, not `retest_index - 1`:
     `detect_swings` only confirms a swing at index `i` once candle `i + 1`
@@ -65,7 +73,8 @@ def stop_loss(
     else:
         level = max(candidates, key=lambda s: (s.price, -s.index)).price
 
-    return level - config.sl_buffer_price if direction == "bullish" else level + config.sl_buffer_price
+    buffer = config.sl_buffer_atr_multiple * atr(candles, anchor_index)
+    return level - buffer if direction == "bullish" else level + buffer
 
 
 def take_profit(htf_context: CRTRange, direction: Direction) -> float:

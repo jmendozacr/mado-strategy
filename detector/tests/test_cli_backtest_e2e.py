@@ -344,8 +344,8 @@ def test_default_run_discloses_kill_zone_gate_enabled_and_frictionless_cost(tmp_
     summary = (output_dir / "metrics_summary.txt").read_text()
     assert "kill-zone gate: enabled (evaluating anchor_index against the NY kill zone)" in summary
     assert "trading cost: 0.0 (frictionless)" in summary
-    assert "average R: 3.056 over 1 closed trades" in summary
-    assert "total R: 3.056 over 1 closed trades" in summary
+    assert "average R: 2.276 over 1 closed trades" in summary
+    assert "total R: 2.276 over 1 closed trades" in summary
     assert "note: average R and total R assume unlimited capital, no cap on concurrently open positions" in summary
     assert "same-candle SL+TP resolutions: 0" in summary
 
@@ -408,7 +408,7 @@ def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
         tmp_path / "explicit",
         extra_args=[
             "--types", "model1",
-            "--sl-buffer", "0.0002", "--min-rr", "2.0", "--trading-cost", "0.0",
+            "--sl-buffer-atr-multiple", "0.3", "--min-rr", "2.0", "--trading-cost", "0.0",
             "--kill-zone-gated", "--max-fill-wait", "20", "--partial-fraction", "0.5",
         ],
     )
@@ -428,8 +428,8 @@ def test_invalid_max_fill_wait_exits_1_naming_flag_and_constraint(tmp_path):
 
 
 def test_invalid_sl_buffer_exits_1_naming_flag_and_constraint(tmp_path):
-    """REQ-51.3: a negative --sl-buffer is rejected the same way."""
-    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--sl-buffer", "-0.0002"])
+    """REQ-51.3: a negative --sl-buffer-atr-multiple is rejected the same way."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--sl-buffer-atr-multiple", "-0.3"])
 
     assert exit_code == 1
     assert not (output_dir / "trades.csv").exists()
@@ -502,7 +502,7 @@ _AMBIGUOUS_LTF_CANDLES = [
     (1.1010, 1.1035, 1.1000, 1.1015),  # 1 — anchor, purges High (NY 07:00)
     (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — confirms (wick entry @1.1035)
     (1.0960, 1.1012, 1.0955, 1.0965),  # 3 — retest (overlaps anchor body) + fills
-    (1.0965, 1.1040, 1.0790, 1.0910),  # 4 — high now also reaches SL(1.1037) same candle as TP(1.0800) -> tie-break
+    (1.0965, 1.1050, 1.0790, 1.0910),  # 4 — high now also reaches SL(1.104625) same candle as TP -> tie-break
 ]
 
 

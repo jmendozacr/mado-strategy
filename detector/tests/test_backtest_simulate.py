@@ -131,7 +131,9 @@ def test_two_leg_trade_blends_partial_and_remainder_r_multiple():
     trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
 
     trade = trades[0]
-    entry, stop = 1.1000, 1.0988  # protected_extreme(anchor.low=1.0990) - sl_buffer_price(0.0002)
+    # protected_extreme(anchor.low=1.0990) - 0.3 * ATR(14)@anchor_index=0 (anchor's own
+    # true_range=1.1010-1.0990=0.0020, no prior candle) -> buffer=0.0006
+    entry, stop = 1.1000, 1.0984
     r_leg1 = (1.1050 - entry) / (entry - stop)  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
     r_leg2 = (1.1100 - entry) / (entry - stop)
     expected_blended = 0.5 * r_leg1 + 0.5 * r_leg2
@@ -155,7 +157,7 @@ def test_two_leg_trade_leg2_uses_unmoved_original_stop():
         _base_bullish_series()
         .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
         .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — touches partial_price (1.1050) only
-        .candle(open=1.1020, high=1.1030, low=1.0985, close=1.0990)  # 8 — reverses, touches ORIGINAL SL (1.0988)
+        .candle(open=1.1020, high=1.1030, low=1.0975, close=1.0980)  # 8 — reverses, touches ORIGINAL SL (1.0984)
         .build()
     )
     signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
@@ -167,7 +169,7 @@ def test_two_leg_trade_leg2_uses_unmoved_original_stop():
     trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
 
     trade = trades[0]
-    entry, stop = 1.1000, 1.0988
+    entry, stop = 1.1000, 1.0984  # protected_extreme(1.0990) - 0.3 * ATR(14)@anchor_index=0 (0.0020) = 0.0006 buffer
     r_leg1 = (1.1050 - entry) / (entry - stop)  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
     r_leg2 = (stop - entry) / (entry - stop)  # exit at stop itself -> -1.0
     expected_blended = 0.5 * r_leg1 + 0.5 * r_leg2
@@ -189,7 +191,7 @@ def test_sl_wins_tie_against_partial_collapses_to_single_leg():
     recorded, r_multiple unblended."""
     series = (
         _base_bullish_series()
-        .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1000)  # 6 — touches SL (1.0988) only
+        .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1000)  # 6 — touches SL (1.0984) only
         .candle(open=1.1015, high=1.1027, low=1.1010, close=1.1020)  # 7 — SL already won at 6; irrelevant either way
         .build()
     )
@@ -267,7 +269,7 @@ def test_partial_fraction_zero_reproduces_single_leg_output():
     trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
 
     trade = trades[0]
-    entry, stop = 1.1000, 1.0988
+    entry, stop = 1.1000, 1.0984
     expected_r = (1.1100 - entry) / (entry - stop)  # single-leg REQ-48 formula, entirely unblended
 
     assert trade.exit_index == 9
@@ -329,7 +331,7 @@ def test_two_leg_blended_r_zero_cost_is_bit_identical():
     trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
 
     trade = trades[0]
-    entry, stop = 1.1000, 1.0988
+    entry, stop = 1.1000, 1.0984
     r_leg1 = (1.1050 - entry) / (entry - stop)  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
     r_leg2 = (1.1100 - entry) / (entry - stop)
     expected_blended = 0.3 * r_leg1 + 0.7 * r_leg2  # exact zero-cost formula, no cost term anywhere
@@ -342,7 +344,7 @@ def test_same_candle_sl_and_tp_resolves_as_loss_with_ambiguous_flag():
     at the SL price, flagged ambiguous_bar."""
     series = (
         _base_bullish_series()
-        .candle(open=1.1010, high=1.1060, low=1.0980, close=1.1020)  # 6 — touches both SL(1.0988) and TP(1.1050)
+        .candle(open=1.1010, high=1.1060, low=1.0980, close=1.1020)  # 6 — touches both SL(1.0984) and TP(1.1050)
         .build()
     )
     signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
@@ -363,7 +365,7 @@ def test_open_beyond_target_and_low_reaches_stop_still_resolves_at_stop():
     itself gapped through here, so gap_filled=False."""
     series = (
         _base_bullish_series()
-        .candle(open=1.1060, high=1.1070, low=1.0980, close=1.1055)  # 6 — open>TP(1.1050) AND low<=SL(1.0988)
+        .candle(open=1.1060, high=1.1070, low=1.0980, close=1.1055)  # 6 — open>TP(1.1050) AND low<=SL(1.0984)
         .build()
     )
     signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
@@ -387,7 +389,7 @@ def test_gap_open_beyond_stop_fills_at_the_actual_open_price():
         .candle(open=1.1006, high=1.1009, low=1.1004, close=1.1007)  # 2 — retest, no touch (entry=1.1010, body)
         .candle(open=1.1005, high=1.1009, low=1.1002, close=1.1004)  # 3 — no touch
         .candle(open=1.1008, high=1.1012, low=1.1005, close=1.1009)  # 4 — fills (high>=1.1010)
-        .candle(open=1.1030, high=1.1035, low=1.1025, close=1.1028)  # 5 — opens beyond SL (1.1022), TP untouched
+        .candle(open=1.1030, high=1.1035, low=1.1025, close=1.1028)  # 5 — opens beyond SL (1.1026), TP untouched
         .build()
     )
     signal = _signal(anchor_index=0, direction="bearish", entry_type="body", retest_index=2)
@@ -399,7 +401,9 @@ def test_gap_open_beyond_stop_fills_at_the_actual_open_price():
     trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
 
     trade = trades[0]
-    assert trade.stop_loss == 1.1022
+    # protected_extreme(anchor.high=1.1020) + 0.3 * ATR(14)@anchor_index=0 (anchor's own
+    # true_range=1.1020-1.1000=0.0020, no prior candle) -> buffer=0.0006
+    assert trade.stop_loss == 1.1026
     assert trade.outcome == "loss"
     assert trade.gap_filled is True
     assert trade.exit_price == 1.1030  # the candle's actual open, not the SL level
@@ -458,11 +462,11 @@ def test_sl_tp_sweep_excludes_the_fill_candle_itself():
     instead, the next candle doesn't touch SL/TP, so the trade stays open."""
     series = (
         CandleSeriesBuilder()
-        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor; stop=1.0988
+        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor; stop=1.0984
         .candle(open=1.1005, high=1.1010, low=1.1000, close=1.1003)  # 1 — filler
         .candle(open=1.1003, high=1.1008, low=1.1002, close=1.1005)  # 2 — retest, no touch (low>1.1000)
         .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1005)  # 3 — fills (low<=1.1000) AND its own range
-        # already reaches SL (low=1.0980<=1.0988) — must NOT resolve here
+        # already reaches SL (low=1.0980<=1.0984) — must NOT resolve here
         .candle(open=1.1000, high=1.1010, low=1.0995, close=1.1002)  # 4 — sweep starts here; no SL/TP touch
         .build()
     )
@@ -588,7 +592,7 @@ def test_pending_with_retest_resolves_to_a_definite_outcome_like_confirmed():
     denominator."""
     series = (
         _base_bullish_series()
-        .candle(open=1.1010, high=1.1060, low=1.0980, close=1.1020)  # 6 — touches both SL(1.0988) and TP(1.1050)
+        .candle(open=1.1010, high=1.1060, low=1.0980, close=1.1020)  # 6 — touches both SL(1.0984) and TP(1.1050)
         .build()
     )
     signal = _signal(
@@ -704,10 +708,10 @@ def test_risk_reward_below_floor_excluded():
     min_risk_reward default (2.0) is excluded under excluded_rr_floor."""
     series = _base_bullish_series().build()
     signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
-    # entry=1.1000 (anchor.open), stop=1.0988 (protected_extreme-buffer) -> risk=0.0012.
-    # target=entry+1.4*risk=1.10168 -> R:R=1.4, below the 2.0 default floor.
+    # entry=1.1000 (anchor.open), stop=1.0984 (protected_extreme-buffer) -> risk=0.0016.
+    # target=entry+1.4*risk=1.10224 -> R:R=1.4, below the 2.0 default floor.
     htf_context = CRTRange(
-        model="2-candle", high=1.10168, low=1.0900, start_index=0, end_index=1,
+        model="2-candle", high=1.10224, low=1.0900, start_index=0, end_index=1,
         resolution="true_break", resolved_at_index=1,
     )
 
@@ -730,10 +734,10 @@ def test_risk_reward_near_floor_is_still_excluded_floor_not_inert():
         .build()
     )
     signal = _signal(anchor_index=0, direction="bullish", entry_type="wick", retest_index=2)
-    # entry=1.1002 (wick), stop=1.0988 -> risk=0.0014 (14 pips, matches REQ-31.3).
-    # target=1.1002+0.0020=1.1022 -> reward=0.0020 (20 pips) -> R:R~1.4286.
+    # entry=1.1002 (wick), stop=1.09855 (protected_extreme 1.0990 - 0.3*ATR(14)@anchor=0=0.0015) -> risk=0.00165.
+    # target=entry+1.4*risk=1.10251 -> R:R=1.4, still below the 2.0 default floor.
     htf_context = CRTRange(
-        model="2-candle", high=1.1022, low=1.0900, start_index=0, end_index=1,
+        model="2-candle", high=1.10251, low=1.0900, start_index=0, end_index=1,
         resolution="true_break", resolved_at_index=1,
     )
 

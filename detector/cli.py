@@ -71,7 +71,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     # bypassing the flag/value/constraint-naming ValueError path. All 6
     # values arrive as raw strings (or None) and are converted, range- and
     # finiteness-checked in `_parse_backtest_config` instead.
-    parser.add_argument("--sl-buffer", default=None, help="Override BacktestConfig.sl_buffer_price (raw price units)")
+    parser.add_argument(
+        "--sl-buffer-atr-multiple", default=None,
+        help="Override BacktestConfig.sl_buffer_atr_multiple (ATR(14) multiplier)",
+    )
     parser.add_argument("--min-rr", default=None, help="Override BacktestConfig.min_risk_reward")
     parser.add_argument("--trading-cost", default=None, help="Override BacktestConfig.trading_cost_price (raw price units, per trade)")
     parser.add_argument(
@@ -430,9 +433,13 @@ def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
     exit 1 path as range violations -- never argparse's own exit 2."""
     defaults = BacktestConfig()
 
-    sl_buffer = _parse_float(args.sl_buffer, defaults.sl_buffer_price, "--sl-buffer")
-    if sl_buffer <= 0:
-        raise ValueError(f"invalid --sl-buffer value: {args.sl_buffer} (expected a positive number)")
+    sl_buffer_atr_multiple = _parse_float(
+        args.sl_buffer_atr_multiple, defaults.sl_buffer_atr_multiple, "--sl-buffer-atr-multiple"
+    )
+    if sl_buffer_atr_multiple <= 0:
+        raise ValueError(
+            f"invalid --sl-buffer-atr-multiple value: {args.sl_buffer_atr_multiple} (expected a positive number)"
+        )
 
     min_rr = _parse_float(args.min_rr, defaults.min_risk_reward, "--min-rr")
     if min_rr < 0:
@@ -453,7 +460,7 @@ def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
         raise ValueError(f"invalid --partial-fraction value: {args.partial_fraction} (expected a value in [0.0, 1.0))")
 
     return BacktestConfig(
-        sl_buffer_price=sl_buffer, min_risk_reward=min_rr, trading_cost_price=trading_cost,
+        sl_buffer_atr_multiple=sl_buffer_atr_multiple, min_risk_reward=min_rr, trading_cost_price=trading_cost,
         kill_zone_gated=kill_zone_gated, max_fill_wait=max_fill_wait, partial_fraction=partial_fraction,
     )
 
