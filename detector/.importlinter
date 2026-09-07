@@ -8,6 +8,7 @@ root_packages =
     alignment
     backtest
     viz
+    research
 
 [importlinter:contract:layers]
 name = Layered pipeline (ADR-01)
@@ -19,4 +20,24 @@ layers =
     composite | entries
     primitives
     core
+
+[importlinter:contract:no-research-in-production]
+name = Research tooling must not leak into production layers
+type = forbidden
+# `cli` is deliberately absent from source_modules: it is a single top-level
+# module (cli.py), not a package, and import-linter's root_packages/graph
+# only accepts packages (dirs with __init__.py) -- adding it raises "is a
+# module, not a package" (root_packages) or "does not exist" (contract
+# source/forbidden modules referencing an unscanned module). This is a
+# structural limitation of the tool, not a gap left open on purpose: cli.py
+# importing `research` would need to be caught by code review, since it
+# can't be graphed. Every actual package-shaped production layer is covered.
+source_modules =
+    backtest
+    alignment
+    entries
+    composite
+    viz
+forbidden_modules =
+    research
 

@@ -1,0 +1,5309 @@
+[
+  {
+    "signal_id": "0-1-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02274,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20378000000000007
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.1955500000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19435000000000002
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18735000000000013
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.17029000000000005
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16311999999999993
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15713
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1455599999999999
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13545000000000007
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13420999999999994
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13420999999999994
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.12078000000000011
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11748000000000003
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10602
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09143999999999997
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.08072999999999997
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05681000000000003
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04437000000000002
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.032259999999999955
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.018939999999999957
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.017730000000000024
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "0-1-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02216,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2043600000000001
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19613000000000014
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19493000000000005
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18793000000000015
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.17087000000000008
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16369999999999996
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15771000000000002
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14613999999999994
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.1360300000000001
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13478999999999997
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13478999999999997
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.12136000000000013
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11806000000000005
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10660000000000003
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09201999999999999
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.08131
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05739000000000005
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.044950000000000045
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03283999999999998
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.019519999999999982
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01715
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "1-2-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02325,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20327000000000006
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.1950400000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19384
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18684000000000012
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16978000000000004
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16260999999999992
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15661999999999998
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1450499999999999
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13494000000000006
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13369999999999993
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13369999999999993
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.1202700000000001
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11697000000000002
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10550999999999999
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09092999999999996
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.08021999999999996
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05630000000000002
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04386000000000001
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.031749999999999945
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.018429999999999946
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.018240000000000034
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "2-4-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02379,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20273000000000008
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19450000000000012
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19330000000000003
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18630000000000013
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16924000000000006
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16206999999999994
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15608
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14450999999999992
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13440000000000007
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13315999999999995
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13315999999999995
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11973000000000011
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11643000000000003
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10497000000000001
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09038999999999997
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07967999999999997
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05576000000000003
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.043320000000000025
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03120999999999996
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.01788999999999996
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01878000000000002
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "3-4-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02379,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20273000000000008
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19450000000000012
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19330000000000003
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18630000000000013
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16924000000000006
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16206999999999994
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15608
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14450999999999992
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13440000000000007
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13315999999999995
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13315999999999995
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11973000000000011
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11643000000000003
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10497000000000001
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09038999999999997
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07967999999999997
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05576000000000003
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.043320000000000025
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03120999999999996
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.01788999999999996
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01878000000000002
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "4-5-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02432,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20220000000000016
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.1939700000000002
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.1927700000000001
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.1857700000000002
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16871000000000014
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16154000000000002
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15555000000000008
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14398
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13387000000000016
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13263000000000003
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13263000000000003
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.1192000000000002
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11590000000000011
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10444000000000009
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.08986000000000005
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07915000000000005
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05523000000000011
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.042790000000000106
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03068000000000004
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.017360000000000042
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01930999999999994
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "5-6-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02499,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20153
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19330000000000003
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19209999999999994
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18510000000000004
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16803999999999997
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16086999999999985
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.1548799999999999
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14330999999999983
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13319999999999999
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13195999999999986
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13195999999999986
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11853000000000002
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11522999999999994
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10376999999999992
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.08918999999999988
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07847999999999988
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05455999999999994
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.042119999999999935
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03000999999999987
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.01668999999999987
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01998000000000011
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "6-7-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02395,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20257000000000014
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19434000000000018
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.1931400000000001
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.1861400000000002
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16908000000000012
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16191
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15592000000000006
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14434999999999998
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13424000000000014
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.133
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.133
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11957000000000018
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.1162700000000001
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10481000000000007
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09023000000000003
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07952000000000004
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.055600000000000094
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04316000000000009
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.031050000000000022
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.017730000000000024
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.018939999999999957
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "7-8-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02365,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2028700000000001
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19464000000000015
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19344000000000006
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18644000000000016
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16938000000000009
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16220999999999997
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15622000000000003
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14464999999999995
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.1345400000000001
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13329999999999997
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13329999999999997
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11987000000000014
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11657000000000006
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10511000000000004
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09053
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07982
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05590000000000006
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.043460000000000054
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03134999999999999
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.01802999999999999
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01863999999999999
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "8-9-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02355,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2029700000000001
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19474000000000014
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19354000000000005
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18654000000000015
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16948000000000008
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16230999999999995
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15632000000000001
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14474999999999993
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.1346400000000001
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13339999999999996
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13339999999999996
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11997000000000013
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11667000000000005
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10521000000000003
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09062999999999999
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07991999999999999
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05600000000000005
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04356000000000004
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03144999999999998
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.01812999999999998
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01854
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "9-10-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02406,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20246000000000008
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19423000000000012
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19303000000000003
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18603000000000014
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16897000000000006
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16179999999999994
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15581
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.14423999999999992
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13413000000000008
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13288999999999995
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13288999999999995
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11946000000000012
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11616000000000004
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10470000000000002
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09011999999999998
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07940999999999998
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05549000000000004
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04305000000000003
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.030939999999999968
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.01761999999999997
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.01905000000000001
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "10-11-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02445,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20206999999999997
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19384
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19263999999999992
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18564000000000003
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16857999999999995
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16140999999999983
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.1554199999999999
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1438499999999998
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13373999999999997
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13249999999999984
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13249999999999984
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11907000000000001
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11576999999999993
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.1043099999999999
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.08972999999999987
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07901999999999987
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05509999999999993
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04265999999999992
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.030549999999999855
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.017229999999999857
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.019440000000000124
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "11-12-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02374,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20277999999999996
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19455
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.1933499999999999
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18635000000000002
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16928999999999994
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16211999999999982
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15612999999999988
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1445599999999998
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13444999999999996
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13320999999999983
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13320999999999983
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11978
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11647999999999992
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10501999999999989
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09043999999999985
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07972999999999986
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.055809999999999915
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04336999999999991
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03125999999999984
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.017939999999999845
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.018730000000000135
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "12-13-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02357,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20294999999999996
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.19472
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19351999999999991
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18652000000000002
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.16945999999999994
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16228999999999982
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15629999999999988
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1447299999999998
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13461999999999996
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13337999999999983
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13337999999999983
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.11995
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11664999999999992
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.1051899999999999
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09060999999999986
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.07989999999999986
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05597999999999992
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04353999999999991
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.03142999999999985
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.01810999999999985
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.018560000000000132
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "13-14-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 800,
+    "entry_price": 1.02274,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.20378000000000007
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.1955500000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.19435000000000002
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.18735000000000013
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.17029000000000005
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.16311999999999993
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.15713
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1455599999999999
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.13545000000000007
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13420999999999994
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.13420999999999994
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.12078000000000011
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.11748000000000003
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.10602
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.09143999999999997
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.08072999999999997
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.05681000000000003
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.04437000000000002
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.032259999999999955
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.018939999999999957
+      },
+      {
+        "origin_index": 793,
+        "top": 1.00501,
+        "bottom": 0.99519,
+        "direction": "bullish",
+        "distance": 0.017730000000000024
+      },
+      {
+        "origin_index": 800,
+        "top": 1.02575,
+        "bottom": 1.01784,
+        "direction": "bearish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 800,
+    "selected_direction": "bearish",
+    "reason": "min distance"
+  },
+  {
+    "signal_id": "5892-5893-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 873,
+    "entry_price": 0.98072,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.24580000000000002
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.23757000000000006
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23636999999999997
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22937000000000007
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21231
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.20513999999999988
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19914999999999994
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.18757999999999986
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17747000000000002
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.1762299999999999
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.1762299999999999
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.16280000000000006
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15949999999999998
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14803999999999995
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.1334599999999999
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12274999999999991
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09882999999999997
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08638999999999997
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.0742799999999999
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.0609599999999999
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.046780000000000044
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03380000000000005
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.01583000000000001
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "5994-5995-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 874,
+    "entry_price": 0.98067,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.24585
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.23762000000000005
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23641999999999996
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22942000000000007
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21236
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.20518999999999987
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19919999999999993
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.18762999999999985
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17752
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17627999999999988
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17627999999999988
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.16285000000000005
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15954999999999997
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14808999999999994
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.1335099999999999
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12279999999999991
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09887999999999997
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08643999999999996
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.0743299999999999
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.0610099999999999
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.04683000000000004
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03385000000000005
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.015880000000000005
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "5995-5996-bearish-purge_engulf-body",
+    "instrument": "EURUSDm",
+    "cutoff_index": 874,
+    "entry_price": 0.98062,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2459
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.23767000000000005
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23646999999999996
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22947000000000006
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21241
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.20523999999999987
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19924999999999993
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.18767999999999985
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17757
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17632999999999988
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17632999999999988
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.16290000000000004
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15959999999999996
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14813999999999994
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.1335599999999999
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.1228499999999999
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09892999999999996
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08648999999999996
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.07437999999999989
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.06105999999999989
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.04688000000000003
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03390000000000004
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.01593
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "5997-5998-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 874,
+    "entry_price": 0.98068,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.24584000000000006
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.2376100000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23641
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.2294100000000001
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21235000000000004
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.20517999999999992
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19918999999999998
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1876199999999999
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17751000000000006
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17626999999999993
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17626999999999993
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.1628400000000001
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15954000000000002
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14808
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.13349999999999995
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12278999999999995
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09887000000000001
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08643
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.07431999999999994
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.06099999999999994
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.046820000000000084
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03384000000000009
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.01587000000000005
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6004-6005-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 874,
+    "entry_price": 0.98081,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2457100000000001
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.23748000000000014
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23628000000000005
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22928000000000015
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21222000000000008
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.20504999999999995
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19906000000000001
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.18748999999999993
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.1773800000000001
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17613999999999996
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17613999999999996
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.16271000000000013
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15941000000000005
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14795000000000003
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.13337
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12265999999999999
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09874000000000005
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08630000000000004
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.07418999999999998
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.06086999999999998
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.04669000000000012
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03371000000000013
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.015740000000000087
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6011-6016-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 874,
+    "entry_price": 0.98058,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.24594000000000005
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.2377100000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23651
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.2295100000000001
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21245000000000003
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.2052799999999999
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19928999999999997
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1877199999999999
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17761000000000005
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17636999999999992
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17636999999999992
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.16294000000000008
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15964
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14817999999999998
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.13359999999999994
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12288999999999994
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09897
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08653
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.07441999999999993
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.06109999999999993
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.04692000000000007
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03394000000000008
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.01597000000000004
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6015-6016-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 874,
+    "entry_price": 0.98058,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.24594000000000005
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.2377100000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23651
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.2295100000000001
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21245000000000003
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.2052799999999999
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19928999999999997
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1877199999999999
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17761000000000005
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17636999999999992
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17636999999999992
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.16294000000000008
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15964
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14817999999999998
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.13359999999999994
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12288999999999994
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09897
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08653
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.07441999999999993
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.06109999999999993
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.04692000000000007
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03394000000000008
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.01597000000000004
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6102-6103-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 875,
+    "entry_price": 0.98068,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.24584000000000006
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.2376100000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23641
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.2294100000000001
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21235000000000004
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.20517999999999992
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19918999999999998
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.1876199999999999
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17751000000000006
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17626999999999993
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17626999999999993
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.1628400000000001
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15954000000000002
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14808
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.13349999999999995
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12278999999999995
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09887000000000001
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08643
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.07431999999999994
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.06099999999999994
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.046820000000000084
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03384000000000009
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.01587000000000005
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6181-6182-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 877,
+    "entry_price": 0.98064,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2458800000000001
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.23765000000000014
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.23645000000000005
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22945000000000015
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.21239000000000008
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.20521999999999996
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19923000000000002
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.18765999999999994
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.1775500000000001
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17630999999999997
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.17630999999999997
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.16288000000000014
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15958000000000006
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14812000000000003
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.13354
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.12283
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09891000000000005
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.08647000000000005
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.07435999999999998
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.06103999999999998
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.046860000000000124
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.03388000000000013
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.01591000000000009
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 871,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6239-6240-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 878,
+    "entry_price": 0.98897,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.23755000000000004
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.22932000000000008
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.22812
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.2211200000000001
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.20406000000000002
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.1968899999999999
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19089999999999996
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.17932999999999988
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.16922000000000004
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.1679799999999999
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.1679799999999999
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.15455000000000008
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15125
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.13978999999999997
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.12520999999999993
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.11449999999999994
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09058
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.07813999999999999
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.06602999999999992
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.052709999999999924
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.038530000000000064
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.025550000000000073
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.007580000000000031
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.00814999999999999
+      },
+      {
+        "origin_index": 878,
+        "top": 0.9897,
+        "bottom": 0.98309,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 878,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6239-6240-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 878,
+    "entry_price": 0.98786,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2386600000000001
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.23043000000000013
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.22923000000000004
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22223000000000015
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.20517000000000007
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.19799999999999995
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19201000000000001
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.18043999999999993
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.1703300000000001
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16908999999999996
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16908999999999996
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.15566000000000013
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15236000000000005
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14090000000000003
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.12632
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.11560999999999999
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09169000000000005
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.07925000000000004
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.06713999999999998
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.05381999999999998
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.03964000000000012
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.026660000000000128
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.008690000000000087
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.007039999999999935
+      },
+      {
+        "origin_index": 878,
+        "top": 0.9897,
+        "bottom": 0.98309,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 878,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6240-6241-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 878,
+    "entry_price": 0.98924,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.23728000000000005
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.2290500000000001
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.22785
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.2208500000000001
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.20379000000000003
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.1966199999999999
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19062999999999997
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.17905999999999989
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.16895000000000004
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16770999999999991
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16770999999999991
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.15428000000000008
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15098
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.13951999999999998
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.12493999999999994
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.11422999999999994
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09031
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.07787
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.06575999999999993
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.05243999999999993
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.03826000000000007
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.02528000000000008
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.007310000000000039
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.008419999999999983
+      },
+      {
+        "origin_index": 878,
+        "top": 0.9897,
+        "bottom": 0.98309,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 878,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6241-6242-bearish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 878,
+    "entry_price": 0.98967,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.23685
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.22862000000000005
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.22741999999999996
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22042000000000006
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.20335999999999999
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.19618999999999986
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19019999999999992
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.17862999999999984
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.16852
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16727999999999987
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16727999999999987
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.15385000000000004
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15054999999999996
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.13908999999999994
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.1245099999999999
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.1137999999999999
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.08987999999999996
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.07743999999999995
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.06532999999999989
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.05200999999999989
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.03783000000000003
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.02485000000000004
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.006879999999999997
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.008850000000000025
+      },
+      {
+        "origin_index": 878,
+        "top": 0.9897,
+        "bottom": 0.98309,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 878,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6242-6243-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 878,
+    "entry_price": 0.98886,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.2376600000000001
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.22943000000000013
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.22823000000000004
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22123000000000015
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.20417000000000007
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.19699999999999995
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19101
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.17943999999999993
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.1693300000000001
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16808999999999996
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16808999999999996
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.15466000000000013
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15136000000000005
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.13990000000000002
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.12532
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.11460999999999999
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09069000000000005
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.07825000000000004
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.06613999999999998
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.05281999999999998
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.03864000000000012
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.025660000000000127
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.007690000000000086
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.008039999999999936
+      },
+      {
+        "origin_index": 878,
+        "top": 0.9897,
+        "bottom": 0.98309,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 878,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  },
+  {
+    "signal_id": "6243-6245-bullish-purge_engulf-wick",
+    "instrument": "EURUSDm",
+    "cutoff_index": 878,
+    "entry_price": 0.98771,
+    "candidates": [
+      {
+        "origin_index": 318,
+        "top": 1.2349,
+        "bottom": 1.22652,
+        "direction": "bearish",
+        "distance": 0.23881000000000008
+      },
+      {
+        "origin_index": 442,
+        "top": 1.22338,
+        "bottom": 1.21829,
+        "direction": "bearish",
+        "distance": 0.23058000000000012
+      },
+      {
+        "origin_index": 449,
+        "top": 1.22176,
+        "bottom": 1.21709,
+        "direction": "bearish",
+        "distance": 0.22938000000000003
+      },
+      {
+        "origin_index": 453,
+        "top": 1.21468,
+        "bottom": 1.21009,
+        "direction": "bearish",
+        "distance": 0.22238000000000013
+      },
+      {
+        "origin_index": 466,
+        "top": 1.19415,
+        "bottom": 1.19303,
+        "direction": "bearish",
+        "distance": 0.20532000000000006
+      },
+      {
+        "origin_index": 497,
+        "top": 1.18964,
+        "bottom": 1.18586,
+        "direction": "bearish",
+        "distance": 0.19814999999999994
+      },
+      {
+        "origin_index": 532,
+        "top": 1.18314,
+        "bottom": 1.17987,
+        "direction": "bearish",
+        "distance": 0.19216
+      },
+      {
+        "origin_index": 543,
+        "top": 1.17497,
+        "bottom": 1.1683,
+        "direction": "bearish",
+        "distance": 0.18058999999999992
+      },
+      {
+        "origin_index": 569,
+        "top": 1.16917,
+        "bottom": 1.15819,
+        "direction": "bearish",
+        "distance": 0.17048000000000008
+      },
+      {
+        "origin_index": 579,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16923999999999995
+      },
+      {
+        "origin_index": 583,
+        "top": 1.16083,
+        "bottom": 1.15695,
+        "direction": "bearish",
+        "distance": 0.16923999999999995
+      },
+      {
+        "origin_index": 638,
+        "top": 1.14812,
+        "bottom": 1.14352,
+        "direction": "bearish",
+        "distance": 0.15581000000000012
+      },
+      {
+        "origin_index": 659,
+        "top": 1.14475,
+        "bottom": 1.14022,
+        "direction": "bearish",
+        "distance": 0.15251000000000003
+      },
+      {
+        "origin_index": 670,
+        "top": 1.13663,
+        "bottom": 1.12876,
+        "direction": "bearish",
+        "distance": 0.14105
+      },
+      {
+        "origin_index": 674,
+        "top": 1.1246,
+        "bottom": 1.11418,
+        "direction": "bearish",
+        "distance": 0.12646999999999997
+      },
+      {
+        "origin_index": 703,
+        "top": 1.10453,
+        "bottom": 1.10347,
+        "direction": "bearish",
+        "distance": 0.11575999999999997
+      },
+      {
+        "origin_index": 721,
+        "top": 1.08143,
+        "bottom": 1.07955,
+        "direction": "bearish",
+        "distance": 0.09184000000000003
+      },
+      {
+        "origin_index": 760,
+        "top": 1.0748,
+        "bottom": 1.06711,
+        "direction": "bearish",
+        "distance": 0.07940000000000003
+      },
+      {
+        "origin_index": 777,
+        "top": 1.06146,
+        "bottom": 1.055,
+        "direction": "bearish",
+        "distance": 0.06728999999999996
+      },
+      {
+        "origin_index": 782,
+        "top": 1.04623,
+        "bottom": 1.04168,
+        "direction": "bearish",
+        "distance": 0.05396999999999996
+      },
+      {
+        "origin_index": 817,
+        "top": 1.0364,
+        "bottom": 1.0275,
+        "direction": "bearish",
+        "distance": 0.0397900000000001
+      },
+      {
+        "origin_index": 820,
+        "top": 1.02026,
+        "bottom": 1.01452,
+        "direction": "bearish",
+        "distance": 0.02681000000000011
+      },
+      {
+        "origin_index": 849,
+        "top": 1.00318,
+        "bottom": 0.99655,
+        "direction": "bearish",
+        "distance": 0.00884000000000007
+      },
+      {
+        "origin_index": 863,
+        "top": 0.99992,
+        "bottom": 0.98058,
+        "direction": "bearish",
+        "distance": 0.0
+      },
+      {
+        "origin_index": 871,
+        "top": 0.98082,
+        "bottom": 0.97055,
+        "direction": "bullish",
+        "distance": 0.006889999999999952
+      },
+      {
+        "origin_index": 878,
+        "top": 0.9897,
+        "bottom": 0.98309,
+        "direction": "bullish",
+        "distance": 0.0
+      }
+    ],
+    "selected_origin_index": 878,
+    "selected_direction": "bullish",
+    "reason": "tie-break: higher origin_index"
+  }
+]
