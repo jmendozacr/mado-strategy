@@ -13,10 +13,13 @@ from datetime import datetime, timedelta
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from fixtures.synthetic import CandleSeriesBuilder
+
 from alignment.htf_ltf import tag_alignment
 from core.candle import Candle, OHLCSeries
 from core.config import BacktestConfig, DetectorConfig
 from composite.mss import detect_mss_events
+from composite.order_flow import detect_order_flow_events
 from entries.model1 import detect_model1_signals
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
@@ -164,6 +167,164 @@ def test_mss_detection_has_no_lookahead(series: OHLCSeries):
             full_event = full_by_key[key]
             assert truncated_event.index == full_event.index
             assert truncated_event.broken_swing == full_event.broken_swing
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_order_flow_detection_has_no_lookahead(series: OHLCSeries):
+    """REQ-OF-05: unlike MSS/FVG's unbounded-window monotonicity, an
+    OrderFlowEvent's `confirmation_index` is itself the exact boundary of
+    what a truncated view can know — every event a truncated series can
+    possibly report necessarily has `confirmation_index <= n - 1 < n`
+    (it references only candles within its own bounds), so the full-series
+    events with `confirmation_index < n` must match the truncated output
+    EXACTLY, not just monotonically (REQ-OF-05's own literal wording).
+    """
+    full_events = detect_order_flow_events(series)
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_no_lookahead_all_flat_candles():
+    """REQ-OF-05.1 named case: a fully flat, degenerate series (every
+    candle identical) — `detect_swings`'s strict inequalities never fire on
+    exactly-equal neighbors, so there are no swings and no candidates at
+    any prefix length. Mirrors the project's own registered flat-candle
+    lookahead lesson (`test_alignment_detection_has_no_lookahead`'s bug
+    class).
+    """
+    series = OHLCSeries(
+        candles=tuple(
+            Candle(
+                timestamp=datetime(2026, 1, 1) + timedelta(hours=i),
+                open=1.1000, high=1.1010, low=1.0990, close=1.1000,
+            )
+            for i in range(20)
+        ),
+        instrument="EURUSD", timeframe="1H",
+    )
+    full_events = detect_order_flow_events(series)
+    assert full_events == []
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events == []
+
+
+def test_order_flow_no_lookahead_equal_highs():
+    """REQ-OF-05.1 named case: several candles share the SAME high value —
+    `detect_swings`'s strict `>` never treats an equal neighbor as a swing
+    high, so no bearish rejection reference ever forms from this plateau;
+    the property must still hold exactly at every prefix length."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.1000, low=1.0975, close=1.0985)  # 0
+        .candle(open=1.0985, high=1.1000, low=1.0980, close=1.0990)  # 1 — same high as 0
+        .candle(open=1.0990, high=1.1000, low=1.0985, close=1.0995)  # 2 — same high as 0/1
+        .candle(open=1.0995, high=1.1000, low=1.0990, close=1.0985)  # 3 — same high again
+        .candle(open=1.0985, high=1.0995, low=1.0975, close=1.0980)  # 4 — filler
+        .build()
+    )
+    full_events = detect_order_flow_events(series)
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_no_lookahead_equal_lows():
+    """REQ-OF-05.1 named case: several candles share the SAME low value —
+    mirror of the equal-highs case for the bullish side."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.1020, high=1.1025, low=1.1000, close=1.1015)  # 0
+        .candle(open=1.1015, high=1.1020, low=1.1000, close=1.1010)  # 1 — same low as 0
+        .candle(open=1.1010, high=1.1015, low=1.1000, close=1.1005)  # 2 — same low as 0/1
+        .candle(open=1.1005, high=1.1015, low=1.1000, close=1.1020)  # 3 — same low again
+        .candle(open=1.1020, high=1.1025, low=1.1005, close=1.1015)  # 4 — filler
+        .build()
+    )
+    full_events = detect_order_flow_events(series)
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_no_lookahead_outside_bar():
+    """REQ-OF-05.1 named case: an outside-bar candle qualifying as a
+    rejection for BOTH directions at once (REQ-OF-08) — reusing the
+    fixture from `test_outside_bar_creates_both_direction_rejections_with_no_tie_break`
+    in `tests/test_order_flow.py`."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.0985, low=1.0975, close=1.0980)  # 0
+        .candle(open=1.0960, high=1.0965, low=1.0950, close=1.0955)  # 1 — L swing low
+        .candle(open=1.0975, high=1.0990, low=1.0970, close=1.0985)  # 2
+        .candle(open=1.0990, high=1.1200, low=1.0980, close=1.1010)  # 3 — H swing high
+        .candle(open=1.1010, high=1.1020, low=1.1000, close=1.1015)  # 4
+        .candle(open=1.1015, high=1.1210, low=1.0930, close=1.1050)  # 5 — OUTSIDE BAR
+        .candle(open=1.1050, high=1.1060, low=1.1040, close=1.1055)  # 6
+        .candle(open=1.1055, high=1.1100, low=1.1045, close=1.1080)  # 7
+        .candle(open=1.1080, high=1.1090, low=1.1060, close=1.1070)  # 8
+        .candle(open=1.1070, high=1.1160, low=1.1050, close=1.1150)  # 9
+        .candle(open=1.1150, high=1.1155, low=1.1050, close=1.1060)  # 10
+        .candle(open=1.1060, high=1.1070, low=1.0850, close=1.0900)  # 11
+        .build()
+    )
+    full_events = detect_order_flow_events(series)
+    assert len(full_events) == 2  # sanity: this fixture does produce both directions
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_future_candles_never_change_already_confirmed_events():
+    """Explicit regression, distinct from the general property test above:
+    appending ARBITRARY future candles to a series never changes events
+    already confirmed within the original series — proven by comparing the
+    original series' output against the output after appending 15 random-ish
+    extra candles, none of which existed when the original events fired.
+    """
+    base = (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.0985, low=1.0975, close=1.0980)  # 0
+        .candle(open=1.0960, high=1.0965, low=1.0950, close=1.0955)  # 1 — swing low
+        .candle(open=1.0975, high=1.0990, low=1.0970, close=1.0985)  # 2
+        .candle(open=1.0980, high=1.0990, low=1.0975, close=1.0985)  # 3
+        .candle(open=1.0970, high=1.0980, low=1.0940, close=1.0960)  # 4 — rejection
+        .candle(open=1.0965, high=1.0975, low=1.0955, close=1.0970)  # 5
+        .candle(open=1.0975, high=1.1050, low=1.0970, close=1.1010)  # 6 — swing high
+        .candle(open=1.1010, high=1.1020, low=1.1000, close=1.1015)  # 7
+        .candle(open=1.1015, high=1.1070, low=1.1010, close=1.1060)  # 8 — break -> event
+        .build()
+    )
+    original_events = detect_order_flow_events(base)
+    assert len(original_events) == 1
+
+    builder = CandleSeriesBuilder()
+    for candle in base.candles:
+        builder.candle(open=candle.open, high=candle.high, low=candle.low, close=candle.close)
+    for i in range(15):  # arbitrary future candles, unrelated price action
+        wiggle = 0.001 * ((i % 5) - 2)
+        builder.candle(
+            open=1.1060 + wiggle, high=1.1080 + wiggle,
+            low=1.1040 + wiggle, close=1.1055 + wiggle,
+        )
+    extended = builder.build()
+
+    extended_events = detect_order_flow_events(extended)
+    settled_extended_events = [e for e in extended_events if e.confirmation_index < len(base.candles)]
+
+    assert settled_extended_events == original_events
 
 
 @given(series=ohlc_series())
