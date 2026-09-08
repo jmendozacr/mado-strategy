@@ -50,6 +50,10 @@ M-light: this triage + `explore.md` (already produced, see below) stand in for t
 
 None. No auth/payments/PII/deploy surface — a stateless HTF structural-direction detector, same category as every other primitive in `detector/`.
 
+## Status (2026-09-08, final)
+
+**V1 implementation complete.** Spec commit `c2a0a53`, implementation commit `2a9bb9c`. 331/332 suite passing (1 pre-existing, unrelated, registered failure), `lint-imports` clean. `detect_order_flow_events` is closed as an event detector — no V2, no new rules, no prevalence/performance measurement started or implied by this closure. The next Direction-dimension slice (Bias) is a separate, from-scratch semantic research thread, not a continuation of this change.
+
 ## `ready_for_next_phase`
 
 **READY FOR SPEC SIGN-OFF** (resolved 2026-09-08, third design pass — see `explore.md` Section M). The second pass's own two central choices (magnitude-based reference selection; unified single pending candidate) were themselves reversed here on evidence — a demonstrated indefinite-anchoring defect (magnitude selection can permanently freeze on a stale ancient extreme) and a demonstrated event-loss defect (a unified candidate silently discards a legitimate completed event when an unrelated opposite-direction rejection occurs first). Final design: reference selection by RECENCY (most recent confirmed unbroken swing, not most extreme), pending candidates tracked INDEPENDENTLY per direction, a same-candle two-phase resolution order, and two structural proofs (not assumptions) ruling out same-candle invalidation+break and a candle targeting its own just-confirmed swing. REQ-OF-02/04 rewritten a second time; REQ-OF-07/08 added. No remaining input was identified where two implementers would diverge. `sdd-spec` may now formalize `explore.md` into a signed spec.
