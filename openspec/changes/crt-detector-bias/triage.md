@@ -89,3 +89,28 @@ None from either persona. No contradiction, no unsound ask, no missing informati
 ## `ready_for_next_phase`
 
 **READY FOR SPEC** — proceeding directly to a scoped `sdd-spec` (explore/propose/design/slice/plan-verify skipped per the Proportionality verdict above).
+
+## Status (2026-09-08, final)
+
+**V1 implementation complete, human-approved READY TO COMMIT.** `detector/primitives/bias.py` + `detector/tests/test_bias.py` (24 tests) + a no-lookahead property entry (`_BIAS_K=0`) in `detector/tests/property/test_no_lookahead.py`, all TDD (red confirmed before implementation). Full `detector/` suite: 356 passed, 1 pre-existing unrelated failure (`test_alignment_detection_has_no_lookahead`, reproduced identically with the Bias diff removed via `git stash` — not touched, per explicit instruction). `lint-imports`: 2 kept, 0 broken. No source/design ledger changes were forced during implementation.
+
+## Bias V1 closeout
+
+```text
+close relation      COMPLETE
+close evidence      COMPLETE
+wick evidence       COMPLETE
+conflicts preserved COMPLETE
+no-lookahead         COMPLETE
+timeframe agnostic  COMPLETE
+
+final arbitration   DEFERRED
+horizon             DEFERRED
+persistent bias     DEFERRED
+OrderFlow<->Bias    DEFERRED
+DOL                 DEFERRED
+DirectionContext    DEFERRED
+TSQ/OHLC Path       DEFERRED
+```
+
+No V2 opened. `detect_bias_evidence` is closed as an evidence-emitting primitive — no new rules, no combination policy, no prevalence/performance measurement started or implied by this closure. The next DIRECTION-dimension slice (Draw on Liquidity) is a separate, from-scratch semantic research thread, not a continuation of this change.
