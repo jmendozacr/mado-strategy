@@ -81,3 +81,33 @@ DOLSelector                → DEFERRED
 ```
 
 Design pass in `explore.md`.
+
+## Status (2026-09-08, final)
+
+**V1 implementation complete, human-approved READY TO COMMIT.** `detector/primitives/liquidity.py` + `detector/tests/test_liquidity.py` (13 tests) + a no-lookahead property entry (`_LIQ_K=0`) in `detector/tests/property/test_no_lookahead.py`, all TDD (red confirmed before implementation, green on first pass — the spec left no ambiguity). Full `detector/` suite: 369 passed, 1 pre-existing unrelated failure (`test_alignment_detection_has_no_lookahead`, same one already confirmed pre-existing during `crt-detector-bias`'s closeout — not touched here either). `lint-imports`: 2 kept, 0 broken. No source/design ledger changes were forced during implementation.
+
+## LiquidityCandidateDetector V1 closeout
+
+```text
+candidate emission     COMPLETE
+price exactness        COMPLETE
+identity/no-dedup       COMPLETE
+flat-candle distinctness COMPLETE
+no-lookahead            COMPLETE
+timeframe agnostic     COMPLETE
+deterministic ordering COMPLETE
+no CRT duplication      COMPLETE
+
+DOLSelector             DEFERRED
+short-term scope        DEFERRED
+candidate ranking       DEFERRED
+active target           DEFERRED
+reach semantics         DEFERRED
+consumption             DEFERRED
+OrderFlow<->DOL         DEFERRED
+Bias<->DOL              DEFERRED
+DirectionContext        DEFERRED
+KeyLevelSelector        DEFERRED
+```
+
+No V2 opened. `detect_liquidity_candidates` is closed as an existence-only primitive — no ranking, no selection, no prevalence/performance measurement started or implied. The next DIRECTION-dimension work (`DOLSelector`) is a separate, from-scratch semantic/design research thread, not a continuation of this change.
