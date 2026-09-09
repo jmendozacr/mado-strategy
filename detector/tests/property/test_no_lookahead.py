@@ -21,6 +21,7 @@ from core.config import BacktestConfig, DetectorConfig
 from composite.mss import detect_mss_events
 from composite.order_flow import detect_order_flow_events
 from entries.model1 import detect_model1_signals
+from primitives.bias import detect_bias_evidence
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
 from primitives.ict_order_block import detect_ict_order_blocks
@@ -30,6 +31,7 @@ from backtest.levels import entry_price, stop_loss
 from backtest.simulate import simulate
 
 _SWING_K = 1
+_BIAS_K = 0
 _FVG_K = 3
 _CRT_RANGE_K = 20
 _MSS_K = 1
@@ -71,6 +73,22 @@ def test_swing_detection_has_no_lookahead(series: OHLCSeries):
         settled_full_swings = [s for s in full_swings if s.index <= settled_boundary]
 
         assert truncated_swings == settled_full_swings
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_bias_detection_has_no_lookahead(series: OHLCSeries):
+    """REQ-BIAS-06: k=0, the strictest variant in this family — evidence at
+    `observation_index=i` depends only on candles i-1 and i, so a truncated
+    view's output must match the full-series output EXACTLY for every
+    observation_index < n (nothing can still resolve with more data, unlike
+    FVG's fill_status or MSS's break search)."""
+    full_evidence = detect_bias_evidence(series)
+
+    for n in range(2, len(series.candles) + 1):
+        truncated_evidence = detect_bias_evidence(series.up_to(n))
+        settled_full_evidence = [e for e in full_evidence if e.observation_index < n]
+        assert truncated_evidence == settled_full_evidence
 
 
 @given(series=ohlc_series())
