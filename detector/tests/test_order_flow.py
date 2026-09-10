@@ -668,6 +668,29 @@ def test_opposite_direction_events_never_share_a_confirmation_index(series):
         assert directions != {"bullish", "bearish"}
 
 
+@given(series=_ohlc_series())
+@settings(max_examples=2000)
+def test_same_direction_events_never_share_a_confirmation_index(series):
+    """REQ-OF-09's same-direction companion, previously unpinned. Proof:
+    each direction tracks at most ONE pending candidate at a time, and the
+    candidate is consumed (`pending_* = None`) by the very candle that
+    confirms it -- so a second event in the same direction needs a NEW
+    rejection, which Phase 2 can only create on a candle, and that
+    candidate's own confirmation can only land on a LATER candle still.
+
+    Together with the opposite-direction proof above this makes
+    `confirmation_index` a globally unique key over the whole event list --
+    the invariant that lets a consumer take `max(events,
+    key=confirmation_index)` with a provably unique argmax and no
+    tie-break.
+    """
+    events = detect_order_flow_events(series)
+    keys = [(event.direction, event.confirmation_index) for event in events]
+
+    assert len(set(keys)) == len(keys)
+    assert len({event.confirmation_index for event in events}) == len(events)
+
+
 def _mirror_series(series: OHLCSeries, pivot: float = 2.2) -> OHLCSeries:
     """Price mirror around `pivot` (price -> pivot - price), swapping each
     candle's high/low — turns any bullish structure into its exact bearish

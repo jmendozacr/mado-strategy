@@ -19,14 +19,20 @@ from alignment.htf_ltf import tag_alignment
 from core.candle import Candle, OHLCSeries
 from core.config import BacktestConfig, DetectorConfig
 from composite.mss import detect_mss_events
-from composite.order_flow import detect_order_flow_events
+from composite.order_flow import OrderFlowEvent, detect_order_flow_events
 from entries.model1 import detect_model1_signals
-from primitives.bias import detect_bias_evidence
+from policy.direction import (
+    direction_policy_bias_veto_v1,
+    direction_policy_corroboration_v1,
+    direction_policy_noncontradiction_v1,
+    direction_policy_structural_priority_v1,
+)
+from primitives.bias import BiasEvidence, detect_bias_evidence
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
 from primitives.ict_order_block import detect_ict_order_blocks
 from primitives.liquidity import detect_liquidity_candidates
-from primitives.swing import detect_swings
+from primitives.swing import SwingPoint, detect_swings
 
 from backtest.levels import entry_price, stop_loss
 from backtest.simulate import simulate
@@ -39,6 +45,18 @@ _MSS_K = 1
 _ICT_ORDER_BLOCK_K = 1
 _MODEL1_K = 20
 _ALIGNMENT_LTF_PER_HTF = 4
+
+
+def _direction_policy_event(direction: str, confirmation_index: int) -> OrderFlowEvent:
+    """DirectionPolicy reads only `direction` and `confirmation_index`, so
+    the two references are structural filler here."""
+    return OrderFlowEvent(
+        direction=direction,
+        rejection_reference=SwingPoint(index=0, price=1.0950, kind="low"),
+        break_reference=SwingPoint(index=1, price=1.1050, kind="high"),
+        rejection_index=confirmation_index - 1,
+        confirmation_index=confirmation_index,
+    )
 
 
 def _ohlc_candle(draw, index: int) -> Candle:
@@ -689,3 +707,69 @@ def test_backtest_exit_is_local_to_its_own_window(pair):
         assert (matched.entry_index, matched.exit_index, matched.outcome) == (
             trade.entry_index, trade.exit_index, trade.outcome
         )
+
+
+_DIRECTION_POLICIES = (
+    direction_policy_structural_priority_v1,
+    direction_policy_corroboration_v1,
+    direction_policy_noncontradiction_v1,
+    direction_policy_bias_veto_v1,
+)
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_direction_policy_decisions_have_no_lookahead(series: OHLCSeries):
+    """REQ-DIRPOL-09: a DirectionDecision taken at `cutoff_index` must be
+    identical whether it is computed from the full series' detections or
+    from detections over the truncated series that ends at that candle.
+    DirectionPolicy inherits this rather than re-deriving it: the Order Flow
+    filter is `confirmation_index <= cutoff_index` (and OrderFlowEvent is
+    itself exactly-truncatable, proven above), Bias is k=0 and exactly
+    aligned, and every normalizer/combiner is a pure function of enum
+    values that reads no index at all.
+    """
+    full_events = detect_order_flow_events(series)
+    full_bias = {e.observation_index: e for e in detect_bias_evidence(series)}
+
+    for n in range(2, len(series.candles) + 1):
+        cutoff = n - 1  # >= 1, so BiasEvidence is guaranteed present
+        truncated = series.up_to(n)
+        truncated_events = detect_order_flow_events(truncated)
+        truncated_bias = {e.observation_index: e for e in detect_bias_evidence(truncated)}
+
+        for policy in _DIRECTION_POLICIES:
+            assert policy(full_events, full_bias[cutoff], cutoff) == policy(
+                truncated_events, truncated_bias[cutoff], cutoff
+            )
+
+
+@given(
+    cutoff_index=st.integers(min_value=1, max_value=40),
+    past=st.lists(st.integers(min_value=1, max_value=40), min_size=0, max_size=6, unique=True),
+    future_offsets=st.lists(st.integers(min_value=1, max_value=50), min_size=1, max_size=6),
+    close_signal=st.sampled_from(["bullish", "bearish", None]),
+    wick_signal=st.sampled_from(["bullish", "bearish", "conflict", None]),
+)
+@settings(max_examples=200)
+def test_appending_future_order_flow_events_never_changes_an_earlier_decision(
+    cutoff_index, past, future_offsets, close_signal, wick_signal
+):
+    """The append-invariance half of REQ-DIRPOL-09, checked field by field
+    (not just on `direction`): events confirmed strictly after the cutoff
+    are invisible, so adding any number of them leaves every field of the
+    earlier decision untouched."""
+    eligible_indices = sorted({i for i in past if i <= cutoff_index})
+    events = [_direction_policy_event("bullish", i) for i in eligible_indices]
+    later = [
+        _direction_policy_event("bearish", cutoff_index + offset) for offset in future_offsets
+    ]
+    bias = BiasEvidence(
+        observation_index=cutoff_index,
+        close_relation="inside",
+        close_signal=close_signal,
+        wick_signal=wick_signal,
+    )
+
+    for policy in _DIRECTION_POLICIES:
+        assert policy(events, bias, cutoff_index) == policy(events + later, bias, cutoff_index)

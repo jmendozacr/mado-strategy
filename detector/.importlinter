@@ -6,6 +6,7 @@ root_packages =
     composite
     entries
     alignment
+    policy
     backtest
     viz
     research
@@ -13,10 +14,15 @@ root_packages =
 [importlinter:contract:layers]
 name = Layered pipeline (ADR-01)
 type = layers
+# `alignment | policy` are declared INDEPENDENT siblings, not stacked:
+# timeframe alignment and direction arbitration are separate concerns over
+# the same evidence layers, and neither imports the other. Stacking them
+# would silently permit a coupling nobody has argued for; a future consumer
+# that genuinely needs one from the other should have to change this line.
 layers =
     viz : ingestion
     backtest
-    alignment
+    alignment | policy
     composite | entries
     primitives
     core
@@ -37,7 +43,20 @@ source_modules =
     alignment
     entries
     composite
+    policy
     viz
 forbidden_modules =
     research
+
+[importlinter:contract:no-policy-in-research]
+name = Research tooling must not consume the policy layer
+# The reverse direction of the contract above, which the layers contract
+# cannot express (`research` is deliberately outside it). Line A explores
+# the corpus; Line B's DirectionPolicy candidates are pre-registered
+# hypotheses that must not be silently re-tuned from research findings.
+type = forbidden
+source_modules =
+    research
+forbidden_modules =
+    policy
 
