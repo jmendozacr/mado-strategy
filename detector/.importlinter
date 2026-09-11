@@ -8,6 +8,7 @@ root_packages =
     alignment
     policy
     backtest
+    evaluation
     viz
     research
 
@@ -21,6 +22,7 @@ type = layers
 # that genuinely needs one from the other should have to change this line.
 layers =
     viz : ingestion
+    evaluation
     backtest
     alignment | policy
     composite | entries
@@ -44,8 +46,21 @@ source_modules =
     entries
     composite
     policy
+    evaluation
     viz
 forbidden_modules =
+    research
+
+[importlinter:contract:evaluation-outcome-firewall]
+name = evaluation -> outcome-bearing modules is forbidden
+type = forbidden
+source_modules =
+    evaluation
+allow_indirect_imports = true
+forbidden_modules =
+    backtest.simulate
+    backtest.metrics
+    backtest.levels
     research
 
 [importlinter:contract:no-policy-in-research]
@@ -59,4 +74,5 @@ source_modules =
     research
 forbidden_modules =
     policy
+    evaluation
 
