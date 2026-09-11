@@ -1,7 +1,7 @@
 {
   "triage": "M",
   "phase": "verify",
-  "phase_status": "complete — corrected evaluation-seam property passes; awaiting commit; not closed, committed, or frozen",
+  "phase_status": "verified; implementation committed; formal closeout recorded; SDD archive not run",
   "spec_status": "signed",
   "slices": {
     "total": 1,
@@ -12,6 +12,6 @@
   "verify_final": "pass-with-warnings-corrected",
   "arch_audit": "not-required-m",
   "outcome": "pending",
-  "commit_status": "awaiting-commit",
+  "commit_status": "committed",
   "viz_url": null
 }
