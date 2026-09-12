@@ -12,6 +12,7 @@ root_packages =
     viz
     research
     selection
+    adapter
 
 [importlinter:contract:layers]
 name = Layered pipeline (ADR-01)
@@ -104,4 +105,19 @@ source_modules =
     backtest
 forbidden_modules =
     selection
+
+[importlinter:contract:no-adapter-in-upstream-layers]
+name = evaluation/backtest/alignment/policy/selection must not import the Layer-2 adapter
+# REQ-STAT-33: the Layer-2 adapter imports evaluation/backtest/alignment/
+# selection.model (never the reverse). Mirrors no-selection-in-outcome-layers
+# for the new adapter package.
+type = forbidden
+source_modules =
+    evaluation
+    backtest
+    alignment
+    policy
+    selection
+forbidden_modules =
+    adapter
 
