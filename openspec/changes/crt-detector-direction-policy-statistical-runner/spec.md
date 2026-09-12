@@ -1,7 +1,9 @@
 # Formal Spec — DirectionPolicy Statistical Runner V1 (Line B / Policy Layer)
 
-**Change**: `crt-detector-direction-policy-statistical-runner` · **Version**: V1 · **Status**: SPEC ONLY — NOT IMPLEMENTED — NO OUTCOMES INSPECTED
+**Change**: `crt-detector-direction-policy-statistical-runner` · **Version**: V2 (amends V1, commit `dc8af7daa6f8ff9f51abf2b94e7604f28ec53658`) · **Status**: SPEC ONLY — NOT IMPLEMENTED — NO OUTCOMES INSPECTED
 **Nature**: freezes HOW the already-preregistered DirectionPolicy Discovery experiment will be measured, joined, clustered, bootstrapped, and nominated. No outcome, backtest, prevalence, EST-B value, WR, PF, or performance claim appears anywhere in this document, by construction. This document is sufficient by itself to implement the runner — it does not depend on any chat transcript or Engram summary for normative text.
+
+**V2 amendment scope (this pass)**: V1 left WR's outcome source unspecified relative to `realized_r`. Auditing this repo's own `backtest/metrics.py::compute_metrics` convention (win rate always derives from the categorical `Trade.outcome`, never from `r_multiple`'s sign) surfaced this as a pre-implementation, pre-outcome gap during Layer-1 engineering — no real outcome was inspected to find it. V2 freezes `closed_outcome` (Section C/C2) as an independent categorical field, amends REQ-STAT-01/04/06/19 in place, and corrects a dangling cross-reference in REQ-STAT-20. Nothing else changes: EST-B, MEI, U-1/U-2, bootstrap, RNG, CI, and SEL-A are UNCHANGED and NOT reopened by this pass.
 
 This is Line B (engineering/statistics layer) work, consuming the already-frozen `DirectionEvaluation` outcome-free evaluation seam and the already-frozen `Trade`/outcome layer, without altering either. Predecessor artefacts (Engram): `sdd/crt-detector/policy-layer-v1/direction-policy-statistical-runner-design` (design pass), `sdd/crt-detector/policy-layer-v1/direction-policy-statistical-runner-spec` (this spec's handoff pointer). Frozen predecessors this spec consumes without modification:
 
@@ -73,9 +75,16 @@ NEVER_FILLED:  the Candidate exists in Stage6Population.candidates; NO Trade exi
 
 `NEVER_FILLED` is a valid, expected, non-error outcome state — see Section C for the exact boundary between "no Trade found" (valid → `NEVER_FILLED`) and "join integrity broken" (invalid → `DATA QUALITY FAILURE`).
 
+`Trade.outcome`'s `win`/`loss` value for a CLOSED row is preserved verbatim into the statistical observation as `closed_outcome` (Section C2) — a categorical field, independent of `realized_r`'s sign, never derived from it (V2 amendment).
+
 ## C. The statistical observation record
 
 ```python
+class ClosedTradeOutcome(StrEnum):
+    WIN = "win"
+    LOSS = "loss"
+
+
 @dataclass(frozen=True)
 class DirectionPolicyObservation:
     candidate_id: CandidateIdentity     # full 4-tuple — see Section A. NEVER the reduced TradeJoinKey.
@@ -83,29 +92,47 @@ class DirectionPolicyObservation:
     policy_id: str                      # one of the 4 frozen DirectionPolicy IDs
     relation: Literal["ALIGNED", "OPPOSED", "UNRESOLVED"]
     outcome_state: OutcomeState
+    closed_outcome: ClosedTradeOutcome | None   # V2: categorical WIN/LOSS, CLOSED-only — Section C2
     realized_r: float | None
 ```
 
-Invariant enforced at construction, fail-closed: `realized_r is not None  ⟺  outcome_state == CLOSED`.
+Invariant enforced at construction, fail-closed:
+`outcome_state == CLOSED  ⟺  realized_r is not None AND finite AND closed_outcome ∈ {WIN, LOSS}`.
+Equivalently, `outcome_state != CLOSED  ⟺  realized_r is None AND closed_outcome is None` — OPEN and NEVER_FILLED never carry either field.
 
 ### Join integrity: NEVER_FILLED vs. a real failure
 
 Both of these produce `NEVER_FILLED` (valid, expected, no error):
 - The Candidate's `TradeJoinKey` maps to zero Trades because the entry order never filled (`backtest.simulate._fill_pass`'s `excluded_never_filled` population).
 
-Both of these produce a `DATA QUALITY FAILURE` (invalid, MUST raise, never silently resolved — see Section N):
+Both of these produce a `DATA QUALITY FAILURE` (invalid, MUST raise, never silently resolved):
 - A `DirectionEvaluation` row references a `signal_id`/`CandidateIdentity` that cannot be reconciled against `Stage6Population.candidates` for the same run (upstream integrity break between the evaluation seam and the population it was built from).
 - A single `TradeJoinKey` maps to more than one distinct `CandidateIdentity` within the run (ambiguous join — see Section D).
 - A single `TradeJoinKey` maps to more than one `Trade` (duplicate join).
 
-The absence of a Trade is never, by itself, evidence of a data-quality problem — it is the defining condition of `NEVER_FILLED`.
+The absence of a Trade is never, by itself, evidence of a data-quality problem — it is the defining condition of `NEVER_FILLED`. This table is REQ-STAT-20's normative reference — there is no separate "Section N."
+
+### C2. WR outcome contract (V2 amendment)
+
+`closed_outcome` is the ONLY source of a CLOSED observation's WIN/LOSS classification. It is NEVER derived from `sign(realized_r)`, `realized_r > 0`, or any equivalent inference — WR semantics are categorical, independent of the realized-R statistic, exactly mirroring this repo's own existing convention (`backtest/metrics.py::compute_metrics` derives `win_rate` from `Trade.outcome`, never from `r_multiple`'s sign). The exact WR formula and its empty-stratum behavior are frozen in Section E.
+
+Layer-2 mapping (documented here for the future adapter — NOT implemented by Layer-1, which only ever sees the two enum members as already-resolved input):
+```text
+Trade.outcome == "win"   -> closed_outcome = ClosedTradeOutcome.WIN,  outcome_state = CLOSED
+Trade.outcome == "loss"  -> closed_outcome = ClosedTradeOutcome.LOSS, outcome_state = CLOSED
+Trade.outcome == "open"  -> closed_outcome = None,                    outcome_state = OPEN
+```
+
+- **Provenance**: `Trade.outcome`'s `win`/`loss` value → `PREREGISTERED PROTOCOL` (the pre-existing `Trade` contract, `backtest/simulate.py`). Carrying it into `DirectionPolicyObservation` as an independent categorical field, rather than deriving WR from `realized_r`'s sign → `HUMAN DECISION` (this V2 amendment, made explicitly to prevent collapsing WR semantics into MeanR semantics).
+
+**Note**: as with the V1 hardening pass (Section A), this amendment does not add a 23rd requirement — it hardens the wording of REQ-STAT-01, 04, 06, 19, and 20 (Section F).
 
 ## D. Deterministic join contract
 
 1. `CandidateIdentity` is read directly off `Stage6Population.candidates` (via `Candidate.signal_id`/`retest_index`) and the owning `OHLCSeries.instrument`/`.timeframe`, exactly as validated today by `evaluation.direction._validate_candidates`.
 2. For each `CandidateIdentity`, derive `TradeJoinKey = (instrument, signal_id)` (Section A).
 3. **Before** using any join result, the adapter MUST prove, for the whole run: `TradeJoinKey → CandidateIdentity` is a function (at most one `CandidateIdentity` per `TradeJoinKey`). If violated → `DATA QUALITY FAILURE`, no arbitrary selection.
-4. Look up `Trade` by `TradeJoinKey`. Zero matches → `NEVER_FILLED`. Exactly one match → `OPEN` or `CLOSED` per `Trade.outcome`. More than one match → `DATA QUALITY FAILURE` (duplicate Candidate→Trade join).
+4. Look up `Trade` by `TradeJoinKey`. Zero matches → `NEVER_FILLED`. Exactly one match → `OPEN` or `CLOSED` per `Trade.outcome`, and for a `CLOSED` result `Trade.outcome`'s `win`/`loss` value is carried forward as `closed_outcome` (Section C2) — never re-derived from `r_multiple`. More than one match → `DATA QUALITY FAILURE` (duplicate Candidate→Trade join).
 5. Every joined `Trade` MUST map back to exactly the `CandidateIdentity` expected from step 1 — the adapter re-derives `TradeJoinKey` from the `CandidateIdentity` it started with and asserts the `Trade` it retrieves reports the same `signal_id`; a mismatch is a `DATA QUALITY FAILURE`, not a silent correction.
 
 ---
@@ -118,6 +145,13 @@ EST-B(P) = mean(realized_r | policy=P, outcome_state=CLOSED, relation=ALIGNED)
          - mean(realized_r | policy=P, outcome_state=CLOSED, relation=OPPOSED)
 ```
 Unweighted arithmetic mean, no trimming/winsorizing/weighting. `UNRESOLVED` excluded from numerator/denominator, reported separately (N/share/MeanR/WR). If `closed_ALIGNED == 0` or `closed_OPPOSED == 0` on the observed sample → `EST-B = NOT ESTIMABLE` (explicit typed state, never `0R`/silently-propagated `NaN`/`±inf`).
+
+### WR (categorical win rate, V2 amendment)
+```text
+WR(stratum) = count(realized_r | policy=P, outcome_state=CLOSED, relation=<stratum>, closed_outcome=WIN)
+            / count(realized_r | policy=P, outcome_state=CLOSED, relation=<stratum>)
+```
+Computed independently for each of the three CLOSED relation strata (ALIGNED, OPPOSED, UNRESOLVED). Every CLOSED observation carries exactly one of `{WIN, LOSS}` (Section C invariant), so the denominator is simply that stratum's CLOSED count — no separate WIN+LOSS reconciliation is needed. If a stratum's CLOSED count is 0 → `WR = NOT ESTIMABLE` (the same explicit typed state EST-B uses on an empty stratum — never `0%`, `NaN`, or `±inf`). OPEN and NEVER_FILLED never enter this denominator, exactly as they never enter EST-B's. WR reads `closed_outcome` only; it is never derived from `realized_r`'s sign (Section C2).
 
 ### MEI
 `+0.20R` — minimum economically meaningful directional discrimination. NOT a capturable-return promise, NOT trade permission, NOT expected uplift.
@@ -159,7 +193,7 @@ Policy P eligible iff ALL of:
   2. EST-B(P) point >= +0.20R
   3. CI(P) is computable AND its lower bound > 0R
   4. no COMPUTABLE instrument_delta(P, i) <= -0.20R
-  5. data-quality checks (Section N) pass
+  5. data-quality checks (Section C's join-integrity table, REQ-STAT-20) pass
 
 Among eligible policies: rank by full-precision CI lower bound, descending.
   exactly one at the top           -> NOMINATE it
@@ -176,9 +210,9 @@ A policy with `CI = NOT COMPUTABLE` is automatically ineligible (fails condition
 
 ## F. Requirements
 
-### REQ-STAT-01 — Observation/outcome states (HARDENED)
-**Given** a Stage6 `CandidateIdentity` and its join result against `Trade` (Section D), **when** building a `DirectionPolicyObservation`, **then** `outcome_state` MUST be exactly one of `CLOSED|OPEN|NEVER_FILLED` per Section B, `candidate_id` MUST be the full `CandidateIdentity` (never the reduced `TradeJoinKey`), and `realized_r is not None ⟺ outcome_state == CLOSED`.
-- **Provenance**: `ENGINEERING DECISION` (record shape), constrained by `PREREGISTERED PROTOCOL` (`population.key` defines `candidate_id`'s shape).
+### REQ-STAT-01 — Observation/outcome states (HARDENED, V2)
+**Given** a Stage6 `CandidateIdentity` and its join result against `Trade` (Section D), **when** building a `DirectionPolicyObservation`, **then** `outcome_state` MUST be exactly one of `CLOSED|OPEN|NEVER_FILLED` per Section B, `candidate_id` MUST be the full `CandidateIdentity` (never the reduced `TradeJoinKey`), and `outcome_state == CLOSED ⟺ realized_r is not None AND finite AND closed_outcome ∈ {WIN, LOSS}` (V2: `closed_outcome` added, Section C/C2) — `closed_outcome` MUST be `None` whenever `outcome_state != CLOSED`.
+- **Provenance**: `ENGINEERING DECISION` (record shape), constrained by `PREREGISTERED PROTOCOL` (`population.key` defines `candidate_id`'s shape; `Trade.outcome`'s win/loss values define `closed_outcome`'s domain, V2).
 
 ### REQ-STAT-02 — Deterministic join (HARDENED)
 **Given** a `DirectionEvaluation` row (identity = `CandidateIdentity`) and the `Trade` population for the same run, **when** joining them, **then** the adapter MUST (a) derive `TradeJoinKey = (instrument, signal_id)` from `CandidateIdentity`, (b) prove `TradeJoinKey → CandidateIdentity` is a function for the whole run before using any join result, (c) look up `Trade` by `TradeJoinKey`, and (d) classify zero matches as `NEVER_FILLED` (valid), never as a failure. A `TradeJoinKey` mapping to more than one `CandidateIdentity`, or to more than one `Trade`, MUST raise `DATA QUALITY FAILURE` — never silently resolved.
@@ -188,17 +222,17 @@ A policy with `CI = NOT COMPUTABLE` is automatically ineligible (fails condition
 **Given** one Candidate C (one `CandidateIdentity`) with 4 `DirectionEvaluation` rows (one per policy), **when** joined to its outcome, **then** all 4 `DirectionPolicyObservation` rows for C MUST carry the identical `candidate_id`, `outcome_state`, and `realized_r`; only `relation` may differ across the 4 rows.
 - **Provenance**: `PREREGISTERED PROTOCOL` (4N invariant, evaluation seam) + `ENGINEERING DECISION` (this follows mechanically once `candidate_id` is the full `CandidateIdentity`, since one `CandidateIdentity` yields exactly one join result).
 
-### REQ-STAT-04 — CLOSED eligibility
-**Given** a joined `Trade`, **when** `outcome ∈ {win, loss}`, **then** it is `CLOSED` and its `r_multiple` enters EST-B computation; **when** `outcome == "open"` or no `Trade` exists for the `TradeJoinKey`, **then** it is excluded from EST-B and reported separately as `OPEN`/`NEVER_FILLED` respectively.
-- **Provenance**: `PREREGISTERED PROTOCOL` (`selection.primary_estimand`, "closed MeanR") + engineering audit of `backtest/metrics.py::compute_metrics`.
+### REQ-STAT-04 — CLOSED eligibility (V2)
+**Given** a joined `Trade`, **when** `outcome ∈ {win, loss}`, **then** it is `CLOSED`, its `r_multiple` enters EST-B computation, and its categorical `outcome` value is carried forward as `closed_outcome` for WR (Section C2/E) — independently, never derived from `r_multiple`'s sign; **when** `outcome == "open"` or no `Trade` exists for the `TradeJoinKey`, **then** it is excluded from both EST-B and WR and reported separately as `OPEN`/`NEVER_FILLED` respectively.
+- **Provenance**: `PREREGISTERED PROTOCOL` (`selection.primary_estimand`, "closed MeanR"; `Trade.outcome`'s existing win/loss contract) + engineering audit of `backtest/metrics.py::compute_metrics` (V2: confirms WR's categorical precedent).
 
 ### REQ-STAT-05 — EST-B arithmetic
 **Given** CLOSED observations for policy P, **when** computing `EST-B(P)`, **then** it MUST equal the unweighted arithmetic mean of `realized_r` where `relation=ALIGNED` minus the same where `relation=OPPOSED`, with no trimming/winsorizing/weighting.
 - **Provenance**: `PREREGISTERED PROTOCOL` (`selection.primary_estimand`).
 
-### REQ-STAT-06 — UNRESOLVED exclusion/reporting
-**Given** observations with `relation=UNRESOLVED`, **when** computing EST-B, **then** they MUST be excluded from numerator/denominator; **when** reporting, **then** they MUST appear as their own stratum (N/share/MeanR/WR), never imputed as 0R/loss/skip.
-- **Provenance**: `PREREGISTERED PROTOCOL` (`selection.reporting`).
+### REQ-STAT-06 — UNRESOLVED exclusion/reporting (V2)
+**Given** observations with `relation=UNRESOLVED`, **when** computing EST-B, **then** they MUST be excluded from numerator/denominator; **when** reporting, **then** they MUST appear as their own stratum with N/share/MeanR/WR (WR per Section E, computed over that stratum's CLOSED∩UNRESOLVED observations only), never imputed as 0R/loss/skip/0%.
+- **Provenance**: `PREREGISTERED PROTOCOL` (`selection.reporting`); WR formula → V2 amendment (Section C2/E).
 
 ### REQ-STAT-07 — Cluster identity
 **Given** a CLOSED observation, **when** assigning `context_cluster_id`, **then** it MUST equal `(instrument, htf_context.start_index, htf_context.end_index, htf_context.resolved_at_index)`, reconstructed via `tag_alignment()` re-run with the frozen series+config, joined by `signal_id`.
@@ -249,12 +283,12 @@ A policy with `CI = NOT COMPUTABLE` is automatically ineligible (fails condition
 - **Provenance**: `PREREGISTERED PROTOCOL` (`selection.costs`).
 
 ### REQ-STAT-19 — Manifest/provenance (HARDENED)
-**Given** any real run, **when** it is initiated, **then** a manifest MUST be persisted before computation, containing (at minimum) `experiment_id`, `protocol_artifact_path`+SHA-256, `direction_policy_implementation_commit`, the 3 evaluation-seam commits (spec/impl/closeout), `policy_ids`, `dataset_identity`+file hashes, `population_definition_ref`, the join rule expressed as BOTH `CandidateIdentity`'s shape (`instrument, timeframe, signal_id, retest_index`) AND the `TradeJoinKey` reduction (`instrument, signal_id`) — named distinctly, never merged into one field — `outcome_field`, `est_b_definition`, `mei_r=0.20`, `cluster_definition_ref`, the full bootstrap config, `nomination_rule_ref`, and `cost_assumptions`. Reproducibility fingerprints (protocol SHA-256, all relevant commits, manifest SHA-256, dataset hashes, numpy version) MUST be logged with any result. No outcome-derived fields belong in the manifest.
-- **Provenance**: `ENGINEERING DECISION`, with the `CandidateIdentity`/`TradeJoinKey` field-separation constrained by Section A.
+**Given** any real run, **when** it is initiated, **then** a manifest MUST be persisted before computation, containing (at minimum) `experiment_id`, `protocol_artifact_path`+SHA-256, `direction_policy_implementation_commit`, the 3 evaluation-seam commits (spec/impl/closeout), `policy_ids`, `dataset_identity`+file hashes, `population_definition_ref`, the join rule expressed as BOTH `CandidateIdentity`'s shape (`instrument, timeframe, signal_id, retest_index`) AND the `TradeJoinKey` reduction (`instrument, signal_id`) — named distinctly, never merged into one field — `outcome_field` (covering both `realized_r` and, from V2, `closed_outcome`), `est_b_definition`, `mei_r=0.20`, `cluster_definition_ref`, the full bootstrap config, `nomination_rule_ref`, and `cost_assumptions`. Reproducibility fingerprints (protocol SHA-256, all relevant commits, manifest SHA-256, dataset hashes, numpy version) MUST be logged with any result. No outcome-derived fields belong in the manifest.
+- **Provenance**: `ENGINEERING DECISION`, with the `CandidateIdentity`/`TradeJoinKey` field-separation constrained by Section A, and `outcome_field`'s dual coverage constrained by Section C2 (V2).
 
-### REQ-STAT-20 — Data-quality fail-closed (HARDENED)
-**Given** any condition in Section N's table — including a `TradeJoinKey` resolving to more than one `CandidateIdentity`, or a `DirectionEvaluation` row unreconcilable against `Stage6Population` — **when** it is detected, **then** the run MUST abort with a typed error before any statistic is computed. A joined `Candidate` with zero matching `Trade` records (→ `NEVER_FILLED`) is explicitly EXCLUDED from this table — it is a valid outcome state (Section B/C), never an error.
-- **Provenance**: `PREREGISTERED PROTOCOL` (`data_quality_fail_closed`) + `ENGINEERING DECISION` (the `NEVER_FILLED`-is-not-a-failure clarification, this hardening pass).
+### REQ-STAT-20 — Data-quality fail-closed (HARDENED, V2: reference corrected)
+**Given** any condition in Section C's join-integrity table — a `DirectionEvaluation` row unreconcilable against `Stage6Population`, a `TradeJoinKey` resolving to more than one `CandidateIdentity`, or a `TradeJoinKey` resolving to more than one `Trade` — **when** it is detected, **then** the run MUST abort with a typed error before any statistic is computed. A joined `Candidate` with zero matching `Trade` records (→ `NEVER_FILLED`) is explicitly EXCLUDED from this table — it is a valid outcome state (Section B/C), never an error.
+- **Provenance**: `PREREGISTERED PROTOCOL` (`data_quality_fail_closed`) + `ENGINEERING DECISION` (the `NEVER_FILLED`-is-not-a-failure clarification, V1 hardening pass; V2 corrects a dangling "Section N" cross-reference to point at Section C's actual table — no semantic change).
 
 ### REQ-STAT-21 — No policy/evaluation recomputation
 **Given** frozen `DirectionEvaluation` rows, **when** the statistical layer consumes them, **then** it MUST use them as-is — it MUST NOT recompute `DirectionPolicy` decisions, alter `ALIGNED`/`OPPOSED`/`UNRESOLVED`, drop `UNRESOLVED`, or change Candidate identity/K−1 cutoff.
@@ -289,9 +323,10 @@ This placement is forced, not chosen for taste: `detector/.importlinter` already
 ```text
 Manifest            — Section REQ-STAT-19, persisted before computation
 Policy summary       — per policy: universe N, CLOSED/OPEN/NEVER_FILLED N,
-                        ALIGNED/OPPOSED/UNRESOLVED N+share, MeanR/WR per relation,
-                        EST-B point + CI + computability, instrument EST-B deltas,
-                        eligibility status. PF = N/A always (never calculated).
+                        ALIGNED/OPPOSED/UNRESOLVED N+share, MeanR/WR per relation
+                        (WR formula: Section E/C2, V2), EST-B point + CI +
+                        computability, instrument EST-B deltas, eligibility
+                        status. PF = N/A always (never calculated).
 Bootstrap summary    — replicate count, seed, percentile bounds, computability status.
                         NOT all 10,000 raw replicate values by default.
 Nomination decision  — eligible policies, ineligibility reasons, ranking values,
@@ -307,4 +342,6 @@ Runner implementation · statistics core code · adapter code · CLI entrypoint 
 
 **SPEC ONLY. NOT IMPLEMENTED. NO OUTCOMES INSPECTED.** This hardening pass corrects one structural defect from the prior spec draft (conflating `CandidateIdentity` with the operational `TradeJoinKey`) and makes this document independently sufficient to implement the runner without consulting any chat transcript. All prior statistical decisions (U-1, U-2, EST-B, CI, SEL-A, cluster semantics, SR-A architecture) remain approved and unchanged by this pass.
 
-**22 normative requirements: REQ-STAT-01 through REQ-STAT-22, all present in full above.**
+**V2 amendment (this pass)**: adds `closed_outcome` (Section C/C2) as WR's categorical source — sourced from the pre-existing `Trade.outcome` contract, never derived from `realized_r`'s sign — and amends REQ-STAT-01, 04, 06, and 19 in place; REQ-STAT-20 gets a dangling cross-reference correction only, no semantic change. No other statistical decision (EST-B, MEI, U-1, U-2, bootstrap, RNG, CI, SEL-A, cost assumptions) is reopened by this pass. This gap surfaced entirely from auditing this repo's own pre-existing `Trade`/`compute_metrics` convention — no real outcome was inspected to discover or resolve it.
+
+**22 normative requirements: REQ-STAT-01 through REQ-STAT-22, all present in full above — unchanged in count by this pass, per Section A's precedent.**
