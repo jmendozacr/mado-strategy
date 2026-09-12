@@ -1,9 +1,11 @@
 # Formal Spec — DirectionPolicy Statistical Runner V1 (Line B / Policy Layer)
 
-**Change**: `crt-detector-direction-policy-statistical-runner` · **Version**: V2 (amends V1, commit `dc8af7daa6f8ff9f51abf2b94e7604f28ec53658`) · **Status**: SPEC ONLY — NOT IMPLEMENTED — NO OUTCOMES INSPECTED
+**Change**: `crt-detector-direction-policy-statistical-runner` · **Version**: V3 (amends V2, commit `6b48374ec9fa513897d050b7114a9f313f3d1b65`; V2 amends V1, commit `dc8af7daa6f8ff9f51abf2b94e7604f28ec53658`) · **Status**: SPEC ONLY — NOT IMPLEMENTED — NO OUTCOMES INSPECTED
 **Nature**: freezes HOW the already-preregistered DirectionPolicy Discovery experiment will be measured, joined, clustered, bootstrapped, and nominated. No outcome, backtest, prevalence, EST-B value, WR, PF, or performance claim appears anywhere in this document, by construction. This document is sufficient by itself to implement the runner — it does not depend on any chat transcript or Engram summary for normative text.
 
-**V2 amendment scope (this pass)**: V1 left WR's outcome source unspecified relative to `realized_r`. Auditing this repo's own `backtest/metrics.py::compute_metrics` convention (win rate always derives from the categorical `Trade.outcome`, never from `r_multiple`'s sign) surfaced this as a pre-implementation, pre-outcome gap during Layer-1 engineering — no real outcome was inspected to find it. V2 freezes `closed_outcome` (Section C/C2) as an independent categorical field, amends REQ-STAT-01/04/06/19 in place, and corrects a dangling cross-reference in REQ-STAT-20. Nothing else changes: EST-B, MEI, U-1/U-2, bootstrap, RNG, CI, and SEL-A are UNCHANGED and NOT reopened by this pass.
+**V2 amendment scope**: V1 left WR's outcome source unspecified relative to `realized_r`. Auditing this repo's own `backtest/metrics.py::compute_metrics` convention (win rate always derives from the categorical `Trade.outcome`, never from `r_multiple`'s sign) surfaced this as a pre-implementation, pre-outcome gap during Layer-1 engineering — no real outcome was inspected to find it. V2 freezes `closed_outcome` (Section C/C2) as an independent categorical field, amends REQ-STAT-01/04/06/19 in place, and corrects a dangling cross-reference in REQ-STAT-20. Nothing else changes: EST-B, MEI, U-1/U-2, bootstrap, RNG, CI, and SEL-A are UNCHANGED and NOT reopened by V2.
+
+**V3 amendment scope (this pass)**: freezes the Layer-2 adapter contract (Stage6Population + DirectionEvaluation + Trade + HTF alignment + manifest → `DirectionPolicyObservation[]`), following a design-only audit of the real upstream code. Adds REQ-STAT-23 through REQ-STAT-33 (Section F), five new sections K–O (below), and corrects one finding from that same design pass that turned out to be wrong on closer inspection (Section K) — Layer-2 does NOT need new provenance-preserving machinery; `tag_alignment()`'s `signal_id → htf_context` mapping is proven a function by construction (that earlier claim is SUPERSEDED BY CODE AUDIT). V3 also transcribes, verbatim, the full `data_quality_fail_closed` list from the canonical Amendment JSON — only 3 of its 12 preregistered conditions had made it into V1/V2's normative text (Section M) — and resolves REQ-STAT-29's candidate-cutoff timestamp semantics (Candidate event = `retest_index` = K, strict `<` boundary, naive-UTC comparison per this repo's own established timestamp convention), leaving zero `HUMAN DECISION REQUIRED` items in the finished V3 pass. Nothing in Layer-1 (EST-B, WR, MEI, U-1/U-2, bootstrap, RNG, CI, SEL-A, `detector/selection/`) is reopened by this pass.
 
 This is Line B (engineering/statistics layer) work, consuming the already-frozen `DirectionEvaluation` outcome-free evaluation seam and the already-frozen `Trade`/outcome layer, without altering either. Predecessor artefacts (Engram): `sdd/crt-detector/policy-layer-v1/direction-policy-statistical-runner-design` (design pass), `sdd/crt-detector/policy-layer-v1/direction-policy-statistical-runner-spec` (this spec's handoff pointer). Frozen predecessors this spec consumes without modification:
 
@@ -298,25 +300,81 @@ A policy with `CI = NOT COMPUTABLE` is automatically ineligible (fails condition
 **Given** the statistics core (Layer 1), **when** it is implemented, **then** it MUST accept only in-memory `DirectionPolicyObservation` records and MUST NOT import any filesystem/CSV/dataset-loading code; real-data access MUST be isolated to the Layer-2 adapter's entrypoint path only.
 - **Provenance**: `ENGINEERING DECISION` (Section G) + `REPO CONVENTION` (existing `.importlinter` firewall contracts, Section G).
 
+### REQ-STAT-23 — Layer-2 instrument-scoped input contract (V3)
+**Given** `backtest.simulate.Trade` carries no `instrument` field (verified: `backtest/simulate.py`'s `Trade` dataclass), **when** Layer-2 accepts Trades for a run, **then** it MUST NOT accept an undifferentiated `Sequence[Trade]` — it MUST require Trades scoped per instrument (e.g. one `Stage6Population` + `DirectionEvaluation[]` + `Trade[]` + `ReconciliationReport` bundle per instrument), with `instrument` supplied by the bundle/`Stage6Population.series.instrument`, never inferred from a `Trade`.
+- **Provenance**: `ENGINEERING DECISION`, forced by `Trade`'s actual shape — not a preregistered choice.
+
+### REQ-STAT-24 — TradeJoinKey functional-dependency proof (V3)
+**Given** a `TradeJoinKey`, **when** Layer-2 uses it to look up a `Trade` or `CandidateIdentity`, **then** it MUST first prove, within one instrument's run: (a) `TradeJoinKey → CandidateIdentity` is a function, (b) `TradeJoinKey → Trade` is a function (at most one `Trade` per key). Either violated → typed `TradeJoinIntegrityError`, no arbitrary selection.
+- **Provenance**: `PREREGISTERED PROTOCOL` (`data_quality_fail_closed`: "duplicate Candidate→Trade join") + `ENGINEERING DECISION` (the exact two-function-proof mechanism, hardens REQ-STAT-02).
+
+### REQ-STAT-25 — Aggregate completeness proof before NEVER_FILLED (V3)
+**Given** a `Stage6Population` and its paired `ReconciliationReport` for the same instrument run, **when** Layer-2 interprets a Candidate's absence from the supplied `Trade[]` as `NEVER_FILLED`, **then** it MUST first verify `len(Stage6Population.candidates) == len(trades) + ReconciliationReport.excluded_never_filled` (proven identity: `backtest/simulate.py::_fill_pass`/`_resolve_exits`). If this fails, the supplied Trade collection is incomplete/untrustworthy — abort with a typed error; absence in an unverified collection is NEVER sufficient for `NEVER_FILLED`. `ReconciliationReport` is therefore a REQUIRED Layer-2 input, used for aggregate completeness only — never for identity-level joins (it carries no signal-level detail).
+- **Provenance**: `ENGINEERING DECISION` (the exact accounting identity, derived from reading `backtest/simulate.py`) constrained by `PREREGISTERED PROTOCOL` ("open and never-filled explicit").
+
+### REQ-STAT-26 — Independent Candidate↔DirectionEvaluation reconciliation (V3)
+**Given** a `CandidateIdentity` and its `DirectionEvaluation` rows, **when** Layer-2 builds observations, **then** it MUST independently verify — never merely trust the upstream evaluation seam's own frozen invariant — that the group has exactly 4 rows, exactly one per `FROZEN_POLICY_IDS` member, and identical `(instrument, timeframe, signal_id, retest_index)` across all 4. Missing policy, duplicate policy, unexpected policy ID, or cross-row identity mismatch → typed `CandidateReconciliationError`.
+- **Provenance**: `ENGINEERING DECISION` — defense-in-depth over an already-frozen seam invariant (evaluation closeout commit `7775a25`), not a new rule.
+
+### REQ-STAT-27 — Relation mapping (V3)
+**Given** `evaluation.direction.PolicyRelation` (ALIGNED/OPPOSED/UNRESOLVED) and `selection.model.Relation` (same three values, separate enum by Layer-1-purity design), **when** Layer-2 maps one to the other, **then** it MUST use an explicit, exhaustive mapping (ALIGNED→ALIGNED, OPPOSED→OPPOSED, UNRESOLVED→UNRESOLVED) — no permissive string cast. Any other value → typed error, fail closed.
+- **Provenance**: `ENGINEERING DECISION` (repo convention: separate enums per layer boundary, per `.importlinter`'s `selection-layer1-purity` contract).
+
+### REQ-STAT-28 — Cluster reconstruction is a proven function, full-series-only (V3, hardens REQ-STAT-07)
+**Given** `context_cluster_id` reconstruction via `tag_alignment()` re-run, **when** joining by `signal_id`, **then** the mapping `signal_id → htf_context` MUST be treated as non-ambiguous by construction: `Model1Signal.signal_id` embeds `anchor_index` verbatim (`entries/model1.py`), and `tag_alignment()`'s `htf_context` assignment is a pure function of `anchor_index` alone (`alignment/htf_ltf.py`) — so identical `signal_id` implies identical `anchor_index` implies identical `htf_context`, always. No provenance-preserving sidecar or alternate join key is required or permitted to replace this mechanism. Layer-2 MUST NOT call `tag_alignment()` incrementally or on a truncated series — only on the complete, frozen series identical to the one that built the `Stage6Population` under evaluation (guards against the unrelated, pre-existing `test_alignment_detection_has_no_lookahead` failure, which concerns truncated-vs-full replay consistency, not this join).
+- **Provenance**: `PREREGISTERED PROTOCOL` (`selection.cluster_key`) + `ENGINEERING DECISION` (the non-ambiguity proof and the full-series-only guardrail — both derived from reading `entries/model1.py`, `primitives/crt_range.py`, `alignment/htf_ltf.py`, and `cli.py::_detect_all`, not assumed).
+
+### REQ-STAT-29 — Candidate and outcome-followup cutoffs (V3, RESOLVED)
+**Given** the canonical Amendment's `dataset.candidate_cutoff_end_utc` and `dataset.outcome_followup_end_utc`, **when** Layer-2 validates a run, **then**:
+
+(a) the Candidate's governing event timestamp is `ltf_series.candles[candidate.retest_index].timestamp` — the candle at the Candidate's retest event `K` (`population.cutoff.evaluation_event_index`: `"Candidate.retest_index = K"`, canonical Amendment) — NEVER the anchor, origin, confirmation, or fill candle. A Candidate is eligible for the discovery population **iff** that timestamp is strictly before `candidate_cutoff_end_utc` (`timestamp < candidate_cutoff_end_utc`); a timestamp equal to or after the cutoff is NOT eligible. Layer-2 MUST NOT silently filter a boundary-violating Candidate it receives — a Candidate presented to it that already violates this boundary is a frozen-population integrity failure (abort with a typed error), since Layer-2 validates the frozen boundary, it does not repair `Stage6Population` or alter Candidate generation;
+
+(b) before any timestamp access, `0 <= candidate.retest_index < len(ltf_series.candles)` MUST hold — violation is a `DATA QUALITY FAILURE`, never Python's negative-index wraparound behavior;
+
+(c) no Trade resolution may consume a candle timestamped after `outcome_followup_end_utc` — a Trade still unresolved at that boundary remains `OPEN`; Layer-2 MUST NOT fetch later candles to resolve it;
+
+(d) `candidate_cutoff_end_utc` (population admission: can this Candidate exist?) and `outcome_followup_end_utc` (resolution horizon: how long may an already-eligible Candidate's Trade keep resolving?) answer two SEPARATE questions and MUST NOT be conflated — a Candidate admitted before the candidate cutoff may legitimately have its Trade resolve up to the later outcome-followup cutoff.
+
+Both comparisons occur entirely in the LTF-series index/timestamp domain (`retest_index` is an LTF index, never compared against an HTF index). `Candle.timestamp` is a **naive** `datetime` throughout this repo — confirmed: `ingestion/loader.py::load_mt5_csv` parses via `pd.to_datetime(df["<DATE>"] + " " + df["<TIME>"], format="%Y.%m.%d %H:%M:%S")`, with no `utc=True`/`%z`, producing a naive `Timestamp`→`datetime` — representing UTC by an existing, already-established repo convention (`alignment/htf_ltf.py::_daily_close`'s own docstring: "Daily bars are UTC-daily per the confirmed broker-is-UTC+0 finding"). The frozen cutoff strings (`"...Z"`, explicit UTC) MUST be parsed to naive datetimes for comparison (drop the redundant `Z`/tzinfo marker, never attach one to either side) — comparing naive against timezone-aware, or converting to local time, is prohibited.
+- **Provenance**: `PREREGISTERED PROTOCOL` (the two cutoff values; and Candidate event = `retest_index` = K, `population.cutoff.evaluation_event_index`, canonical Amendment) + `HUMAN DECISION` (the strict `<` boundary comparator — resolved pre-outcome, this V3 pass; NOT mentorship-derived) + `REPO CONVENTION` (naive `datetime` = UTC, evidenced in `alignment/htf_ltf.py`, applied here to the cutoff comparison).
+
+### REQ-STAT-30 — Complete dataset data-quality fail-closed inventory (V3)
+**Given** the canonical Amendment's `data_quality_fail_closed` array (12 conditions, verbatim), **when** any condition is detected, **then** the run MUST abort with a typed error before any statistic is computed — see Section M for the complete condition-by-condition table (canonical text, responsible layer, validation point, typed failure, synthetic-testability). Only 3 of the 12 conditions were previously transcribed into this spec (Section C's join-integrity table, REQ-STAT-02/20); V3 transcribes the remaining 9 verbatim.
+- **Provenance**: `PREREGISTERED PROTOCOL` (`data_quality_fail_closed`, verbatim, Section M).
+
+### REQ-STAT-31 — Execution baseline (V3)
+**Given** the eventual first real discovery execution, **when** it is authorized, **then** it MUST be tied to one `measurement_execution_baseline_commit` — a single Git commit recorded AFTER Layer-2 and Layer-3 implementation + closeout + full measurement-instrument verification — representing the exact executable measurement system authorized for that discovery. At execution time, the enumerated protected paths (Section N) MUST match that baseline commit exactly, with no uncommitted modification to any protected path (unrelated working-tree changes outside protected paths need not abort). Historical per-component commit hashes (DirectionPolicy, evaluation seam, statistical spec V1/V2/V3, Layer-1, Layer-2, Layer-3) remain in the manifest for provenance only — they are NOT individually diffed against HEAD; the single execution-baseline commit is the authoritative final source-tree snapshot. (Corrects an earlier design-pass recommendation to diff each historical component commit's whole directory against HEAD — rejected: legitimate later commits routinely touch those same paths for unrelated reasons, as this repo's own history already demonstrates.)
+- **Provenance**: `ENGINEERING DECISION` (no repo precedent existed; proposed and confirmed this session).
+
+### REQ-STAT-32 — Manifest V3 schema (V3, extends REQ-STAT-19)
+**Given** REQ-STAT-19's manifest, **when** extended for V3, **then** it MUST additionally contain: `statistical_spec_v3_commit`, `layer1_implementation_commit` (`75d9c37ac08a314a6518484b7e62ee3c7eb798c1`), `layer2_implementation_commit` and `layer3_implementation_commit` (once they exist), `measurement_execution_baseline_commit`, and `protected_paths` (definition + version, Section N). Still no outcome-derived field.
+- **Provenance**: `ENGINEERING DECISION`, extending REQ-STAT-19's existing shape.
+
+### REQ-STAT-33 — Layer-2 architecture / import boundary (V3, extends Section G)
+**Given** Layer-2's need to import `evaluation`, `backtest`, `alignment`, and `selection.model`, **when** it is implemented, **then** it MUST live in a NEW top-level package — never under `selection/` (forbidden by the `selection-layer1-purity` import-linter contract, which blocks exactly those imports from anywhere under `selection.*`). A new `forbidden` import-linter contract MUST prevent the reverse direction: `evaluation`, `backtest`, `alignment`, `policy`, and `selection` MUST NOT import the new package.
+- **Provenance**: `ENGINEERING DECISION` (Section O) + `REPO CONVENTION` (mirrors the existing `no-selection-in-outcome-layers` pattern).
+
 ---
 
 ## G. Architecture / import boundaries
 
-New top-level package (name TBD at implementation time — not frozen by this spec), never placed under `research/`. Three layers:
+Layer 1 lives in `detector/selection/` (frozen, committed `75d9c37ac08a314a6518484b7e62ee3c7eb798c1`). Layer 2 needs its own NEW top-level package (candidate name `adapter`, matching this section's own "thin experiment adapter" phrasing — not frozen by this spec, final spelling deferred to a repo-convention audit at implementation time, same process `selection` went through). It **cannot** live under `selection/`: the `selection-layer1-purity` import-linter contract forbids anything under `selection.*` from importing `research`/`backtest`/`evaluation`/`ingestion`, all of which Layer-2 needs. Three layers:
 
 ```text
 Layer 1 — pure statistical core (zero filesystem/data-loading imports):
     stratify, compute_est_b, bootstrap_est_b, compute_instrument_deltas, nominate
     operates ONLY on DirectionPolicyObservation records (Section C)
+    package: detector/selection/  [FROZEN, COMMITTED]
 
-Layer 2 — thin experiment adapter:
-    load frozen inputs, execute the join (Section D), reconstruct htf_context (Section E),
-    build DirectionPolicyObservation rows, validate manifest/provenance (REQ-STAT-19)
+Layer 2 — thin experiment adapter (REQ-STAT-23..30, 33):
+    instrument-scoped reconciliation (Section L), dataset/data-quality validation (Section M),
+    cluster reconstruction (REQ-STAT-28), manifest/provenance validation (REQ-STAT-19/32)
+    package: NEW top-level, name TBD — never under selection/
 
-Layer 3 — entrypoint/runner (future, not part of this spec's scope)
+Layer 3 — entrypoint/runner + execution baseline (REQ-STAT-31, future, not part of this spec's scope)
 ```
 
-This placement is forced, not chosen for taste: `detector/.importlinter` already enforces `evaluation-outcome-firewall` (forbidding `evaluation` from importing `backtest.simulate`/`backtest.metrics`/`backtest.levels`/`research`) and `no-policy-in-research` (forbidding `research` from importing `policy`/`evaluation`). A package needing to read BOTH `evaluation` and `backtest.simulate`/`metrics` cannot live under `research/` without violating the second contract. `.importlinter` gains a new root package plus a `forbidden` contract (neither `evaluation` nor `backtest` may import the new package) at implementation time — not part of this spec pass.
+This placement is forced, not chosen for taste: `detector/.importlinter` already enforces `evaluation-outcome-firewall` (forbidding `evaluation` from importing `backtest.simulate`/`backtest.metrics`/`backtest.levels`/`research`), `no-policy-in-research` (forbidding `research` from importing `policy`/`evaluation`), and (since Layer-1's freeze) `selection-layer1-purity`/`no-selection-in-outcome-layers`. `.importlinter` gains a new root package for Layer-2 plus a `forbidden` contract (REQ-STAT-33: `evaluation`/`backtest`/`alignment`/`policy`/`selection` must not import the new package) at implementation time — not part of this spec pass.
 
 ## H. Result artifact schema (design, non-normative reference)
 
@@ -336,12 +394,71 @@ The joined `DirectionPolicyObservation` table is NOT persisted long-term by defa
 
 ## I. Deferred (explicitly out of scope)
 
-Runner implementation · statistics core code · adapter code · CLI entrypoint · `.importlinter` update · package naming · real dataset access · real EP-C execution · real EST-B/prevalence/nomination · DOLPolicy · KeyLevelPolicy · orchestration · strategy-level trade permission.
+Runner implementation (Layer 3) · Layer-2 adapter code · CLI entrypoint · `.importlinter` update for the Layer-2 package · Layer-2 package naming · real dataset access · real EP-C execution · real EST-B/prevalence/nomination · DOLPolicy · KeyLevelPolicy · orchestration · strategy-level trade permission. (Layer-1 statistics core code is no longer deferred — `detector/selection/`, frozen, committed `75d9c37ac08a314a6518484b7e62ee3c7eb798c1`.)
 
-## J. Sign-off
+## K. Correction: cluster reconstruction is NOT ambiguous (V3)
+
+**Status of the predecessor finding: `SUPERSEDED BY CODE AUDIT`.** This corrects a finding from the predecessor Layer-2 design pass — read before Sections L–O. That pass concluded `signal_id → htf_context` was not provably a function, reasoning from `Model1Signal.signal_id`'s omission of `purge_target` plus a comment in `tests/property/test_no_lookahead.py` about overlapping CRT range candidates. Re-auditing the actual code that produces both sides of that mapping disproves it — CP-A/CP-B/CP-C, a provenance sidecar, and any Stage6-provenance mutation are all unnecessary; none is adopted:
+
+1. `primitives/crt_range.py::detect_crt_ranges` iterates `for i in range(len(candles)-1)` and appends at most one `CRTRange` per `i`, so `CRTRange.start_index` is unique across the returned list — no two distinct CRT ranges share a `start_index`.
+2. `entries/model1.py::_track_anchor` sets `Model1Signal.origin_index` to that same `start_index` (`purge_engulf`) or to `FVG.start_index` (`fvg_fill`); `signal_id = f"{origin_index}-{anchor_index}-{direction}-{confirmation_type}-{entry_type}"` embeds `origin_index` and `anchor_index` verbatim.
+3. `alignment/htf_ltf.py::tag_alignment` computes `htf_context` as a pure function of `anchor_index` ALONE (via `ltf_series.candles[signal.anchor_index].timestamp` → `_enclosing_htf_index` → a fixed `purge_index_to_range` lookup) — it never reads `origin_index`, `confirmation_type`, `entry_type`, or `purge_target`.
+
+Since `anchor_index` is a literal component of `signal_id`, two signals sharing `signal_id` necessarily share `anchor_index`, and therefore necessarily produce the identical `htf_context`. **`signal_id → htf_context` is a function by construction, always** — there is no ambiguous case to guard against, no sidecar provenance structure to build, and REQ-STAT-07's original method (re-run `tag_alignment()`, join by `signal_id`) is sound as originally written. The `purge_target` disambiguation the lookahead test's own `_key()` helper needs is a property of THAT test's internal comparison (which deliberately excludes `origin_index` for its own truncated-vs-full purposes) — it is not evidence about `signal_id`'s uniqueness.
+
+What DOES survive from that design pass, unchanged: Layer-2 must still never call `tag_alignment()` incrementally/truncated (REQ-STAT-28) — that restriction guards against a real, different, pre-existing issue (the known lookahead-test failure), unrelated to this correction.
+
+- **Provenance**: `ENGINEERING DECISION` — a corrected finding, backed by re-reading `primitives/crt_range.py`, `entries/model1.py`, and `alignment/htf_ltf.py` directly rather than inferring from a test comment.
+
+## L. Layer-2 reconciliation contract (V3)
+
+**Dedup source-survivor semantics** (audited, `backtest/population.py::_dedup`, unchanged EP-C behavior — documented here for completeness, not because it threatens cluster provenance per Section K): candidates are grouped by `(anchor_index, direction, entry_price, entry_type)`; within a group, the survivor is `min(group, key=lambda c: c.origin_index)` — lowest `origin_index` wins. An exact `origin_index` tie (only possible if `origin_index` numerically coincides across unrelated CRT-range/FVG origins — not observed to be structurally forced) falls back to Python's stable `min()`, i.e. first-encountered in `tag_alignment()`'s own emission order. This is existing, frozen EP-C membership logic — V3 does not change it, and (per Section K) it does not create a cluster-provenance risk: whichever candidate survives, its own `signal_id` still resolves its own correct `htf_context` unambiguously.
+
+**Instrument-scoped input** (REQ-STAT-23): Layer-2 accepts one `Stage6Population` + `DirectionEvaluation[]` + `Trade[]` + `ReconciliationReport` bundle per instrument, with `instrument` read from `Stage6Population.series.instrument` — never inferred from a bare `Trade` (which carries none).
+
+**TradeJoinKey proof** (REQ-STAT-24): before any lookup, prove `TradeJoinKey → CandidateIdentity` and `TradeJoinKey → Trade` are both functions within that instrument's run. Violation → `TradeJoinIntegrityError`.
+
+**Aggregate completeness / NEVER_FILLED** (REQ-STAT-25): require `len(Stage6Population.candidates) == len(trades) + ReconciliationReport.excluded_never_filled` BEFORE trusting Trade-absence as `NEVER_FILLED`.
+
+**Candidate↔DirectionEvaluation reconciliation** (REQ-STAT-26): independently verify exactly 4 rows, one per frozen policy ID, identical `CandidateIdentity` across all 4 — never trust the upstream seam's own invariant blindly.
+
+**Relation mapping** (REQ-STAT-27): explicit exhaustive `evaluation.direction.PolicyRelation → selection.model.Relation` map; unexpected value fails closed.
+
+## M. Complete dataset data-quality fail-closed inventory (V3)
+
+The canonical Amendment's `data_quality_fail_closed` array (verbatim, 12 conditions) — only the first 3 below were previously transcribed into this spec (Section C / REQ-STAT-02/20):
+
+| # | Canonical condition (verbatim) | Layer | Validation point | Typed failure | Synthetic-testable? |
+|---|---|---|---|---|---|
+| 1 | "duplicate Candidate→Trade join" | Layer-2 | TradeJoinKey proof (REQ-STAT-24) | `TradeJoinIntegrityError` | Yes |
+| 2 | "open and never-filled explicit" | Layer-1 (already enforced, frozen construction invariant) + Layer-2 (must construct, never infer/hide) | `DirectionPolicyObservation.__post_init__`; Layer-2's outcome mapping (REQ-STAT-04) | `ClosedOutcomeMismatchError` (Layer-1) / mapping logic (Layer-2) | Yes |
+| 3 | "non-finite R" | Layer-1 (already enforced, `OutcomeRealizedRMismatchError`) + Layer-2 (defensive check at the Trade→observation boundary, since `Trade.r_multiple` is not type-guaranteed finite) | Trade mapping (REQ-STAT-04/28-adjacent) | `TradeOutcomeContractError` (Layer-2) / `OutcomeRealizedRMismatchError` (Layer-1) | Yes |
+| 4 | "duplicate candles/timestamps/keys" | Layer-2 (dataset validation) | Manifest/dataset validation, before population construction | `DatasetIntegrityError` | Yes |
+| 5 | "missing files/candles" | Layer-2 (dataset validation against manifest file list) | Manifest/dataset validation | `DatasetIntegrityError` | Yes |
+| 6 | "boundary gaps affecting prefix/setup/outcome" | Layer-2 (dataset validation, ties to cutoff checks) | Manifest/dataset validation + REQ-STAT-29 | `DatasetIntegrityError` | Yes |
+| 7 | "impossible zero-risk R" | Layer-2 (Trade-level check) — **IMPLEMENTATION/EXECUTION CHECK**: whether `backtest.levels` already structurally prevents `entry_price == stop_loss` was not traced this session | Trade mapping | `TradeOutcomeContractError` | Yes (once the upstream guarantee, if any, is confirmed) |
+| 8 | "hash drift" | Layer-2 (dataset hash validation against manifest) | Manifest/dataset validation | `DatasetIntegrityError` | Yes |
+| 9 | "no post-hoc dedup" | Layer-2 (negative constraint: the transactional adapter pipeline, Section O, has no dedup-observations step anywhere after construction) | Structural (absence of a step) + property test | N/A (code-review + property test: output count always 4N) | Yes |
+| 10 | "no winsorization" | Layer-1 (already enforced — `estimators.py`/`stratify.py` use plain arithmetic mean only) | N/A — already frozen, committed | N/A | Already covered (81 Layer-1 tests) |
+| 11 | "no trimming" | Layer-1 (already enforced, same as #10) | N/A — already frozen, committed | N/A | Already covered |
+| 12 | "no incomplete-session dropping" | Layer-2 (ties to boundary-gap/cutoff validation, #6/REQ-STAT-29) | Manifest/dataset validation | `DatasetIntegrityError` / `FrozenArtifactMismatchError` | Yes |
+
+No canonical condition may exist only in the JSON after V3 — this table is now the durable repo record (REQ-STAT-30).
+
+## N. Execution baseline & protected paths (V3)
+
+Before first real discovery execution: record one `measurement_execution_baseline_commit` (REQ-STAT-31), created AFTER Layer-2 + Layer-3 implementation, closeout, and full measurement-instrument verification. Protected paths (enumerated exactly at that time, NOT the whole repo): `detector/policy/`, `detector/evaluation/`, `detector/selection/`, the Layer-2 adapter package, the Layer-3 runner package, `detector/backtest/candidate.py`, `detector/backtest/population.py`, `detector/backtest/simulate.py`, `detector/backtest/levels.py`, the `alignment/` components used for provenance reconstruction, and the manifest/protocol artifact itself. At execution time: current state of every protected path MUST equal the baseline commit exactly (no uncommitted modification) — unrelated working-tree changes outside protected paths need not abort. This REPLACES the predecessor design pass's "diff each historical component commit against HEAD" idea, which this session's own audit disproved: `backtest/population.py`/`candidate.py` legitimately changed (commits `53a6514`, `26d94be`) after the Amendment's own recorded `commits.candidate_generation` (`3d3531e`) for unrelated reasons — a single execution-baseline commit, not a scattered set of historical references, is the only reliable final source-tree snapshot.
+
+## O. Layer-2 architecture (V3)
+
+Import direction (REQ-STAT-33): Layer-2 MAY import `evaluation`, `backtest`, `alignment`, `selection.model`. It MUST NOT live under `selection/`. `evaluation`, `backtest`, `alignment`, `policy`, and `selection` MUST NOT import Layer-2 (new `forbidden` import-linter contract, mirroring `no-selection-in-outcome-layers`). Recommended internal shape: staged pure functions (mirroring `detector/selection/`'s own module style — one function per pipeline stage from Section L/M) behind one transactional facade that exposes `DirectionPolicyObservation[]` only after every validation in Sections L–N succeeds; no partial/lazy output. Final package name deferred to a repo-convention audit at implementation time (candidate: `adapter`).
+
+## P. Sign-off
 
 **SPEC ONLY. NOT IMPLEMENTED. NO OUTCOMES INSPECTED.** This hardening pass corrects one structural defect from the prior spec draft (conflating `CandidateIdentity` with the operational `TradeJoinKey`) and makes this document independently sufficient to implement the runner without consulting any chat transcript. All prior statistical decisions (U-1, U-2, EST-B, CI, SEL-A, cluster semantics, SR-A architecture) remain approved and unchanged by this pass.
 
-**V2 amendment (this pass)**: adds `closed_outcome` (Section C/C2) as WR's categorical source — sourced from the pre-existing `Trade.outcome` contract, never derived from `realized_r`'s sign — and amends REQ-STAT-01, 04, 06, and 19 in place; REQ-STAT-20 gets a dangling cross-reference correction only, no semantic change. No other statistical decision (EST-B, MEI, U-1, U-2, bootstrap, RNG, CI, SEL-A, cost assumptions) is reopened by this pass. This gap surfaced entirely from auditing this repo's own pre-existing `Trade`/`compute_metrics` convention — no real outcome was inspected to discover or resolve it.
+**V2 amendment**: adds `closed_outcome` (Section C/C2) as WR's categorical source — sourced from the pre-existing `Trade.outcome` contract, never derived from `realized_r`'s sign — and amends REQ-STAT-01, 04, 06, and 19 in place; REQ-STAT-20 gets a dangling cross-reference correction only, no semantic change. No other statistical decision (EST-B, MEI, U-1, U-2, bootstrap, RNG, CI, SEL-A, cost assumptions) is reopened by V2. This gap surfaced entirely from auditing this repo's own pre-existing `Trade`/`compute_metrics` convention — no real outcome was inspected to discover or resolve it.
 
-**22 normative requirements: REQ-STAT-01 through REQ-STAT-22, all present in full above — unchanged in count by this pass, per Section A's precedent.**
+**V3 amendment (this pass)**: freezes the Layer-2 adapter contract — REQ-STAT-23 through REQ-STAT-33, Sections K–O. Corrects one finding from the predecessor design-only pass (Section K: `signal_id → htf_context` IS a function by construction; no provenance-preserving sidecar is needed or permitted — the earlier ambiguity claim is SUPERSEDED BY CODE AUDIT). Transcribes, verbatim, all 12 conditions of the canonical Amendment's `data_quality_fail_closed` array (Section M) — 9 of which had never reached this spec's normative text before. Replaces an earlier, rejected fingerprint-verification idea (per-historical-commit whole-directory diffing) with a single `measurement_execution_baseline_commit` + enumerated protected paths (Section N), evidenced by this repo's own history (`backtest/population.py`/`candidate.py` legitimately changed after the Amendment's recorded `candidate_generation` commit). REQ-STAT-29's candidate-cutoff timestamp semantics are now RESOLVED (Candidate event = `retest_index` = K, strict `<` boundary, naive-UTC comparison per this repo's existing timestamp convention) — **zero `HUMAN DECISION REQUIRED` items remain in V3**; every requirement is implementation-ready. Layer-1 (`detector/selection/`, frozen, committed `75d9c37ac08a314a6518484b7e62ee3c7eb798c1`) is NOT reopened by this pass. No real outcome was inspected — this entire pass is design/code-reading only.
+
+**33 normative requirements: REQ-STAT-01 through REQ-STAT-33, all present in full above.**
