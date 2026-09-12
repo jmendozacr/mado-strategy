@@ -11,6 +11,7 @@ root_packages =
     evaluation
     viz
     research
+    selection
 
 [importlinter:contract:layers]
 name = Layered pipeline (ADR-01)
@@ -75,4 +76,32 @@ source_modules =
 forbidden_modules =
     policy
     evaluation
+
+[importlinter:contract:selection-layer1-purity]
+name = DirectionPolicy statistical core (Layer 1) stays outcome-access-free
+# REQ-STAT-22: Layer 1 accepts only in-memory DirectionPolicyObservation
+# records built by a caller. `research`/`backtest` (real-data access,
+# outcomes) and `evaluation`/`ingestion` (the join/loading concerns Layer 2
+# will own) are all off limits from inside `selection` today; a future
+# Layer-2 adapter needing them is a distinct package, not this one.
+type = forbidden
+source_modules =
+    selection
+forbidden_modules =
+    research
+    backtest
+    evaluation
+    ingestion
+
+[importlinter:contract:no-selection-in-outcome-layers]
+name = evaluation/backtest must not import the statistical layer
+# spec.md Section G: "neither evaluation nor backtest may import the new
+# package" -- the statistical core sits strictly downstream of both, never
+# the reverse.
+type = forbidden
+source_modules =
+    evaluation
+    backtest
+forbidden_modules =
+    selection
 
