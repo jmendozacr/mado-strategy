@@ -9,10 +9,9 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from adapter.errors import AdapterIntegrityError
+from alignment.htf_ltf import AlignedSignal
 from backtest.population import Stage6Population
 from backtest.simulate import ReconciliationReport, Trade
-from core.candle import OHLCSeries
-from core.config import DetectorConfig
 from evaluation.direction import DirectionEvaluation
 
 
@@ -23,8 +22,7 @@ class InstrumentRunBundle:
     evaluations: tuple[DirectionEvaluation, ...]
     trades: tuple[Trade, ...]
     reconciliation: ReconciliationReport
-    htf_series: OHLCSeries
-    config: DetectorConfig
+    aligned_signals: tuple[AlignedSignal, ...]
     candidate_cutoff_end_utc: datetime
     outcome_followup_end_utc: datetime
 
@@ -35,8 +33,9 @@ class InstrumentRunBundle:
                 f"population.series.instrument {self.population.series.instrument!r} "
                 f"— never diverge from the Stage6Population it was built for"
             )
-        if self.htf_series.instrument != self.instrument:
-            raise AdapterIntegrityError(
-                f"htf_series.instrument {self.htf_series.instrument!r} must equal "
-                f"bundle.instrument {self.instrument!r} — one instrument per bundle"
-            )
+        signal_ids_in_aligned = {s.ltf_signal.signal_id for s in self.aligned_signals}
+        for candidate in self.population.candidates:
+            if candidate.signal_id not in signal_ids_in_aligned:
+                raise AdapterIntegrityError(
+                    f"candidate signal_id {candidate.signal_id!r} absent from aligned_signals"
+                )

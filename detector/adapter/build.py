@@ -6,7 +6,7 @@ tuple — no partial/lazy output ever escapes a failed run."""
 from evaluation.direction import FROZEN_POLICY_IDS
 
 from adapter.bundle import InstrumentRunBundle
-from adapter.cluster import lookup_context_cluster, reconstruct_context_clusters
+from adapter.cluster import build_cluster_map, lookup_context_cluster
 from adapter.cutoff import validate_candidate_cutoff, validate_outcome_followup_cutoff
 from adapter.identity import recover_candidate_identity, reconcile_population_evaluations
 from adapter.relation import map_relation
@@ -45,8 +45,8 @@ def build_direction_policy_observations(
     # 4) TradeJoinKey functional-dependency proof, whole run (REQ-STAT-24).
     _, key_to_trade = prove_functional_join(identities, bundle.trades, bundle.instrument)
 
-    # 5) Cluster reconstruction, full series only (REQ-STAT-28).
-    cluster_map = reconstruct_context_clusters(bundle.instrument, bundle.htf_series, series, bundle.config)
+    # 5) Cluster identity from AlignedSignal.htf_context supplied by the caller.
+    cluster_map = build_cluster_map(bundle.instrument, bundle.aligned_signals)
 
     # Deterministic Candidate order (Section spec: (retest_index, signal_id)),
     # policy P1-P4 within each (FROZEN_POLICY_IDS' own declared order).

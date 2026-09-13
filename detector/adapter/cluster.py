@@ -1,17 +1,12 @@
-"""Group L (spec.md Section K/REQ-STAT-07/28): `context_cluster_id`
-reconstruction. Section K's code audit proves `signal_id -> htf_context` a
-function by construction (`anchor_index` is embedded verbatim in `signal_id`
-and `tag_alignment()`'s `htf_context` is a pure function of `anchor_index`
-alone) — no provenance-preserving sidecar is needed. Layer-2 still owns the
-fail-closed boundary: absent signal_id, an inconsistent reconstruction, and
-never calling `tag_alignment()` incrementally or on a truncated series."""
+"""`context_cluster_id` derivation from caller-supplied `AlignedSignal.htf_context`.
+`build_cluster_map` omits signals with null htf_context and raises on conflicting
+non-null contexts for the same signal_id. `lookup_context_cluster` raises for any
+signal_id absent from the map, including those omitted due to null htf_context."""
 
 from collections.abc import Sequence
 
 from adapter.errors import ClusterReconstructionError
-from alignment.htf_ltf import AlignedSignal, tag_alignment
-from core.candle import OHLCSeries
-from core.config import DetectorConfig
+from alignment.htf_ltf import AlignedSignal
 
 ContextClusterId = tuple[str, int, int, int]
 
@@ -42,21 +37,11 @@ def build_cluster_map(instrument: str, tagged_signals: Sequence[AlignedSignal]) 
     return mapping
 
 
-def reconstruct_context_clusters(
-    instrument: str, htf_series: OHLCSeries, ltf_series: OHLCSeries, config: DetectorConfig
-) -> dict[str, ContextClusterId]:
-    """REQ-STAT-28: re-runs `tag_alignment()` on the COMPLETE, frozen series
-    identical to the one that built the `Stage6Population` under evaluation
-    — callers MUST pass the exact `htf_series`/`ltf_series` objects, never a
-    truncated/incremental view."""
-    tagged = tag_alignment(htf_series, ltf_series, config.crt_range, config.fvg, config.model1)
-    return build_cluster_map(instrument, tagged)
-
-
 def lookup_context_cluster(cluster_map: dict[str, ContextClusterId], signal_id: str) -> ContextClusterId:
     try:
         return cluster_map[signal_id]
     except KeyError:
         raise ClusterReconstructionError(
-            f"signal_id {signal_id!r} absent from the full-series tag_alignment() reconstruction"
+            f"signal_id {signal_id!r} absent from the supplied aligned_signals — "
+            f"every candidate must have an AlignedSignal with a non-null htf_context"
         ) from None

@@ -38,9 +38,9 @@ class TradeOutcomeContractError(AdapterIntegrityError):
 
 
 class ClusterReconstructionError(AdapterIntegrityError):
-    """REQ-STAT-28: the `signal_id -> htf_context` lookup (via a full-series
-    `tag_alignment()` re-run) failed to resolve, or resolved inconsistently,
-    for a signal_id Layer-2 needed to cluster."""
+    """The `signal_id -> htf_context` lookup from the supplied `AlignedSignal`
+    sequence failed to resolve, or resolved inconsistently, for a signal_id
+    needed to derive a `context_cluster_id`."""
 
 
 class CandidateCutoffError(AdapterIntegrityError):

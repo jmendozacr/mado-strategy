@@ -86,7 +86,7 @@ def _build_synthetic_bundle() -> InstrumentRunBundle:
 
     return InstrumentRunBundle(
         instrument="EURUSDm", population=population, evaluations=evaluations, trades=tuple(trades),
-        reconciliation=report, htf_series=htf_series, config=config,
+        reconciliation=report, aligned_signals=tuple(tagged),
         candidate_cutoff_end_utc=ltf_candles[-1].timestamp + timedelta(days=1),
         outcome_followup_end_utc=ltf_candles[-1].timestamp + timedelta(days=2),
     )
@@ -188,6 +188,36 @@ def test_no_recomputation_adapter_never_imports_policy_direction_functions():
                 for alias in node.names:
                     if alias.name.startswith("policy"):
                         pytest.fail(f"{path.name} imports {alias.name!r} — Layer-2 must never recompute policy decisions")
+
+
+def test_context_cluster_id_uses_supplied_aligned_signal_context():
+    """context_cluster_id reflects the htf_context on the supplied AlignedSignal,
+    not any independently computed value. Verified by injecting start_index=99."""
+    from dataclasses import replace as dc_replace
+    from primitives.crt_range import CRTRange
+
+    bundle = _build_synthetic_bundle()
+    candidate_signal_id = bundle.population.candidates[0].signal_id
+
+    original = next(
+        s for s in bundle.aligned_signals if s.ltf_signal.signal_id == candidate_signal_id
+    )
+    assert original.htf_context is not None
+
+    synthetic_context = CRTRange(
+        model="2-candle", high=1.5, low=0.5,
+        start_index=99, end_index=100, resolution="true_break", resolved_at_index=100,
+    )
+    amended_signal = dc_replace(original, htf_context=synthetic_context)
+    amended_signals = tuple(
+        amended_signal if s.ltf_signal.signal_id == candidate_signal_id else s
+        for s in bundle.aligned_signals
+    )
+    amended_bundle = dc_replace(bundle, aligned_signals=amended_signals)
+
+    observations = build_direction_policy_observations(amended_bundle)
+    assert len(observations) == 4
+    assert all(obs.context_cluster_id[1] == 99 for obs in observations)
 
 
 def test_no_statistics_adapter_never_imports_layer1_estimator_modules():

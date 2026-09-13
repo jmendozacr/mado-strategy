@@ -1,18 +1,13 @@
-"""Group L (spec.md Section K/REQ-STAT-07/28): cluster reconstruction via a
-full-series-only `tag_alignment()` re-run, joined by signal_id. Section K's
-code audit proves `signal_id -> htf_context` a function by construction —
-these tests still guard the fail-closed boundary Layer-2 owns: absent
-signal_id, an inconsistent reconstruction, and never truncating the series."""
-
-from datetime import datetime, timedelta
+"""`context_cluster_id` derivation from caller-supplied `AlignedSignal.htf_context`.
+Signals with null htf_context are omitted from the map; conflicting non-null
+contexts for the same signal_id raise during map construction. Lookup raises for
+any signal_id absent from the map, including those omitted due to null htf_context."""
 
 import pytest
 
-from adapter.cluster import build_cluster_map, lookup_context_cluster, reconstruct_context_clusters
+from adapter.cluster import build_cluster_map, lookup_context_cluster
 from adapter.errors import ClusterReconstructionError
 from alignment.htf_ltf import AlignedSignal
-from core.candle import Candle, OHLCSeries
-from core.config import DetectorConfig
 from core.results import DetectionStatus
 from entries.model1 import Model1Signal
 from primitives.crt_range import CRTRange
@@ -78,39 +73,25 @@ def test_missing_htf_context_means_absent_from_map_and_lookup_fails_closed():
         lookup_context_cluster(mapping, signal.signal_id)
 
 
-# --- reconstruct_context_clusters: the full-series-only wrapper --------------
+def test_adapter_cluster_does_not_reference_tag_alignment():
+    """AST guard: cluster.py must not import or attribute-reference tag_alignment."""
+    import ast
+    import importlib.util
+    import pathlib
 
-
-def _series(instrument: str, timeframe: str, size: int) -> OHLCSeries:
-    candles = tuple(
-        Candle(
-            timestamp=datetime(2026, 1, 1) + timedelta(minutes=15 * i) if timeframe == "15M"
-            else datetime(2026, 1, 1) + timedelta(hours=4 * i),
-            open=1.0, high=1.1, low=0.9, close=1.05,
-        )
-        for i in range(size)
-    )
-    return OHLCSeries(candles=candles, instrument=instrument, timeframe=timeframe)
-
-
-def test_reconstruct_delegates_to_tag_alignment_on_full_series():
-    htf_series = _series("EURUSDm", "4H", 5)
-    ltf_series = _series("EURUSDm", "15M", 5)
-    # Featureless synthetic candles produce no detected signals — this
-    # confirms the wrapper runs tag_alignment end-to-end without raising,
-    # not that any particular signal is found.
-    mapping = reconstruct_context_clusters("EURUSDm", htf_series, ltf_series, DetectorConfig())
-    assert mapping == {}
-
-
-def test_cluster_module_never_truncates_the_series():
-    """REQ-STAT-28: Layer-2 MUST NOT call `tag_alignment()` incrementally or
-    on a truncated series. Structural guard: the module must never slice a
-    series (`.up_to(` / `.candles[`) before handing it to `tag_alignment`."""
-    import inspect
-
-    import adapter.cluster as cluster_module
-
-    source = inspect.getsource(cluster_module)
-    assert ".up_to(" not in source
-    assert ".candles[" not in source
+    spec = importlib.util.find_spec("adapter.cluster")
+    source = pathlib.Path(spec.origin).read_text()
+    tree = ast.parse(source)
+    imported = [
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    ]
+    attributes = [
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+    ]
+    assert "tag_alignment" not in imported
+    assert "tag_alignment" not in attributes
