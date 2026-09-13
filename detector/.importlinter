@@ -13,6 +13,7 @@ root_packages =
     research
     selection
     adapter
+    causal
 
 [importlinter:contract:layers]
 name = Layered pipeline (ADR-01)
@@ -120,4 +121,26 @@ source_modules =
     selection
 forbidden_modules =
     adapter
+
+[importlinter:contract:no-causal-in-research]
+name = Research tooling must not consume the causal candidate-generation path
+# REQ-CAUSAL-10(a): mirrors no-policy-in-research's intent -- Line-A's
+# exploratory research code must not silently consume the new causal Line-B
+# path.
+type = forbidden
+source_modules =
+    research
+forbidden_modules =
+    causal
+
+[importlinter:contract:no-causal-in-evaluation]
+name = evaluation must not import the causal candidate-generation path
+# REQ-CAUSAL-10(b): mirrors no-selection-in-outcome-layers -- the outcome-
+# evaluation seam stays a pure consumer of whatever population it is handed,
+# never a source of causal-generation logic.
+type = forbidden
+source_modules =
+    evaluation
+forbidden_modules =
+    causal
 
