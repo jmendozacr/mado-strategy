@@ -44,7 +44,7 @@ def test_builder_consumes_canonical_amendment_shape_without_dataset_access():
     assert manifest.dataset_records[0] == DatasetFileRecord(
         instrument="DXYm",
         granularity="D1",
-        relative_path="pairs/_discovery_snapshot/D1/DXYm_Daily_202110270000_202608190000.csv",
+        relative_path="../pairs/_discovery_snapshot/D1/DXYm_Daily_202110270000_202608190000.csv",
         byte_size=80376,
         sha256="2224944e3fe28504c84c0a8206a9cea4098d067b9beb9b78efe3228db3554db0",
         start_utc=manifest.dataset_records[0].start_utc,
