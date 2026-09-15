@@ -27,7 +27,8 @@ Implement the full discovery runner (`detector/runner/`) that:
 | Test-only property fix | `4111691` | `test(detector): disambiguate alignment property signals` |
 | ~~Original baseline B~~ | ~~`b76a251`~~ | ~~`docs(sdd): close out layer 3 statistical runner`~~ |
 | Authorization-binding correction | `12da590` | `fix(detector): bind manifest to authorization commit` |
-| **Replacement baseline B (this commit)** | _(contains this document)_ | `docs(sdd): rebaseline layer 3 statistical runner` |
+| Path-correction code change | `af7124b` | `fix(detector): correct dataset path prefix for detector-root resolution` |
+| **Replacement baseline B (this commit)** | _(contains this document)_ | `docs(sdd): rebaseline path-corrected statistical runner` |
 
 `b76a251` was initially recorded as baseline B but is superseded because `12da590` changed
 protected runner code after it — `detector/runner/` is a protected path. Baseline B must
@@ -38,6 +39,15 @@ The authorization-binding correction (`12da590`) adds only authorization and pro
 enforcement around the runner. It does not alter direction-policy semantics, statistics,
 OOS methodology, candidate generation, or the measured Layer-1 cost path.
 
+The path-correction code change (`af7124b`) updates the 9 dataset file paths declared in
+the protocol JSON from `pairs/_discovery_snapshot/...` to `../pairs/_discovery_snapshot/...`
+so that they resolve correctly when joined against the runner's `detector_root`. It also
+updates the two corresponding constants in `manifest_builder.py` (`CANONICAL_PROTOCOL_SHA256`
+and `CANONICAL_PROTOCOL_BYTE_SIZE`) and the test assertion that checks the first dataset
+record's `relative_path`. This change does not alter strategy semantics, statistical
+methodology, or dataset contents — only the declared relative paths in the protocol to match
+the runner's detector-root resolution convention.
+
 The commit containing this document is **measurement execution baseline B** as required by
 REQ-STAT-43 step (3). Its hash is authoritative; it is not pre-recorded here to avoid a
 self-referential hash.
@@ -46,7 +56,7 @@ self-referential hash.
 
 ## Verification Evidence
 
-All evidence collected on the committed tree at `12da590` (immediately before this closeout commit).
+All evidence collected on the committed tree at `af7124b` (immediately before this closeout commit).
 
 ### Full detector test suite
 
