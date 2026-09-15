@@ -8,6 +8,7 @@ after its own closeout + full measurement-instrument verification."""
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from adapter.dataset import sha256_of_file
 from adapter.errors import FrozenArtifactMismatchError
@@ -30,6 +31,48 @@ class GapAllowlistEntry:
     gap_start: datetime
     gap_end: datetime
     reason: str
+
+
+@dataclass(frozen=True)
+class DatasetFileRecord:
+    """REQ-STAT-38: per-instrument dataset file provenance."""
+
+    instrument: str
+    granularity: str
+    relative_path: str
+    byte_size: int
+    sha256: str
+    start_utc: datetime
+    end_utc: datetime
+
+
+_VALID_ARGUMENT_NAMES = frozenset({"htf_key_levels", "daily_series", "daily_key_levels"})
+
+_VALID_PRODUCER_IDS = frozenset({
+    "primitives.fvg.detect_fvgs->primitives.fvg.to_key_levels",
+    "ingestion.loader.load_mt5_csv",
+    "primitives.ict_order_block.detect_ict_order_blocks->primitives.ict_order_block.to_key_levels",
+})
+
+_ARGUMENT_TO_PRODUCER: dict[str, str] = {
+    "htf_key_levels": "primitives.fvg.detect_fvgs->primitives.fvg.to_key_levels",
+    "daily_series": "ingestion.loader.load_mt5_csv",
+    "daily_key_levels": "primitives.ict_order_block.detect_ict_order_blocks->primitives.ict_order_block.to_key_levels",
+}
+
+
+@dataclass(frozen=True)
+class CausalSourceInputRecord:
+    """REQ-STAT-63(c): per-input provenance for generate_causal_aligned_signals."""
+
+    instrument: str
+    argument_name: Literal["htf_key_levels", "daily_series", "daily_key_levels"]
+    producer_id: Literal[
+        "primitives.fvg.detect_fvgs->primitives.fvg.to_key_levels",
+        "ingestion.loader.load_mt5_csv",
+        "primitives.ict_order_block.detect_ict_order_blocks->primitives.ict_order_block.to_key_levels",
+    ]
+    dataset_relative_path: str
 
 
 @dataclass(frozen=True)
@@ -70,6 +113,18 @@ class Manifest:
     layer3_implementation_commit: str | None = None
     measurement_execution_baseline_commit: str | None = None
     dataset_gap_allowlist: tuple[GapAllowlistEntry, ...] = ()
+    instrument_order: tuple[str, ...] | None = None
+    dataset_records: tuple[DatasetFileRecord, ...] | None = None
+    candidate_cutoff_end_utc: datetime | None = None
+    outcome_followup_end_utc: datetime | None = None
+    spec_sha256: str | None = None
+    statistical_spec_commit_chain: tuple[str, ...] | None = None
+    detector_config_fingerprint: str | None = None
+    uv_lock_sha256: str | None = None
+    causal_spec_commit: str | None = None
+    causal_spec_amendment_commit: str | None = None
+    causal_implementation_commit: str | None = None
+    causal_source_inputs: tuple[CausalSourceInputRecord, ...] | None = None
 
     def __post_init__(self) -> None:
         if set(self.policy_ids) != set(FROZEN_POLICY_IDS):
