@@ -517,11 +517,9 @@ def test_alignment_detection_has_no_lookahead(pair):
     htf_size = len(htf_series.candles)
 
     def _key(signal):
-        # Overlapping, non-deduplicated LTF CRT range candidates (design
-        # 4.4) can independently produce a purge_engulf signal at the SAME
-        # anchor_index/direction — purge_target disambiguates between
-        # those distinct candidates.
-        return (signal.anchor_index, signal.direction, signal.confirmation_type, signal.purge_target)
+        # Two overlapping ranges can share anchor_index, direction, and
+        # purge_target; origin_index distinguishes their signals.
+        return (signal.anchor_index, signal.direction, signal.confirmation_type, signal.purge_target, signal.origin_index)
 
     full_tags = tag_alignment(htf_series, ltf_series)
     full_by_key = {_key(t.ltf_signal): t for t in full_tags}
