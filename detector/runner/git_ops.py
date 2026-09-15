@@ -8,13 +8,17 @@ import subprocess
 from runner.errors import AuthorizationError
 
 _ALLOWED_SUBCOMMANDS = frozenset({
-    "rev-parse", "merge-base", "diff", "status", "log",
+    "rev-parse", "merge-base", "diff", "status", "log", "show",
 })
 
 
-def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
+def _check_subcommand(args: list[str]) -> None:
     if args[0] not in _ALLOWED_SUBCOMMANDS:
         raise AuthorizationError(f"git subcommand {args[0]!r} not in allowlist")
+
+
+def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
+    _check_subcommand(args)
     return subprocess.run(
         ["git"] + args,
         cwd=cwd,
@@ -50,7 +54,7 @@ def verify_is_ancestor(commit: str, cwd: str, descendant: str = "HEAD") -> None:
 
 
 def verify_no_diff(baseline: str, protected_paths: list[str], cwd: str) -> None:
-    """Check 5: committed state matches baseline for protected paths."""
+    """Verify committed state matches baseline for protected paths."""
     result = subprocess.run(
         ["git", "diff", baseline, "HEAD", "--"] + protected_paths,
         cwd=cwd,
@@ -66,7 +70,7 @@ def verify_no_diff(baseline: str, protected_paths: list[str], cwd: str) -> None:
 
 
 def verify_no_working_tree_diff(baseline: str, protected_paths: list[str], cwd: str) -> None:
-    """Check 6: working tree matches baseline for protected paths."""
+    """Verify working tree matches baseline for protected paths."""
     result = subprocess.run(
         ["git", "diff", baseline, "--"] + protected_paths,
         cwd=cwd,
@@ -82,7 +86,7 @@ def verify_no_working_tree_diff(baseline: str, protected_paths: list[str], cwd: 
 
 
 def verify_no_staged_diff(baseline: str, protected_paths: list[str], cwd: str) -> None:
-    """Check 7: no staged-but-uncommitted edits in protected paths."""
+    """Verify no staged-but-uncommitted edits in protected paths."""
     result = subprocess.run(
         ["git", "diff", "--cached", baseline, "--"] + protected_paths,
         cwd=cwd,
@@ -97,8 +101,31 @@ def verify_no_staged_diff(baseline: str, protected_paths: list[str], cwd: str) -
         )
 
 
+def read_committed_blob(commit: str, path: str, cwd: str) -> bytes:
+    """Return raw bytes of <path> as committed in <commit>.
+
+    Uses git show <commit>:<path> with binary output. Raises AuthorizationError
+    if the path does not exist in that commit or the commit is invalid.
+    """
+    # Cannot use _run_git — binary output requires text=False.
+    _check_subcommand(["show"])
+    try:
+        result = subprocess.run(
+            ["git", "show", f"{commit}:{path}"],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+        )
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        raise AuthorizationError(
+            f"cannot read {path!r} from commit {commit!r}: "
+            f"{e.stderr.decode(errors='replace').strip()}"
+        ) from e
+
+
 def verify_no_untracked(protected_paths: list[str], cwd: str) -> None:
-    """Check 8: no untracked files under protected paths."""
+    """Verify no untracked files under protected paths."""
     result = subprocess.run(
         ["git", "status", "--porcelain=v1", "--untracked-files=all", "--"] + protected_paths,
         cwd=cwd,

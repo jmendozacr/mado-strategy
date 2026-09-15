@@ -14,6 +14,7 @@ from runner.environment import environment_record, verify_environment
 from runner.errors import AuthorizationError, PreflightFailure
 from runner.git_ops import (
     get_head_commit,
+    read_committed_blob,
     verify_commit_exists,
     verify_is_ancestor,
     verify_no_diff,
@@ -22,6 +23,7 @@ from runner.git_ops import (
     verify_no_working_tree_diff,
 )
 from runner.manifest_builder import (
+    CANONICAL_MANIFEST_ARTIFACT_PATH,
     CANONICAL_PROTOCOL_RELATIVE_PATH,
     CANONICAL_PROTOCOL_SHA256,
     CANONICAL_STATISTICAL_SPEC_SHA256,
@@ -45,7 +47,7 @@ from runner.manifest_builder import (
     _seed_entropy,
     validate_protected_paths,
 )
-from runner.serialization import manifest_sha256
+from runner.serialization import canonical_json, manifest_sha256, to_json_value
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,7 @@ class PreflightResult:
     manifest_sha256: str
     protocol_sha256: str
     checks_passed: tuple[str, ...]
+    authorization_commit: str
     environment_record: dict[str, str] = field(default_factory=dict)
     reconstructed_config: DetectorConfig | None = None
 
@@ -223,7 +226,9 @@ def _validate_datasets(manifest: Manifest, detector_root: str) -> None:
         validate_no_gaps_against_manifest(series, interval, manifest)
 
 
-def run_preflight(manifest: Manifest, protocol_path: str, repo_root: str) -> PreflightResult:
+def run_preflight(
+    manifest: Manifest, protocol_path: str, repo_root: str, *, authorization_commit: str
+) -> PreflightResult:
     completed: list[str] = []
     digest = manifest_sha256(manifest)
     project_root = _project_root(repo_root)
@@ -260,6 +265,27 @@ def run_preflight(manifest: Manifest, protocol_path: str, repo_root: str) -> Pre
         completed.append(stage)
 
         baseline = manifest.measurement_execution_baseline_commit
+
+        stage = "authorization_manifest_binding"
+        verify_commit_exists(authorization_commit, str(project_root))
+        verify_is_ancestor(baseline, str(project_root), authorization_commit)
+        verify_is_ancestor(authorization_commit, str(project_root))
+        committed_bytes = read_committed_blob(
+            authorization_commit, CANONICAL_MANIFEST_ARTIFACT_PATH, str(project_root)
+        )
+        runtime_bytes = canonical_json(to_json_value(manifest))
+        if committed_bytes != runtime_bytes:
+            raise AuthorizationError(
+                "authorization manifest bytes differ from runtime manifest: "
+                "manifest is not byte-identical to the artifact committed in A"
+            )
+        manifest_path_list = [CANONICAL_MANIFEST_ARTIFACT_PATH]
+        verify_no_diff(authorization_commit, manifest_path_list, str(project_root))
+        verify_no_working_tree_diff(authorization_commit, manifest_path_list, str(project_root))
+        verify_no_staged_diff(authorization_commit, manifest_path_list, str(project_root))
+        verify_no_untracked(manifest_path_list, str(project_root))
+        completed.append(stage)
+
         layer2 = manifest.layer2_implementation_commit or ""
         layer3 = manifest.layer3_implementation_commit or ""
         if len({layer2, layer3, baseline}) != 3:
@@ -309,4 +335,5 @@ def run_preflight(manifest: Manifest, protocol_path: str, repo_root: str) -> Pre
         checks_passed=tuple(completed),
         environment_record=env,
         reconstructed_config=reconstructed_config,
+        authorization_commit=authorization_commit,
     )

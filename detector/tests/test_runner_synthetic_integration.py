@@ -100,9 +100,12 @@ def test_synthetic_run_executes_real_preflight_and_publishes_once(tmp_path):
         simulations.append((args, result))
         return result
 
+    from runner.serialization import canonical_json, to_json_value
+    runtime_bytes = canonical_json(to_json_value(manifest))
     with (
         patch("runner.preflight.verify_commit_exists"),
         patch("runner.preflight.verify_is_ancestor"),
+        patch("runner.preflight.read_committed_blob", return_value=runtime_bytes),
         patch("runner.preflight.verify_no_diff"),
         patch("runner.preflight.verify_no_working_tree_diff"),
         patch("runner.preflight.verify_no_staged_diff"),
@@ -155,6 +158,7 @@ def test_synthetic_run_executes_real_preflight_and_publishes_once(tmp_path):
             str(DETECTOR_ROOT),
             str(output),
             lambda event, payload: events.append((event, payload)),
+            authorization_commit="a" * 40,
         )
 
     statistics_call.assert_called_once()

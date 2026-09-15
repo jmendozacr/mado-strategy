@@ -239,7 +239,7 @@ def test_preflight_rejects_noncanonical_protocol_path(tmp_path):
         protocol_artifact_path=str(protocol_file),
     )
     with pytest.raises(Exception, match="canonical"):
-        run_preflight(m, str(protocol_file), str(tmp_path))
+        run_preflight(m, str(protocol_file), str(tmp_path), authorization_commit="a" * 40)
 
 
 def test_successful_preflight_never_calls_population_or_evaluate():
@@ -275,10 +275,13 @@ def test_successful_preflight_never_calls_population_or_evaluate():
         timeframe = "15M" if granularity == "M15" else granularity
         return OHLCSeries(candles, instrument, timeframe)
 
+    from runner.serialization import canonical_json, to_json_value
+    runtime_bytes = canonical_json(to_json_value(manifest))
     with (
         patch("runner.preflight.environment_record", return_value={}),
         patch("runner.preflight.verify_commit_exists"),
         patch("runner.preflight.verify_is_ancestor"),
+        patch("runner.preflight.read_committed_blob", return_value=runtime_bytes),
         patch("runner.preflight.verify_no_diff"),
         patch("runner.preflight.verify_no_working_tree_diff"),
         patch("runner.preflight.verify_no_staged_diff"),
@@ -303,7 +306,9 @@ def test_successful_preflight_never_calls_population_or_evaluate():
         patch("backtest.population.build_stage6_population") as mock_pop,
         patch("evaluation.direction.evaluate_direction_policies") as mock_eval,
     ):
-        result = run_preflight(manifest, str(protocol_path), str(detector_root))
+        result = run_preflight(
+            manifest, str(protocol_path), str(detector_root), authorization_commit="a" * 40
+        )
 
     mock_pop.assert_not_called()
     mock_eval.assert_not_called()

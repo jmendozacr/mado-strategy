@@ -139,8 +139,10 @@ def _make_preflight():
             "schema_parse", "schema_completeness", "protocol_hash",
             "policy_ids_match", "mei_r_match", "bootstrap_config_match",
             "cutoff_match", "population_config_match", "config_reconstruction",
+            "authorization_manifest_binding",
             "environment_verification", "dataset_validation",
         ),
+        authorization_commit="a" * 40,
         reconstructed_config=DetectorConfig(),
     )
 
@@ -204,12 +206,14 @@ def test_successful_run_one_statistics_call(tmp_path):
         )
         mock_stats.return_value = stats
 
-        result_path = run_discovery(manifest, config, "protocol.json", ".", out_dir)
+        result_path = run_discovery(manifest, config, "protocol.json", ".", out_dir, authorization_commit="a" * 40)
 
     assert mock_proc.call_count == 3
     mock_stats.assert_called_once()
     files = os.listdir(result_path)
     assert len(files) == 5
+    run_manifest = json.loads(Path(result_path, "run_manifest.json").read_text(encoding="utf-8"))
+    assert run_manifest["authorization_commit"] == "a" * 40
 
 
 def test_instrument_failure_aborts_no_statistics(tmp_path):
@@ -234,7 +238,7 @@ def test_instrument_failure_aborts_no_statistics(tmp_path):
     ):
         mock_preflight.return_value = _make_preflight()
         with pytest.raises(RuntimeError, match="DXYm"):
-            run_discovery(manifest, config, "protocol.json", ".", out_dir)
+            run_discovery(manifest, config, "protocol.json", ".", out_dir, authorization_commit="a" * 40)
 
     mock_stats.assert_not_called()
 
@@ -258,7 +262,8 @@ def test_discovery_normalizes_project_and_detector_roots_for_instrument_loading(
     ):
         with pytest.raises(RuntimeError, match="opaque"):
             run_discovery(
-                manifest, DetectorConfig(), "protocol.json", str(repo_root), output
+                manifest, DetectorConfig(), "protocol.json", str(repo_root), output,
+                authorization_commit="a" * 40,
             )
 
     assert Path(preflight.call_args.args[2]) == PROJECT_ROOT
@@ -281,7 +286,7 @@ def test_preflight_failure_no_instrument_processing(tmp_path):
         patch("runner.run_discovery.compute_all_statistics") as mock_stats,
     ):
         with pytest.raises(AuthorizationError):
-            run_discovery(manifest, config, "protocol.json", ".", out_dir)
+            run_discovery(manifest, config, "protocol.json", ".", out_dir, authorization_commit="a" * 40)
 
     mock_proc.assert_not_called()
     mock_stats.assert_not_called()
@@ -308,7 +313,7 @@ def test_failure_artifact_has_environment_and_checks(tmp_path):
     ):
         mock_preflight.return_value = _make_preflight()
         with pytest.raises(RuntimeError):
-            run_discovery(manifest, config, "protocol.json", ".", out_dir)
+            run_discovery(manifest, config, "protocol.json", ".", out_dir, authorization_commit="a" * 40)
 
     failed_dir = os.path.join(out_dir, "failed")
     sub = os.listdir(failed_dir)
@@ -318,7 +323,7 @@ def test_failure_artifact_has_environment_and_checks(tmp_path):
         data = json.load(f)
     assert "environment" in data
     assert "completed_checks" in data
-    assert len(data["completed_checks"]) == 11
+    assert len(data["completed_checks"]) == len(_make_preflight().checks_passed)
 
 
 def test_failure_artifact_no_statistical_fields_recursive(tmp_path):
@@ -334,7 +339,7 @@ def test_failure_artifact_no_statistical_fields_recursive(tmp_path):
         patch("runner.run_discovery.run_preflight", side_effect=AuthorizationError("fail")),
     ):
         with pytest.raises(AuthorizationError):
-            run_discovery(manifest, config, "protocol.json", ".", out_dir)
+            run_discovery(manifest, config, "protocol.json", ".", out_dir, authorization_commit="a" * 40)
 
     failed_dir = os.path.join(out_dir, "failed")
     sub = os.listdir(failed_dir)
@@ -383,7 +388,7 @@ def test_4n_cardinality_check(tmp_path):
             return good_results[inst]
         mock_proc.side_effect = _mock
         with pytest.raises(AuthorizationError, match="4N cardinality"):
-            run_discovery(manifest, config, "protocol.json", ".", out_dir)
+            run_discovery(manifest, config, "protocol.json", ".", out_dir, authorization_commit="a" * 40)
     mock_stats.assert_not_called()
     report = _assert_only_failure(out_dir, manifest.experiment_id)
     assert report["failing_check"] == "instrument_bundle_validation"
@@ -400,7 +405,7 @@ def test_statistics_failure_writes_only_failure_report(tmp_path):
         patch("runner.run_discovery.compute_all_statistics", side_effect=RuntimeError("opaque")),
     ):
         with pytest.raises(RuntimeError, match="opaque"):
-            run_discovery(manifest, DetectorConfig(), "protocol.json", ".", output)
+            run_discovery(manifest, DetectorConfig(), "protocol.json", ".", output, authorization_commit="a" * 40)
 
     report = _assert_only_failure(output, manifest.experiment_id)
     assert report["failing_check"] == "statistics_computation"
@@ -418,7 +423,7 @@ def test_artifact_construction_failure_writes_only_failure_report(tmp_path):
         patch("runner.run_discovery.build_run_manifest", side_effect=RuntimeError("opaque")),
     ):
         with pytest.raises(RuntimeError, match="opaque"):
-            run_discovery(manifest, DetectorConfig(), "protocol.json", ".", output)
+            run_discovery(manifest, DetectorConfig(), "protocol.json", ".", output, authorization_commit="a" * 40)
 
     report = _assert_only_failure(output, manifest.experiment_id)
     assert report["failing_check"] == "artifact_construction"
@@ -440,7 +445,7 @@ def test_publication_failure_writes_only_failure_report(tmp_path):
         patch("runner.run_discovery.publish", side_effect=RuntimeError("opaque")),
     ):
         with pytest.raises(RuntimeError, match="opaque"):
-            run_discovery(manifest, DetectorConfig(), "protocol.json", ".", output)
+            run_discovery(manifest, DetectorConfig(), "protocol.json", ".", output, authorization_commit="a" * 40)
 
     report = _assert_only_failure(output, manifest.experiment_id)
     assert report["failing_check"] == "publication"
@@ -457,5 +462,6 @@ def test_failure_report_error_does_not_mask_original_exception(tmp_path):
     ):
         with pytest.raises(RuntimeError, match="original failure"):
             run_discovery(
-                manifest, DetectorConfig(), "protocol.json", ".", str(tmp_path / "output")
+                manifest, DetectorConfig(), "protocol.json", ".", str(tmp_path / "output"),
+                authorization_commit="a" * 40,
             )

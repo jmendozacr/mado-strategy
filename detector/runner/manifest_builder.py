@@ -41,6 +41,8 @@ LAYER2_IMPLEMENTATION_COMMIT = "1dd0acc"
 CAUSAL_SPEC_COMMIT = "1f412e3675909a4da0046a1e72c45f6164acd232"
 CAUSAL_SPEC_AMENDMENT_COMMIT = "8f1906e"
 CAUSAL_IMPLEMENTATION_COMMIT = "2419381"
+CANONICAL_MANIFEST_ARTIFACT_PATH = "authorization_manifest.json"
+
 PROTECTED_PATHS = (
     "detector/ingestion/loader.py", "detector/ingestion/pairing.py",
     "detector/core/pairing_table.py", "detector/core/candle.py",
@@ -60,6 +62,10 @@ PROTECTED_PATHS = (
     "detector/uv.lock", "detector/pyproject.toml", "detector/.importlinter",
     "detector/tests/",
 )
+assert not any(
+    CANONICAL_MANIFEST_ARTIFACT_PATH == p or CANONICAL_MANIFEST_ARTIFACT_PATH.startswith(p)
+    for p in PROTECTED_PATHS
+), f"{CANONICAL_MANIFEST_ARTIFACT_PATH!r} must not be covered by any protected path"
 _EXCLUDED_PROTECTED_PATHS = (
     "detector/viz/", "detector/cli.py", "detector/composite/mss.py",
     "detector/primitives/liquidity.py", "detector/backtest/metrics.py",

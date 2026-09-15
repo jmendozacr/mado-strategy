@@ -43,6 +43,7 @@ def build_run_manifest(
     return {
         **frozen_fields,
         "head_commit": receipt.head_commit,
+        "authorization_commit": receipt.authorization_commit,
         "manifest_sha256": receipt.manifest_sha256,
         "protocol_sha256": receipt.protocol_sha256,
         "numpy_version": np.__version__,

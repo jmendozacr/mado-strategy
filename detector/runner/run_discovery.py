@@ -38,6 +38,7 @@ class AuthorizationReceipt:
     head_commit: str
     manifest_sha256: str
     protocol_sha256: str
+    authorization_commit: str
     checks_passed: tuple[str, ...]
     instrument_results: tuple[InstrumentResult, ...]
 
@@ -49,6 +50,8 @@ def run_discovery(
     repo_root: str,
     output_dir: str,
     on_progress: Callable[[ProgressEvent, dict], None] | None = None,
+    *,
+    authorization_commit: str,
 ) -> str:
     run_started_utc = datetime.now(timezone.utc).isoformat()
     preflight: PreflightResult | None = None
@@ -66,7 +69,9 @@ def run_discovery(
             raise ReproducibilityError(f"output directory already exists: {final_path}")
 
         failing_check = "preflight"
-        preflight = run_preflight(manifest, protocol_path, str(project_root))
+        preflight = run_preflight(
+            manifest, protocol_path, str(project_root), authorization_commit=authorization_commit
+        )
         failing_check = "runtime_config"
         if config != preflight.reconstructed_config:
             raise AuthorizationError("runtime DetectorConfig differs from authorized population.config")
@@ -104,6 +109,7 @@ def run_discovery(
             head_commit=preflight.head_commit,
             manifest_sha256=preflight.manifest_sha256,
             protocol_sha256=preflight.protocol_sha256,
+            authorization_commit=preflight.authorization_commit,
             checks_passed=preflight.checks_passed + ("instrument_bundle_validation",),
             instrument_results=tuple(instrument_results),
         )

@@ -133,6 +133,7 @@ def test_run_manifest_contains_every_frozen_manifest_field_verbatim():
         head_commit="h" * 40,
         manifest_sha256=manifest_sha256(manifest),
         protocol_sha256=manifest.protocol_artifact_sha256,
+        authorization_commit="a" * 40,
         checks_passed=("all",),
         instrument_results=(),
     )
@@ -162,7 +163,7 @@ def test_protocol_byte_length_fails_with_internally_consistent_hash(tmp_path):
 
     with patch("runner.preflight.environment_record", return_value={}):
         with pytest.raises(Exception, match="byte length"):
-            run_preflight(_manifest(), str(changed_path), str(tmp_path))
+            run_preflight(_manifest(), str(changed_path), str(tmp_path), authorization_commit="a" * 40)
 
 
 def test_preflight_rejects_same_length_self_hashed_alternate_protocol(tmp_path):
@@ -191,7 +192,7 @@ def test_preflight_rejects_same_length_self_hashed_alternate_protocol(tmp_path):
         patch("runner.preflight.get_head_commit", return_value="h" * 40),
     ):
         with pytest.raises(Exception, match="protocol SHA-256"):
-            run_preflight(manifest, str(protocol_path), str(tmp_path))
+            run_preflight(manifest, str(protocol_path), str(tmp_path), authorization_commit="a" * 40)
 
 
 @pytest.mark.parametrize(
@@ -214,7 +215,7 @@ def test_preflight_rejects_false_frozen_lineage(field_name):
 
     with patch("runner.preflight.environment_record", return_value={}):
         with pytest.raises(Exception, match="frozen lineage"):
-            run_preflight(manifest, str(PROTOCOL_PATH), str(DETECTOR_ROOT))
+            run_preflight(manifest, str(PROTOCOL_PATH), str(DETECTOR_ROOT), authorization_commit="a" * 40)
 
 
 def test_preflight_rejects_false_statistical_spec_chain_and_hash():
@@ -231,12 +232,14 @@ def test_preflight_rejects_false_statistical_spec_chain_and_hash():
                 ),
                 str(PROTOCOL_PATH),
                 str(DETECTOR_ROOT),
+                authorization_commit="a" * 40,
             )
         with pytest.raises(Exception, match="spec SHA-256"):
             run_preflight(
                 replace(manifest, spec_sha256="0" * 64),
                 str(PROTOCOL_PATH),
                 str(DETECTOR_ROOT),
+                authorization_commit="a" * 40,
             )
 
 
@@ -250,16 +253,22 @@ def test_preflight_recomputes_canonical_statistical_spec_hash(tmp_path):
 
     with patch("runner.preflight.environment_record", return_value={}):
         with pytest.raises(Exception, match="canonical statistical spec SHA-256"):
-            run_preflight(_manifest(), str(protocol_path), str(tmp_path))
+            run_preflight(_manifest(), str(protocol_path), str(tmp_path), authorization_commit="a" * 40)
 
 
 def test_preflight_validates_supplied_layer_commit_existence_and_order():
+    from runner.serialization import canonical_json, to_json_value
+
     manifest = _manifest()
     project_root = str(PROJECT_ROOT)
+    auth_commit = "a" * 40
+    # Compute bytes that exactly match the runtime serialization so the binding check passes.
+    runtime_bytes = canonical_json(to_json_value(manifest))
     with (
         patch("runner.preflight.environment_record", return_value={}),
         patch("runner.preflight.verify_commit_exists") as commit_exists,
         patch("runner.preflight.verify_is_ancestor") as is_ancestor,
+        patch("runner.preflight.read_committed_blob", return_value=runtime_bytes),
         patch("runner.preflight.verify_no_diff"),
         patch("runner.preflight.verify_no_working_tree_diff"),
         patch("runner.preflight.verify_no_staged_diff"),
@@ -268,14 +277,17 @@ def test_preflight_validates_supplied_layer_commit_existence_and_order():
         patch("runner.preflight._validate_datasets"),
         patch("runner.preflight.get_head_commit", return_value="h" * 40),
     ):
-        run_preflight(manifest, str(PROTOCOL_PATH), str(DETECTOR_ROOT))
+        run_preflight(manifest, str(PROTOCOL_PATH), str(DETECTOR_ROOT), authorization_commit=auth_commit)
 
     assert commit_exists.call_args_list == [
+        call(auth_commit, project_root),
         call(manifest.layer2_implementation_commit, project_root),
         call(manifest.layer3_implementation_commit, project_root),
         call(manifest.measurement_execution_baseline_commit, project_root),
     ]
     assert is_ancestor.call_args_list == [
+        call(manifest.measurement_execution_baseline_commit, project_root, auth_commit),
+        call(auth_commit, project_root),
         call(
             manifest.layer2_implementation_commit,
             project_root,
@@ -301,10 +313,23 @@ def test_preflight_validates_supplied_layer_commit_existence_and_order():
     ),
 )
 def test_preflight_requires_distinct_ordered_layer_and_baseline_commits(overrides):
-    with patch("runner.preflight.environment_record", return_value={}):
+    from runner.serialization import canonical_json, to_json_value
+    manifest = replace(_manifest(), **overrides)
+    runtime_bytes = canonical_json(to_json_value(manifest))
+    with (
+        patch("runner.preflight.environment_record", return_value={}),
+        patch("runner.preflight.verify_commit_exists"),
+        patch("runner.preflight.verify_is_ancestor"),
+        patch("runner.preflight.read_committed_blob", return_value=runtime_bytes),
+        patch("runner.preflight.verify_no_diff"),
+        patch("runner.preflight.verify_no_working_tree_diff"),
+        patch("runner.preflight.verify_no_staged_diff"),
+        patch("runner.preflight.verify_no_untracked"),
+    ):
         with pytest.raises(Exception, match="distinct"):
             run_preflight(
-                replace(_manifest(), **overrides),
+                manifest,
                 str(PROTOCOL_PATH),
                 str(DETECTOR_ROOT),
+                authorization_commit="a" * 40,
             )
