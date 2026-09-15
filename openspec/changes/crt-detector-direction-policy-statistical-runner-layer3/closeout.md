@@ -25,40 +25,53 @@ Implement the full discovery runner (`detector/runner/`) that:
 |---|---|---|
 | Layer-3 implementation | `86908bc` | `feat(detector): implement statistical runner layer 3` |
 | Test-only property fix | `4111691` | `test(detector): disambiguate alignment property signals` |
-| **Baseline B (this commit)** | _(contains this document)_ | `docs(sdd): close out layer 3 statistical runner` |
+| ~~Original baseline B~~ | ~~`b76a251`~~ | ~~`docs(sdd): close out layer 3 statistical runner`~~ |
+| Authorization-binding correction | `12da590` | `fix(detector): bind manifest to authorization commit` |
+| **Replacement baseline B (this commit)** | _(contains this document)_ | `docs(sdd): rebaseline layer 3 statistical runner` |
 
-The commit containing this document is **measurement execution baseline B** as required by REQ-STAT-43 step (3). Its hash is authoritative; it is not pre-recorded here to avoid a self-referential hash.
+`b76a251` was initially recorded as baseline B but is superseded because `12da590` changed
+protected runner code after it — `detector/runner/` is a protected path. Baseline B must
+post-date all protected-code changes; `12da590` is therefore the last code commit that
+qualifies as the anchor for the new B.
+
+The authorization-binding correction (`12da590`) adds only authorization and provenance
+enforcement around the runner. It does not alter direction-policy semantics, statistics,
+OOS methodology, candidate generation, or the measured Layer-1 cost path.
+
+The commit containing this document is **measurement execution baseline B** as required by
+REQ-STAT-43 step (3). Its hash is authoritative; it is not pre-recorded here to avoid a
+self-referential hash.
 
 ---
 
 ## Verification Evidence
 
-All evidence collected on the working tree at commit `4111691` (immediately before this closeout commit).
+All evidence collected on the committed tree at `12da590` (immediately before this closeout commit).
 
 ### Full detector test suite
 
 ```
-1028 passed in 202.26s
+1045 passed in 275.33s (0:04:35)
 ```
 
-No failures. The previously documented sole failure
-(`tests/property/test_no_lookahead.py::test_alignment_detection_has_no_lookahead`) was diagnosed as a
-test-key collision — not a production defect — and corrected in commit `4111691` by adding `origin_index`
-to the `_key` tuple. No production code was modified.
+No failures. Command: `.venv/Scripts/python.exe -m pytest --tb=short -q --basetemp=.pytest-tmp-baseline-b`
+
+The test count grew from 1028 (original B) to 1045 because `12da590` added
+`detector/tests/test_runner_authorization_binding.py` (17 new behavioral tests covering
+REQ-STAT-44/46) and expanded authorization coverage in four existing test files.
 
 ### Import-linter
 
 ```
 Contracts: 11 kept, 0 broken
+Analyzed 86 files, 242 dependencies
 ```
 
 All layering contracts pass, including `upstream layers must not import the Layer-3 runner`.
 
 ### Offline reproducibility verifier (REQ-STAT-56)
 
-```
-28 passed (tests/test_runner_verify_reproducibility.py)
-```
+Included in the 1045 full-suite count above (`tests/test_runner_verify_reproducibility.py`).
 
 The verifier is confirmed isolated from detection/simulation modules and enforces: non-empty
 `experiment_id`, exact four-artifact inventory, valid 64-character SHA-256 hex hash for every
@@ -68,6 +81,18 @@ and canonical manifest comparison with only `run_started_utc`/`run_finished_utc`
 ---
 
 ## REQ-STAT-59 Synthetic Performance Qualification
+
+### Rerun status
+
+The qualification was **not rerun** for this replacement baseline. The authorization-binding
+correction (`12da590`) adds only authorization and provenance enforcement; it does not touch
+`selection/bootstrap.py`, the Layer-1 statistics path, or any code on the measured algorithmic
+cost path. Because the measured Layer-1 code path did not change, the measurement evidence and the
+human's prior operational acceptance remain applicable.
+
+The report artifact at `detector/tests/qualification/req_stat_59_report.json` is unchanged.
+SHA-256 verified at replacement-B time: `f821099afcebcfeddb6a7ccab8164157e6a537147fb22f74748030efd9fa70ff`
+(identical to the value recorded under original baseline B).
 
 ### Attestation
 
@@ -130,12 +155,19 @@ operational cost. This acceptance is the prerequisite for creating baseline B pe
 
 No real OHLC data, no real trade outcomes, no real bootstrap results, and no real discovery
 statistics were loaded, executed, inspected, or used at any stage of the Layer-3 implementation,
-testing, or qualification. All test fixtures are synthetic. Real-data discovery execution remains
-unauthorized until authorization commit A is created.
+testing, qualification, authorization-binding correction, or replacement-B closeout. All test
+fixtures are synthetic. Real-data discovery execution remains unauthorized. Authorization
+commit A is a technical prerequisite for execution, but creating A does not itself constitute
+authorization — real-data execution requires separate explicit human approval.
+
+Authorization commit A (committing `authorization_manifest.json`) does not itself require
+real-data access — only runtime preflight execution does.
 
 ---
 
 ## Status
 
-Layer-3 implementation is **CLOSED**. Baseline B is established by the commit containing this
-document. The next required gate is authorization commit A.
+Layer-3 implementation is **CLOSED**. Replacement baseline B is established by the commit
+containing this document (original `b76a251` superseded — see Commits table above). The next
+required gate is generation and commit of `authorization_manifest.json` as authorization commit A,
+which requires no real-data access.
