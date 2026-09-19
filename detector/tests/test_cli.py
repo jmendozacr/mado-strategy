@@ -623,3 +623,86 @@ def test_htf_key_levels_concatenate_fvg_and_ict_order_block_sources(tmp_path):
     htf_key_levels = tag_alignment_spy.call_args.kwargs["htf_key_levels"]
     assert fake_fvg_key_level in htf_key_levels
     assert fake_ict_key_level in htf_key_levels
+
+
+# --- REQ-74: --forex-policy CLI flag ---
+
+
+def test_forex_policy_backward_compat(tmp_path):
+    """REQ-74.1: without --forex-policy, output is byte-identical to pre-change."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(htf_path)
+
+    out_baseline = tmp_path / "baseline"
+    out_with_flag_absent = tmp_path / "no_flag"
+
+    exit_code_1 = main(
+        ["--csv", str(ltf_path), "--symbol", "EURUSD",
+         "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+         "--output-dir", str(out_baseline)]
+    )
+    exit_code_2 = main(
+        ["--csv", str(ltf_path), "--symbol", "EURUSD",
+         "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+         "--output-dir", str(out_with_flag_absent)]
+    )
+
+    assert exit_code_1 == 0
+    assert exit_code_2 == 0
+    assert (out_baseline / "detections.csv").read_text() == (out_with_flag_absent / "detections.csv").read_text()
+
+
+def test_forex_policy_filters_to_execution_window(tmp_path):
+    """REQ-74.2: --forex-policy filters aligned_signals through
+    detect_forex_crt_signals — only qualifying rows survive."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(htf_path)
+    output_dir = tmp_path / "out"
+
+    from alignment.forex_broker_clock import detect_forex_crt_signals as real_detect
+    from core.forex_crt_context import ForexCRTContext, ForexCRTSignal
+
+    with mock.patch(
+        "cli.detect_forex_crt_signals" if hasattr(cli, "detect_forex_crt_signals") else
+        "alignment.forex_broker_clock.detect_forex_crt_signals",
+        return_value=[],
+    ):
+        exit_code = main(
+            ["--csv", str(ltf_path), "--symbol", "EURUSD",
+             "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+             "--forex-policy",
+             "--output-dir", str(output_dir)]
+        )
+
+    assert exit_code == 0
+    csv_text = (output_dir / "detections.csv").read_text()
+    data_rows = [r for r in csv_text.splitlines()[1:] if r.strip()]
+    alignment_rows = [r for r in data_rows if r.split(",")[1] == "alignment"]
+    assert alignment_rows == []
+
+
+def test_forex_policy_no_qualifying_signals(tmp_path):
+    """REQ-74.3: --forex-policy with data that yields no qualifying
+    signals -> header-only CSV for alignment rows."""
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    _write_valid_csv(ltf_path)
+    _write_daily_csv(htf_path)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        ["--csv", str(ltf_path), "--symbol", "EURUSD",
+         "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+         "--forex-policy", "--types", "alignment",
+         "--output-dir", str(output_dir)]
+    )
+
+    assert exit_code == 0
+    csv_text = (output_dir / "detections.csv").read_text()
+    data_rows = [r for r in csv_text.splitlines()[1:] if r.strip()]
+    alignment_rows = [r for r in data_rows if r.split(",")[1] == "alignment"]
+    assert alignment_rows == []

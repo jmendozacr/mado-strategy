@@ -87,6 +87,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--partial-fraction", default=None,
         help="Override BacktestConfig.partial_fraction (position-size fraction closing at the equilibrium level, range [0.0, 1.0))",
     )
+    parser.add_argument(
+        "--forex-policy",
+        action="store_true",
+        default=False,
+        help="Filter output to 1 AM CRT Forex signals in the 02:00–04:00 broker-clock execution window.",
+    )
     return parser
 
 
@@ -147,6 +153,15 @@ def main(argv: list[str] | None = None) -> int:
 
     config = DetectorConfig(backtest=backtest_config)
     detections = _detect_all(ltf_series, htf_series, daily_series, config)
+    if args.forex_policy and detections.aligned_signals is not None and htf_series is not None:
+        from alignment.forex_broker_clock import detect_forex_crt_signals
+        detections = replace(
+            detections,
+            aligned_signals=[
+                fs.aligned_signal
+                for fs in detect_forex_crt_signals(detections.aligned_signals, htf_series, ltf_series)
+            ],
+        )
     ltf_swings = detections.swings  # captured before the filter chain below may narrow/clear detections.swings
     detections = _filter_by_date_range(detections, ltf_series, htf_series, from_date, to_date)
     detections = _filter_by_session(detections, ltf_series, htf_series, session, config.kill_zone)
