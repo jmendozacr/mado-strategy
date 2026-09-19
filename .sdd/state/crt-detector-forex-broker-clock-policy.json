@@ -1,0 +1,11 @@
+{
+  "triage": "M",
+  "phase": "apply",
+  "spec_status": "signed",
+  "slices": true,
+  "plan_verify": "none",
+  "verify_final": "none",
+  "arch_audit": "none",
+  "outcome": "pending",
+  "viz_url": "none"
+}
