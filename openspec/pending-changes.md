@@ -77,6 +77,21 @@ Non-gating usability findings from steward reckoning:
 - **[edge-case, S]** The partial-fires-then-remainder-never-resolves branch (`detector/backtest/simulate.py:353-361`, open trade with populated `partial_*` fields) has ZERO test coverage — manually confirmed correct (outcome=open, exit fields None, partial fields populated) but not covered by any signed REQ-38/68 scenario. REQ-49.5's "distinct from the open-trades count" wording is ambiguous about whether this state should double-count in both `open trades` and `partial exits` metrics_summary lines — the implementation counts it in both, untested. Real-data evidence shows this state IS reachable (DXYm: 1 open trade among 1063 partial exits). Fix: add a dedicated unit test + clarify REQ-49.5's double-count intent explicitly.
 - **[outcome-check]** Remaining 40%→~75% winrate gap vs Mado's self-reported performance: leading hypothesis is discretionary selectivity (Mado hand-picking a fraction of what the detector considers valid) — NOT session timing (confirmed already killzone-matched, see the 2026-09-05 discovery above) and NOT confluence-gate crediting (tested twice, no edge found, see the two 2026-09-03/04 discoveries above). Candidate future change, not yet formally scoped — surface at next planning session if the user wants to pursue it.
 
+## From `crt-detector-forex-broker-clock-policy` (archived 2026-09-20)
+
+Non-blocking followups from verify-final (pass-with-followups verdict):
+
+- **[test-isolation, XS]** REQ-73.3's wrong-H4-hour exclusion path has no standalone test where the M15 anchor is inside the 02:00–04:00 window but the enclosing H4 candle is not 01:00. The predicate `is_london_crt_h4` is independently unit-tested and the bisect derivation is covered by REQ-73.7, so this is a coverage nit only. `detector/tests/test_forex_broker_clock.py`.
+- **[test-coverage, XS]** `test_forex_policy_filters_to_execution_window` (REQ-74.2) mocks `detect_forex_crt_signals` to verify CLI wiring only; end-to-end filtering logic is covered by `test_forex_broker_clock.py`. Adds a second mock-vs-real gap alongside the pre-existing REQ-74-pattern. `detector/tests/test_cli.py`.
+- **[schema, S]** `ForexCRTContext` fields (enclosing H4 index, Asia range high/low/midpoint, priority flag) are computed but not surfaced in `detections.csv` when `--forex-policy` is active. Surfacing them requires extending the CSV schema (new columns, reopens REQ-24). Suggested future change: `crt-detector-forex-policy-csv-context`.
+
+Intentionally deferred policies (named in spec, not tracked here as bugs — each is a planned future change):
+- Profiles: `crt-detector-forex-1am-profiles`
+- HTF order flow + SMT: `crt-detector-forex-order-flow-gate`
+- Daily narrative gate: `crt-detector-forex-daily-narrative`
+- Target policy (3R vs. opposite-range conflict resolution): `crt-detector-forex-target-policy`
+- 01:00–02:00 and 04:00–05:00 window activation: pending evidence
+
 ## From `docs/` video-capture work
 
 None currently pending — charters 1-5's audit pass is complete.

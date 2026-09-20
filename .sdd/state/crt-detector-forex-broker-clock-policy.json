@@ -1,11 +1,11 @@
 {
   "triage": "M",
-  "phase": "apply",
+  "phase": "archive",
   "spec_status": "signed",
   "slices": true,
   "plan_verify": "none",
-  "verify_final": "none",
+  "verify_final": "pass-with-followups",
   "arch_audit": "none",
-  "outcome": "pending",
+  "outcome": "delivered-pending-activation",
   "viz_url": "none"
 }
