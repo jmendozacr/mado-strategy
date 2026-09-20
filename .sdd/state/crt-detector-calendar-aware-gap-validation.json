@@ -1,0 +1,13 @@
+{
+  "change": "crt-detector-calendar-aware-gap-validation",
+  "triage": "L",
+  "phase": "complete",
+  "spec_status": "signed",
+  "slices": true,
+  "plan_verify": "ready",
+  "verify_final": "pass",
+  "arch_audit": "none",
+  "outcome": "delivered-pending-activation",
+  "updated_at": "2026-09-16T22:30:00Z",
+  "viz_url": "none"
+}

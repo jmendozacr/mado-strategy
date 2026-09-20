@@ -1,5 +1,9 @@
 # Pending Changes
 
+## From `crt-detector-calendar-aware-gap-validation` (2026-09-16)
+
+- **Calendar authority activation outcome-check** (outcome-check, L) — separately authorize and implement activation only after complete admissible broker/server closure evidence covers the inclusive 2022-08-08 through 2026-08-19 window; record new lineage, refresh architecture/baseline review, complete sensitive-area re-triage, then verify that the resulting authority is usable and materially resolves the original preflight problem. The dormant contract intentionally leaves current preflight blocked.
+
 Follow-ups registered during planning that are correctly out of scope for their originating change, tracked here so they don't silently vanish. None of these are triaged or planned yet — they're a backlog, not commitments.
 
 ## From `crt-pattern-detector-v1`
