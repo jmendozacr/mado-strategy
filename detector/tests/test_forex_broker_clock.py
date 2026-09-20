@@ -269,3 +269,123 @@ def test_forex_context_asia_range_none_when_missing():
     assert ctx.asia_range_high is None
     assert ctx.asia_range_low is None
     assert ctx.asia_range_midpoint is None
+
+
+# --- REQ-77: nine_pm_metrics attachment ---
+
+def _htf_with_prior_and_asia(prior_high=1.110, prior_low=1.090):
+    """H4 series: 17:00 (prior to Asia), 21:00 (Asia/9PM), 01:00 (London)."""
+    return OHLCSeries(
+        candles=(
+            Candle(timestamp=datetime(2026, 9, 15, 17, 0),
+                   open=1.100, high=prior_high, low=prior_low, close=1.105),
+            Candle(timestamp=datetime(2026, 9, 15, 21, 0),
+                   open=1.105, high=1.108, low=1.102, close=1.107),
+            Candle(timestamp=datetime(2026, 9, 16, 1, 0),
+                   open=1.107, high=1.112, low=1.098, close=1.101),
+            Candle(timestamp=datetime(2026, 9, 16, 5, 0),
+                   open=1.101, high=1.115, low=1.095, close=1.110),
+        ),
+        instrument="EURUSD",
+        timeframe="H4",
+    )
+
+
+def _ltf_at_02h15():
+    return OHLCSeries(
+        candles=tuple(_candle(datetime(2026, 9, 16, 2, m)) for m in [0, 15, 30, 45]),
+        instrument="EURUSD",
+        timeframe="M15",
+    )
+
+
+def test_nine_pm_metrics_populated_when_prior_exists():
+    """REQ-77.1: 9PM candle at index 1 with predecessor at index 0 -> nine_pm_metrics not None."""
+    htf_series = _htf_with_prior_and_asia()
+    ltf_series = _ltf_at_02h15()
+    signal = AlignedSignal(
+        ltf_signal=_model1(anchor_index=1),
+        htf_context=_crt_range(start_index=2),
+        aligned="aligned",
+    )
+
+    result = detect_forex_crt_signals([signal], htf_series, ltf_series)
+
+    assert len(result) == 1
+    assert result[0].nine_pm_metrics is not None
+
+
+def test_nine_pm_metrics_none_when_asia_absent():
+    """REQ-77.2: No 21:00 candle in series -> nine_pm_metrics is None."""
+    htf_candles = (
+        Candle(timestamp=datetime(2026, 9, 16, 1, 0),
+               open=1.100, high=1.112, low=1.098, close=1.101),
+        Candle(timestamp=datetime(2026, 9, 16, 5, 0),
+               open=1.101, high=1.115, low=1.095, close=1.110),
+        Candle(timestamp=datetime(2026, 9, 16, 9, 0),
+               open=1.110, high=1.120, low=1.100, close=1.115),
+        Candle(timestamp=datetime(2026, 9, 16, 13, 0),
+               open=1.115, high=1.125, low=1.105, close=1.118),
+    )
+    htf_series = OHLCSeries(candles=htf_candles, instrument="EURUSD", timeframe="H4")
+    ltf_series = _ltf_at_02h15()
+    signal = AlignedSignal(
+        ltf_signal=_model1(anchor_index=1),
+        htf_context=_crt_range(start_index=0),
+        aligned="aligned",
+    )
+
+    result = detect_forex_crt_signals([signal], htf_series, ltf_series)
+
+    assert len(result) == 1
+    assert result[0].nine_pm_metrics is None
+
+
+def test_nine_pm_metrics_none_when_asia_at_index_zero():
+    """REQ-77.3: 9PM candle is the first in the series (index 0) -> no prior -> None."""
+    htf_candles = (
+        Candle(timestamp=datetime(2026, 9, 15, 21, 0),
+               open=1.100, high=1.110, low=1.090, close=1.105),
+        Candle(timestamp=datetime(2026, 9, 16, 1, 0),
+               open=1.105, high=1.115, low=1.095, close=1.108),
+        Candle(timestamp=datetime(2026, 9, 16, 5, 0),
+               open=1.108, high=1.118, low=1.098, close=1.112),
+        Candle(timestamp=datetime(2026, 9, 16, 9, 0),
+               open=1.112, high=1.122, low=1.102, close=1.116),
+    )
+    htf_series = OHLCSeries(candles=htf_candles, instrument="EURUSD", timeframe="H4")
+    ltf_series = _ltf_at_02h15()
+    signal = AlignedSignal(
+        ltf_signal=_model1(anchor_index=1),
+        htf_context=_crt_range(start_index=1),
+        aligned="aligned",
+    )
+
+    result = detect_forex_crt_signals([signal], htf_series, ltf_series)
+
+    assert len(result) == 1
+    assert result[0].nine_pm_metrics is None
+
+
+def test_nine_pm_metrics_correct_values():
+    """REQ-77.1 + REQ-76: verify metric values propagate correctly end-to-end."""
+    # prior H4 (17:00): high=1.110, low=1.090
+    # 9PM H4 (21:00): open=1.105, high=1.108, low=1.102, close=1.107
+    # 9PM high (1.108) < prior high (1.110) and 9PM low (1.102) > prior low (1.090) -> inside bar
+    htf_series = _htf_with_prior_and_asia(prior_high=1.110, prior_low=1.090)
+    ltf_series = _ltf_at_02h15()
+    signal = AlignedSignal(
+        ltf_signal=_model1(anchor_index=1),
+        htf_context=_crt_range(start_index=2),
+        aligned="aligned",
+    )
+
+    result = detect_forex_crt_signals([signal], htf_series, ltf_series)
+
+    m = result[0].nine_pm_metrics
+    assert m is not None
+    assert m.body_direction == "bullish"   # 1.107 > 1.105
+    assert m.extends_prior_high is False   # 1.108 <= 1.110
+    assert m.extends_prior_low is False    # 1.102 >= 1.090
+    assert m.is_inside_bar is True
+    assert m.prior_h4_index == 0

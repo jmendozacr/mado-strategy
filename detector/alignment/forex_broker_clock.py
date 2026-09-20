@@ -10,6 +10,7 @@ from core.broker_clock import (
 )
 from core.candle import OHLCSeries
 from core.forex_crt_context import ForexCRTContext, ForexCRTSignal
+from core.nine_pm_profile import NinePmMetrics, measure_nine_pm
 from alignment.htf_ltf import AlignedSignal
 
 
@@ -44,11 +45,12 @@ def detect_forex_crt_signals(
         if not in_execution_window(m15_anchor_ts):
             continue
 
-        context = _build_forex_context(enclosing_h4_idx, htf_series)
+        context, nine_pm_metrics = _build_forex_context(enclosing_h4_idx, htf_series)
         result.append(ForexCRTSignal(
             aligned_signal=signal,
             forex_context=context,
             priority=in_priority_subwindow(m15_anchor_ts),
+            nine_pm_metrics=nine_pm_metrics,
         ))
 
     return result
@@ -69,7 +71,7 @@ def find_asia_range_index(
 def _build_forex_context(
     enclosing_h4_idx: int,
     htf_series: OHLCSeries,
-) -> ForexCRTContext:
+) -> tuple[ForexCRTContext, NinePmMetrics | None]:
     london_crt_ts = htf_series.candles[enclosing_h4_idx].timestamp
     asia_idx = find_asia_range_index(london_crt_ts, htf_series)
     if asia_idx is None:
@@ -79,12 +81,25 @@ def _build_forex_context(
             asia_range_high=None,
             asia_range_low=None,
             asia_range_midpoint=None,
-        )
+        ), None
     asia_candle = htf_series.candles[asia_idx]
-    return ForexCRTContext(
+    context = ForexCRTContext(
         enclosing_h4_index=enclosing_h4_idx,
         asia_range_h4_index=asia_idx,
         asia_range_high=asia_candle.high,
         asia_range_low=asia_candle.low,
         asia_range_midpoint=(asia_candle.high + asia_candle.low) / 2,
     )
+    if asia_idx == 0:
+        return context, None  # no prior candle (REQ-77.3)
+    prior = htf_series.candles[asia_idx - 1]
+    nine_pm_metrics = measure_nine_pm(
+        nine_pm_open=asia_candle.open,
+        nine_pm_high=asia_candle.high,
+        nine_pm_low=asia_candle.low,
+        nine_pm_close=asia_candle.close,
+        prior_high=prior.high,
+        prior_low=prior.low,
+        prior_h4_index=asia_idx - 1,
+    )
+    return context, nine_pm_metrics

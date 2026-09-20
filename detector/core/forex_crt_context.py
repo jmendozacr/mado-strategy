@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
+from core.nine_pm_profile import NinePmMetrics
+
 
 @dataclass(frozen=True)
 class ForexCRTContext:
@@ -27,3 +29,4 @@ class ForexCRTSignal:
     aligned_signal: object  # AlignedSignal — typed as object to avoid circular import at core layer
     forex_context: ForexCRTContext
     priority: bool  # True when M15 anchor is in 03:00–04:00 [charter-9, 00:05:18]
+    nine_pm_metrics: NinePmMetrics | None  # None when 9 PM or prior H4 absent (REQ-77)
