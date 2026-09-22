@@ -136,6 +136,10 @@ def build_manifest(
                 f" maps to strategy_instrument {expected_strategy!r},"
                 f" but declared {entry.strategy_instrument!r}"
             )
+        if entry.strategy_instrument in covered:
+            raise ValueError(
+                f"inputs[{i}].strategy_instrument {entry.strategy_instrument!r} is a duplicate"
+            )
         if not entry.source_path:
             raise ValueError(f"inputs[{i}].source_path must not be empty")
         norm_sha = _require_sha256(entry.source_sha256, f"inputs[{i}].source_sha256")
@@ -148,6 +152,8 @@ def build_manifest(
             )
         )
         covered.add(entry.strategy_instrument)
+
+    normalized_inputs.sort(key=lambda e: e.strategy_instrument)
 
     missing = APPROVED_STRATEGY_INSTRUMENTS - covered
     if missing:
@@ -196,6 +202,8 @@ def build_manifest(
         raise ValueError("adapter_source_reference must not be empty")
 
     # Output hashes
+    if not output_hashes:
+        raise ValueError("output_hashes must not be empty")
     output_hashes = {
         name: _require_sha256(digest, f"output_hashes[{name!r}]")
         for name, digest in output_hashes.items()

@@ -150,6 +150,11 @@ def test_manifest_rejects_empty_inputs() -> None:
         _build(inputs=[])
 
 
+def test_manifest_rejects_duplicate_strategy_instrument() -> None:
+    with pytest.raises(ValueError, match="duplicate"):
+        _build(inputs=[_EURUSD_ENTRY, _EURUSD_ENTRY, _GBPUSD_ENTRY])
+
+
 # ---------------------------------------------------------------------------
 # Offer side / timezone / DST rule
 # ---------------------------------------------------------------------------
@@ -315,6 +320,11 @@ def test_manifest_rejects_empty_exclusion_ledger_reference() -> None:
         _build(exclusion_ledger_reference="")
 
 
+def test_manifest_rejects_empty_output_hashes() -> None:
+    with pytest.raises(ValueError, match="output_hashes"):
+        _build(output_hashes={})
+
+
 def test_manifest_rejects_empty_source_path() -> None:
     bad = InputManifestEntry(
         strategy_instrument="DUKASCOPY_EURUSD",
@@ -346,6 +356,13 @@ def test_output_hashes_stored_sorted_by_name() -> None:
     assert names == sorted(names)
 
 
+def test_inputs_sorted_by_strategy_instrument_regardless_of_caller_order() -> None:
+    # Pass GBPUSD first, then EURUSD — stored order must be alphabetical.
+    m = _build(inputs=[_GBPUSD_ENTRY, _EURUSD_ENTRY])
+    stored = [e.strategy_instrument for e in m.inputs]
+    assert stored == sorted(stored)
+
+
 # ---------------------------------------------------------------------------
 # Serialization
 # ---------------------------------------------------------------------------
@@ -358,6 +375,13 @@ def test_serialization_is_stable() -> None:
 def test_same_inputs_produce_identical_json() -> None:
     m1 = _build()
     m2 = _build()
+    assert serialize_manifest(m1) == serialize_manifest(m2)
+
+
+def test_serialization_stable_under_input_reorder() -> None:
+    # Input order [EUR, GBP] vs [GBP, EUR] must produce byte-identical JSON.
+    m1 = _build(inputs=[_EURUSD_ENTRY, _GBPUSD_ENTRY])
+    m2 = _build(inputs=[_GBPUSD_ENTRY, _EURUSD_ENTRY])
     assert serialize_manifest(m1) == serialize_manifest(m2)
 
 
