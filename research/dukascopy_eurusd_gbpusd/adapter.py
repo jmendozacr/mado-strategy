@@ -8,6 +8,7 @@ Boundary contract:
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum, auto
@@ -45,6 +46,18 @@ class OHLCVBar:
     volume: float
 
 
+# Approved strategy timeframes (minutes).  D1=1440, H4=240, M15=15.
+APPROVED_TIMEFRAMES: frozenset[int] = frozenset({15, 240, 1440})
+
+
+@dataclass(frozen=True)
+class OfflineDomain:
+    """UTC-bounded offline interval from a retained getOfflineTimeDomains receipt."""
+
+    start: datetime  # UTC-aware
+    end: datetime    # UTC-aware
+
+
 class GapStatus(Enum):
     """Gap classification result — fail-closed by default."""
 
@@ -68,13 +81,28 @@ def validate_rows(rows: list[MinuteRow]) -> list[MinuteRow]:
     """Validate a sequence of minute rows.
 
     - Zero-volume rows are preserved as observations.
-    - Raises ValueError on duplicate timestamps.
+    - Raises ValueError on duplicate timestamps, non-finite price/volume values,
+      or non-monotonic (backwards / equal) UTC timestamps.
     """
     seen: set[str] = set()
+    prev_utc: datetime | None = None
     for r in rows:
+        for name, value in (
+            ("open", r.open),
+            ("high", r.high),
+            ("low", r.low),
+            ("close", r.close),
+            ("volume", r.volume),
+        ):
+            if not math.isfinite(value):
+                raise ValueError(f"non-finite {name} in row {r.timestamp}: {value}")
         if r.timestamp in seen:
             raise ValueError(f"duplicate timestamp: {r.timestamp}")
         seen.add(r.timestamp)
+        utc = parse_eet_timestamp(r.timestamp)
+        if prev_utc is not None and utc <= prev_utc:
+            raise ValueError(f"non-monotonic timestamp: {r.timestamp}")
+        prev_utc = utc
     return rows
 
 
@@ -84,10 +112,16 @@ def aggregate_ohlcv(
 ) -> list[OHLCVBar]:
     """Aggregate minute rows into fixed-width OHLCV bars.
 
-    The first bar's timestamp is anchored to the EET session boundary of the
-    first row (converted to UTC). Subsequent bucket boundaries advance by
-    exactly ``timeframe_minutes`` from that anchor.
+    ``timeframe_minutes`` must be one of the approved strategy timeframes
+    (15=M15, 240=H4, 1440=D1). The first bar's timestamp is anchored to the
+    EET session boundary of the first row (converted to UTC). Subsequent bucket
+    boundaries advance by exactly ``timeframe_minutes`` from that anchor.
     """
+    if timeframe_minutes not in APPROVED_TIMEFRAMES:
+        raise ValueError(
+            f"timeframe {timeframe_minutes} not in approved set"
+            f" {sorted(APPROVED_TIMEFRAMES)}"
+        )
     if not rows:
         return []
 
@@ -130,15 +164,12 @@ def _close_bucket(timestamp: datetime, rows: list[MinuteRow]) -> OHLCVBar:
 def classify_gap(
     previous: datetime,
     current: datetime,
-    offline_domains: tuple,
+    offline_domains: Sequence[OfflineDomain],
 ) -> GapStatus:
     """Classify the gap between two consecutive UTC timestamps.
 
     Fail-closed: an unexplained gap (no matching offline-domain evidence) is
     always UNRESOLVED. Zero-volume rows are not evidence of closure.
-
-    ``offline_domains`` must be a tuple of objects with ``start`` and ``end``
-    attributes (UTC-aware datetimes) covering the missing interval.
     """
     expected_next = previous + _ONE_MINUTE
     if current <= expected_next:
@@ -151,9 +182,6 @@ def classify_gap(
     return GapStatus.UNRESOLVED
 
 
-def _domain_covers(domain: object, gap_start: datetime, gap_end: datetime) -> bool:
+def _domain_covers(domain: OfflineDomain, gap_start: datetime, gap_end: datetime) -> bool:
     """Return True when the offline domain interval fully covers the gap."""
-    try:
-        return domain.start <= gap_start and domain.end >= gap_end  # type: ignore[union-attr]
-    except AttributeError:
-        return False
+    return domain.start <= gap_start and domain.end >= gap_end
