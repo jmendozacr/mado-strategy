@@ -81,8 +81,10 @@ EXPECTED_OFFER_SIDE = "Bid"
 EXPECTED_TIMEZONE_LABEL = "EET"
 
 # Exact Dukascopy JForex 1-minute CSV column order.
+# The real export header is: Time (EET),Open,High,Low,Close,Volume<trailing-space>
+# parse_csv_bytes strips each column before comparison, so the trailing space is absorbed.
 DUKASCOPY_M1_COLUMNS: tuple[str, ...] = (
-    "Timestamp",
+    "Time (EET)",
     "Open",
     "High",
     "Low",

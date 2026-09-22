@@ -198,7 +198,8 @@ _GBPUSD_ID = resolve_identity("GBPUSD", "EET", "Bid", "/ext/gbpusd.csv", "placeh
 
 _EURUSD_ROW = b"2024.01.15 12:00:00,1.09525,1.09535,1.09490,1.09510,100.0"
 _GBPUSD_ROW = b"2024.01.15 12:00:00,1.27000,1.27100,1.26900,1.27050,80.0"
-_HEADER = b"Timestamp,Open,High,Low,Close,Volume"
+# Exact bytes as produced by the real JForex CSV export (trailing space on "Volume ").
+_HEADER = b"Time (EET),Open,High,Low,Close,Volume "
 
 
 def test_valid_eurusd_csv_header_accepted() -> None:
@@ -282,8 +283,23 @@ def test_blank_lines_skipped_silently() -> None:
 
 
 def test_dukascopy_m1_columns_constant_matches_header() -> None:
-    # Confirm the constant lines up with what the parser enforces.
-    assert DUKASCOPY_M1_COLUMNS == ("Timestamp", "Open", "High", "Low", "Close", "Volume")
+    # Confirm the constant matches the real JForex export (trailing space stripped at parse time).
+    assert DUKASCOPY_M1_COLUMNS == ("Time (EET)", "Open", "High", "Low", "Close", "Volume")
+
+
+def test_exact_jforex_header_with_trailing_volume_space_accepted() -> None:
+    # The real export has "Volume " (trailing space); the parser must accept it.
+    raw_header = b"Time (EET),Open,High,Low,Close,Volume "
+    csv_bytes = raw_header + b"\n" + _EURUSD_ROW + b"\n"
+    rows = parse_csv_bytes(csv_bytes, _EURUSD_ID)
+    assert len(rows) == 1
+
+
+def test_old_timestamp_header_rejected() -> None:
+    # Prior synthetic header ("Timestamp,...") no longer matches the real export.
+    csv_bytes = b"Timestamp,Open,High,Low,Close,Volume\n" + _EURUSD_ROW + b"\n"
+    with pytest.raises(ValueError, match="unexpected CSV header"):
+        parse_csv_bytes(csv_bytes, _EURUSD_ID)
 
 
 # ---------------------------------------------------------------------------
