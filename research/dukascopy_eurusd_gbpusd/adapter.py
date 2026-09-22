@@ -147,9 +147,18 @@ def resolve_identity(
 
 
 def verify_sha256(data: bytes, expected_hex: str) -> None:
-    """Raise ValueError when the SHA-256 digest of data does not match expected_hex."""
+    """Raise ValueError when the SHA-256 digest of data does not match expected_hex.
+
+    expected_hex is compared case-insensitively; Dukascopy documentation uses
+    uppercase hex.  A malformed expected_hex (wrong length or non-hex characters)
+    raises ValueError before any digest computation.
+    """
+    if len(expected_hex) != 64 or not all(c in "0123456789abcdefABCDEF" for c in expected_hex):
+        raise ValueError(
+            f"malformed expected_hex: must be 64 hexadecimal characters, got {expected_hex!r}"
+        )
     actual = hashlib.sha256(data).hexdigest()
-    if actual != expected_hex:
+    if actual != expected_hex.lower():
         raise ValueError(
             f"SHA-256 mismatch: expected {expected_hex!r}, got {actual!r}"
         )

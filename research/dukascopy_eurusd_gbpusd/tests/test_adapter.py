@@ -220,6 +220,26 @@ def test_sha256_is_deterministic() -> None:
     assert hashlib.sha256(_SAMPLE_BYTES).hexdigest() == _SAMPLE_SHA256
 
 
+def test_sha256_accepts_uppercase_expected_hash() -> None:
+    verify_sha256(_SAMPLE_BYTES, _SAMPLE_SHA256.upper())  # must not raise
+
+
+def test_sha256_accepts_mixed_case_expected_hash() -> None:
+    mixed = "".join(c.upper() if i % 2 == 0 else c for i, c in enumerate(_SAMPLE_SHA256))
+    verify_sha256(_SAMPLE_BYTES, mixed)  # must not raise
+
+
+def test_sha256_rejects_malformed_expected_hash_wrong_length() -> None:
+    with pytest.raises(ValueError, match="malformed expected_hex"):
+        verify_sha256(_SAMPLE_BYTES, "abc123")
+
+
+def test_sha256_rejects_malformed_expected_hash_non_hex() -> None:
+    non_hex = "g" * 64  # 'g' is not a valid hex character
+    with pytest.raises(ValueError, match="malformed expected_hex"):
+        verify_sha256(_SAMPLE_BYTES, non_hex)
+
+
 # ---------------------------------------------------------------------------
 # CSV header and parsing tests
 # ---------------------------------------------------------------------------
