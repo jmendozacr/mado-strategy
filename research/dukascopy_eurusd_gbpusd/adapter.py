@@ -267,29 +267,37 @@ def aggregate_ohlcv(
     if not rows:
         return []
 
-    td = timedelta(minutes=timeframe_minutes)
-    anchor = parse_eet_timestamp(rows[0].timestamp)
-
     bars: list[OHLCVBar] = []
-    bucket_start = anchor
+    bucket_start_utc: datetime | None = None
     bucket: list[MinuteRow] = []
 
     for r in rows:
         ts = parse_eet_timestamp(r.timestamp)
-        if ts >= bucket_start + td:
-            if bucket:
-                bars.append(_close_bucket(bucket_start, bucket))
-            # Advance the bucket boundary past ts.
-            while bucket_start + td <= ts:
-                bucket_start += td
+        current_bucket_start = _local_bucket_start(ts, timeframe_minutes)
+        if bucket_start_utc != current_bucket_start:
+            if bucket and bucket_start_utc is not None:
+                bars.append(_close_bucket(bucket_start_utc, bucket))
+            bucket_start_utc = current_bucket_start
             bucket = [r]
         else:
             bucket.append(r)
 
-    if bucket:
-        bars.append(_close_bucket(bucket_start, bucket))
+    if bucket and bucket_start_utc is not None:
+        bars.append(_close_bucket(bucket_start_utc, bucket))
 
     return bars
+
+
+def _local_bucket_start(timestamp_utc: datetime, timeframe_minutes: int) -> datetime:
+    """Return a UTC bucket boundary derived from Europe/Helsinki wall time."""
+    local = timestamp_utc.astimezone(_EET)
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed_minutes = (
+        local.replace(tzinfo=None) - midnight.replace(tzinfo=None)
+    ).total_seconds() // 60
+    bucket_minutes = int(elapsed_minutes // timeframe_minutes * timeframe_minutes)
+    local_start = midnight + timedelta(minutes=bucket_minutes)
+    return local_start.astimezone(timezone.utc)
 
 
 def _close_bucket(timestamp: datetime, rows: list[MinuteRow]) -> OHLCVBar:

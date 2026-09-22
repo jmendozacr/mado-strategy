@@ -110,6 +110,39 @@ def test_aggregate_approved_timeframes_are_accepted() -> None:
         assert len(bars) == 1
 
 
+def test_d1_boundary_tracks_spring_dst_midnight() -> None:
+    rows = [
+        row("2024.03.30 23:59:00"),
+        row("2024.03.31 00:00:00"),
+    ]
+    bars = aggregate_ohlcv(rows, timeframe_minutes=1440)
+    assert [bar.timestamp for bar in bars] == [
+        parse_eet_timestamp("2024.03.30 00:00:00"),
+        parse_eet_timestamp("2024.03.31 00:00:00"),
+    ]
+
+
+def test_d1_boundary_tracks_fall_dst_midnight() -> None:
+    rows = [
+        row("2024.10.26 23:59:00"),
+        row("2024.10.27 00:00:00"),
+    ]
+    bars = aggregate_ohlcv(rows, timeframe_minutes=1440)
+    assert [bar.timestamp for bar in bars] == [
+        parse_eet_timestamp("2024.10.26 00:00:00"),
+        parse_eet_timestamp("2024.10.27 00:00:00"),
+    ]
+
+
+def test_h4_boundary_uses_local_wall_clock() -> None:
+    rows = [row("2024.03.31 02:59:00"), row("2024.03.31 04:00:00")]
+    bars = aggregate_ohlcv(rows, timeframe_minutes=240)
+    assert [bar.timestamp for bar in bars] == [
+        parse_eet_timestamp("2024.03.31 00:00:00"),
+        parse_eet_timestamp("2024.03.31 04:00:00"),
+    ]
+
+
 def test_gap_explained_by_offline_domain() -> None:
     previous = parse_eet_timestamp("2024.01.15 12:00:00")
     current = parse_eet_timestamp("2024.01.15 14:00:00")
