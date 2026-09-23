@@ -8,6 +8,7 @@ Boundary contract:
 """
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -63,6 +64,145 @@ class GapStatus(Enum):
 
     UNRESOLVED = auto()
     EXPLAINED = auto()
+
+
+# ---------------------------------------------------------------------------
+# Identity contract
+# ---------------------------------------------------------------------------
+
+# Maps raw Dukascopy provider labels to experiment-local strategy identities.
+# The provider label is never silently substituted for the strategy identity.
+PROVIDER_TO_STRATEGY: dict[str, str] = {
+    "EURUSD": "DUKASCOPY_EURUSD",
+    "GBPUSD": "DUKASCOPY_GBPUSD",
+}
+
+EXPECTED_OFFER_SIDE = "Bid"
+EXPECTED_TIMEZONE_LABEL = "EET"
+
+# Exact Dukascopy JForex 1-minute CSV column order.
+DUKASCOPY_M1_COLUMNS: tuple[str, ...] = (
+    "Timestamp",
+    "Open",
+    "High",
+    "Low",
+    "Close",
+    "Volume",
+)
+
+
+@dataclass(frozen=True)
+class InputIdentity:
+    """Validated provenance for a single Dukascopy CSV input.
+
+    source_path and source_sha256 are metadata only; no file I/O is performed
+    by this module.  The SHA-256 is verified by the caller via verify_sha256()
+    before any parsing occurs.
+    """
+
+    provider_instrument: str  # raw Dukascopy label: "EURUSD" or "GBPUSD"
+    strategy_instrument: str  # experiment-local identity, never silently substituted
+    source_path: str          # external absolute path, recorded in the run manifest
+    source_sha256: str        # hex digest to be verified before parsing
+    timezone_label: str       # must be "EET"
+    offer_side: str           # must be "Bid"
+
+
+def resolve_identity(
+    provider_instrument: str,
+    timezone_label: str,
+    offer_side: str,
+    source_path: str,
+    source_sha256: str,
+) -> InputIdentity:
+    """Validate provider metadata and return a typed InputIdentity.
+
+    Rejects unknown instruments, wrong offer side, and wrong timezone label.
+    strategy_instrument is derived from PROVIDER_TO_STRATEGY; it is never
+    derived by guessing or substituting the provider label directly.
+    """
+    if provider_instrument not in PROVIDER_TO_STRATEGY:
+        raise ValueError(
+            f"unknown provider_instrument {provider_instrument!r};"
+            f" approved: {sorted(PROVIDER_TO_STRATEGY)}"
+        )
+    if offer_side != EXPECTED_OFFER_SIDE:
+        raise ValueError(
+            f"offer_side must be {EXPECTED_OFFER_SIDE!r}, got {offer_side!r}"
+        )
+    if timezone_label != EXPECTED_TIMEZONE_LABEL:
+        raise ValueError(
+            f"timezone_label must be {EXPECTED_TIMEZONE_LABEL!r}, got {timezone_label!r}"
+        )
+    return InputIdentity(
+        provider_instrument=provider_instrument,
+        strategy_instrument=PROVIDER_TO_STRATEGY[provider_instrument],
+        source_path=source_path,
+        source_sha256=source_sha256,
+        timezone_label=timezone_label,
+        offer_side=offer_side,
+    )
+
+
+def verify_sha256(data: bytes, expected_hex: str) -> None:
+    """Raise ValueError when the SHA-256 digest of data does not match expected_hex."""
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected_hex:
+        raise ValueError(
+            f"SHA-256 mismatch: expected {expected_hex!r}, got {actual!r}"
+        )
+
+
+def parse_csv_bytes(data: bytes, identity: InputIdentity) -> list[MinuteRow]:
+    """Parse Dukascopy 1-minute CSV bytes into a list of MinuteRow values.
+
+    Validates the exact DUKASCOPY_M1_COLUMNS header before reading any data
+    row.  Rejects malformed rows (wrong column count, non-numeric fields).
+    Zero-volume rows are preserved as observations; they are never dropped.
+    No file I/O occurs; source_path and source_sha256 on identity are metadata.
+    """
+    lines = data.decode("utf-8").splitlines()
+    if not lines:
+        raise ValueError("empty CSV: no header line")
+
+    header_cols = tuple(col.strip() for col in lines[0].split(","))
+    if header_cols != DUKASCOPY_M1_COLUMNS:
+        raise ValueError(
+            f"unexpected CSV header: expected {DUKASCOPY_M1_COLUMNS},"
+            f" got {header_cols}"
+        )
+
+    rows: list[MinuteRow] = []
+    for line_no, raw_line in enumerate(lines[1:], start=2):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(",")
+        if len(parts) != len(DUKASCOPY_M1_COLUMNS):
+            raise ValueError(
+                f"line {line_no}: expected {len(DUKASCOPY_M1_COLUMNS)} columns,"
+                f" got {len(parts)}"
+            )
+        timestamp = parts[0].strip()
+        try:
+            open_ = float(parts[1])
+            high = float(parts[2])
+            low = float(parts[3])
+            close = float(parts[4])
+            volume = float(parts[5])
+        except ValueError as exc:
+            raise ValueError(f"line {line_no}: non-numeric field — {exc}") from exc
+        rows.append(
+            MinuteRow(
+                timestamp=timestamp,
+                open=open_,
+                high=high,
+                low=low,
+                close=close,
+                volume=volume,
+            )
+        )
+    return validate_rows(rows)
 
 
 def parse_eet_timestamp(timestamp_str: str) -> datetime:
