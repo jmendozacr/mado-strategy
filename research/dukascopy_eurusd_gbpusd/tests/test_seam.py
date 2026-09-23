@@ -11,6 +11,7 @@ import pytest
 
 from core.candle import Candle, OHLCSeries
 from core.config import DetectorConfig
+from core.pairing_table import TIMEFRAME_DURATIONS
 from research.dukascopy_eurusd_gbpusd.adapter import OHLCVBar
 from research.dukascopy_eurusd_gbpusd.seam import (
     APPROVED_STRATEGY_INSTRUMENTS,
@@ -57,7 +58,7 @@ def _flat_bars(n: int, timeframe_minutes: int) -> list[OHLCVBar]:
 
 def _minimal_naive_series(instrument: str, timeframe: str, n: int = 60) -> OHLCSeries:
     """Flat-price naive-UTC OHLCSeries that generates no CRT signals."""
-    step = {"15M": timedelta(minutes=15), "H4": timedelta(hours=4), "D1": timedelta(days=1)}[timeframe]
+    step = {"15M": timedelta(minutes=15), "4H": timedelta(hours=4), "D": timedelta(days=1)}[timeframe]
     base = datetime(2023, 1, 2, 0, 0, 0)  # naive-UTC
     candles = tuple(
         Candle(timestamp=base + i * step, open=1.1, high=1.1, low=1.1, close=1.1)
@@ -107,10 +108,12 @@ def test_ohlcvbar_to_series_sets_instrument_and_timeframe():
     assert series.timeframe == "15M"
 
     series_h4 = ohlcvbar_to_series(bars[:3], _GBPUSD, 240)
-    assert series_h4.timeframe == "H4"
+    assert series_h4.timeframe == "4H"
 
     series_d1 = ohlcvbar_to_series(bars[:3], _GBPUSD, 1440)
-    assert series_d1.timeframe == "D1"
+    assert series_d1.timeframe == "D"
+    assert series_h4.timeframe in TIMEFRAME_DURATIONS
+    assert series_d1.timeframe in TIMEFRAME_DURATIONS
 
 
 def test_ohlcvbar_to_series_rejects_unknown_instrument():
@@ -200,8 +203,8 @@ def test_run_instrument_seam_flat_series_returns_empty_observations():
     """
     instrument = _EURUSD
     ltf = _minimal_naive_series(instrument, "15M", 60)
-    htf = _minimal_naive_series(instrument, "H4", 30)
-    daily = _minimal_naive_series(instrument, "D1", 20)
+    htf = _minimal_naive_series(instrument, "4H", 30)
+    daily = _minimal_naive_series(instrument, "D", 20)
 
     config = DetectorConfig()
     cutoff = datetime(2030, 1, 1)          # naive-UTC, far future
@@ -216,8 +219,8 @@ def test_run_instrument_seam_works_for_gbpusd():
     """Seam is not instrument-specific; GBPUSD series yields the same empty result."""
     instrument = _GBPUSD
     ltf = _minimal_naive_series(instrument, "15M", 60)
-    htf = _minimal_naive_series(instrument, "H4", 30)
-    daily = _minimal_naive_series(instrument, "D1", 20)
+    htf = _minimal_naive_series(instrument, "4H", 30)
+    daily = _minimal_naive_series(instrument, "D", 20)
 
     config = DetectorConfig()
     cutoff = datetime(2030, 1, 1)
@@ -237,8 +240,8 @@ def test_run_instrument_seam_result_carries_candidate_fingerprint():
     """SeamInstrumentResult.candidate_fingerprint must be a 64-char hex SHA-256."""
     instrument = _EURUSD
     ltf = _minimal_naive_series(instrument, "15M", 60)
-    htf = _minimal_naive_series(instrument, "H4", 30)
-    daily = _minimal_naive_series(instrument, "D1", 20)
+    htf = _minimal_naive_series(instrument, "4H", 30)
+    daily = _minimal_naive_series(instrument, "D", 20)
 
     result = run_instrument_seam(ltf, htf, daily, DetectorConfig(), datetime(2030, 1, 1), datetime(2030, 12, 31))
     fp = result.candidate_fingerprint
@@ -251,8 +254,8 @@ def test_run_instrument_seam_candidate_count_zero_for_no_signal_series():
     """Flat series produces no candidates; candidate_count must be 0."""
     instrument = _GBPUSD
     ltf = _minimal_naive_series(instrument, "15M", 60)
-    htf = _minimal_naive_series(instrument, "H4", 30)
-    daily = _minimal_naive_series(instrument, "D1", 20)
+    htf = _minimal_naive_series(instrument, "4H", 30)
+    daily = _minimal_naive_series(instrument, "D", 20)
 
     result = run_instrument_seam(ltf, htf, daily, DetectorConfig(), datetime(2030, 1, 1), datetime(2030, 12, 31))
     assert result.candidate_count == 0
@@ -262,8 +265,8 @@ def test_run_instrument_seam_fingerprint_deterministic():
     """Same flat series must produce the same fingerprint across two calls."""
     instrument = _EURUSD
     ltf = _minimal_naive_series(instrument, "15M", 60)
-    htf = _minimal_naive_series(instrument, "H4", 30)
-    daily = _minimal_naive_series(instrument, "D1", 20)
+    htf = _minimal_naive_series(instrument, "4H", 30)
+    daily = _minimal_naive_series(instrument, "D", 20)
 
     r1 = run_instrument_seam(ltf, htf, daily, DetectorConfig(), datetime(2030, 1, 1), datetime(2030, 12, 31))
     r2 = run_instrument_seam(ltf, htf, daily, DetectorConfig(), datetime(2030, 1, 1), datetime(2030, 12, 31))
@@ -285,8 +288,8 @@ def test_run_instrument_seam_cardinality_mismatch_raises_authorization_error():
 
     instrument = _EURUSD
     ltf = _minimal_naive_series(instrument, "15M", 60)
-    htf = _minimal_naive_series(instrument, "H4", 30)
-    daily = _minimal_naive_series(instrument, "D1", 20)
+    htf = _minimal_naive_series(instrument, "4H", 30)
+    daily = _minimal_naive_series(instrument, "D", 20)
 
     fake_candidate = MagicMock()
     fake_candidate.retest_index = 0
@@ -318,8 +321,8 @@ def test_run_instrument_seam_cardinality_holds_for_zero_candidate_result():
     """Zero candidates + zero trades + zero excluded = cardinality satisfied (no raise)."""
     instrument = _EURUSD
     ltf = _minimal_naive_series(instrument, "15M", 60)
-    htf = _minimal_naive_series(instrument, "H4", 30)
-    daily = _minimal_naive_series(instrument, "D1", 20)
+    htf = _minimal_naive_series(instrument, "4H", 30)
+    daily = _minimal_naive_series(instrument, "D", 20)
 
     # Flat series guarantees 0 candidates — this must not raise
     result = run_instrument_seam(ltf, htf, daily, DetectorConfig(), datetime(2030, 1, 1), datetime(2030, 12, 31))

@@ -45,7 +45,8 @@ from primitives.swing import detect_swings
 from runner.candidate_fingerprint import compute_candidate_fingerprint
 from runner.errors import AuthorizationError
 
-_TIMEFRAME_LABELS: dict[int, str] = {15: "15M", 240: "H4", 1440: "D1"}
+# These are detector-core labels.  Provider-facing artifact labels remain H4/D1.
+_TIMEFRAME_LABELS: dict[int, str] = {15: "15M", 240: "4H", 1440: "D"}
 
 
 @dataclass(frozen=True)
