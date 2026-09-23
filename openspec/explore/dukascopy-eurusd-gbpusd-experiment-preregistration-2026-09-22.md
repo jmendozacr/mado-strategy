@@ -45,6 +45,7 @@ The experiment remains descriptive and fail-closed. The approved contract is:
 7. Multiple-comparison, dependence, power treatment, reproducibility package, and stop conditions must be written before the statistical run.
 8. The frozen `+0.20R` MEI is inherited as a fixed economic-meaning threshold; it is not recalibrated for this two-instrument population.
 9. Each eligible 1 AM or 5 AM strategy window is a separate primary unit; dependence is clustered by instrument-day, and 1 AM/5 AM results are reported separately as secondary strata.
+10. Candidate admission is frozen at `2026-08-19T00:00:00Z`; outcome follow-up is frozen at `2026-08-19T20:30:00Z`. Both boundaries are recorded in the run manifest and the seam rejects caller-supplied values that differ from it.
 
 No statistical result will be generated before those decisions are approved and recorded.
 
@@ -57,6 +58,7 @@ No statistical result will be generated before those decisions are approved and 
 - Local personal, non-commercial use of retained files is approved.
 - The frozen `+0.20R` MEI is inherited without recalibration.
 - 1 AM and 5 AM windows are separate units with instrument-day clustering; setup-specific results are secondary.
+- Candidate and outcome boundaries are fixed at the stated UTC instants before outcome execution.
 
 ## Status
 

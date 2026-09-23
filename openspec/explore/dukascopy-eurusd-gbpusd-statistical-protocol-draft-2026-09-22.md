@@ -5,6 +5,8 @@ This is the signed operational protocol for the two-instrument preregistration. 
 ## Population and unit
 
 - Population: eligible EURUSD and GBPUSD strategy windows in 2022-08-08 through 2026-08-19.
+- Candidate admission cutoff: `2026-08-19T00:00:00Z`.
+- Outcome follow-up cutoff: `2026-08-19T20:30:00Z`.
 - Primary unit: each eligible 1 AM or 5 AM strategy window.
 - Dependence cluster: instrument-day; windows from the same instrument-day are not treated as independent clusters.
 - Confirmatory report: pooled EURUSD + GBPUSD, stratified by instrument in the same analysis.
@@ -55,6 +57,8 @@ Exclusion of more than 30% of eligible instrument-days blocks a confirmatory con
 ## Reproducibility package
 
 The run package must retain the exact input paths, file hashes, JForex/API versions, offline-domain probe hash, source commit, protocol hash, timezone conversion rule, exclusion ledger, RNG seed/version, code revision, and complete machine-readable outputs. Raw provider files remain outside the repository unless separately authorized.
+
+The candidate-admission and outcome-follow-up boundaries are manifest fields. The seam must reject a caller-supplied boundary that differs from the manifest.
 
 ## Signed ratification
 

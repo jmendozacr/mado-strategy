@@ -22,6 +22,10 @@ from runner.statistics_bridge import StatisticsResult, compute_all_statistics
 from selection.model import DirectionPolicyObservation
 
 from research.dukascopy_eurusd_gbpusd.adapter import APPROVED_TIMEFRAMES, OHLCVBar
+from research.dukascopy_eurusd_gbpusd.manifest import (
+    RunManifest,
+    validate_execution_boundaries,
+)
 
 # Production pipeline — read-only calls; no production module is modified
 from adapter.build import build_direction_policy_observations
@@ -41,7 +45,8 @@ from primitives.swing import detect_swings
 from runner.candidate_fingerprint import compute_candidate_fingerprint
 from runner.errors import AuthorizationError
 
-_TIMEFRAME_LABELS: dict[int, str] = {15: "15M", 240: "H4", 1440: "D1"}
+# These are detector-core labels.  Provider-facing artifact labels remain H4/D1.
+_TIMEFRAME_LABELS: dict[int, str] = {15: "15M", 240: "4H", 1440: "D"}
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,8 @@ def run_instrument_seam(
     config: DetectorConfig,
     candidate_cutoff_end_utc: datetime,
     outcome_followup_end_utc: datetime,
+    *,
+    manifest: RunManifest | None = None,
 ) -> SeamInstrumentResult:
     """Run the production CRT detection and evaluation pipeline on pre-loaded
     OHLCSeries objects and return a SeamInstrumentResult.
@@ -144,6 +151,10 @@ def run_instrument_seam(
     candidate_cutoff_end_utc and outcome_followup_end_utc must be naive-UTC
     datetimes per the production convention (adapter/cutoff.py).
     """
+    if manifest is not None:
+        validate_execution_boundaries(
+            manifest, candidate_cutoff_end_utc, outcome_followup_end_utc
+        )
     htf_fvgs = detect_fvgs(htf_series, config.fvg)
     htf_key_levels = list(fvg_to_key_levels(htf_fvgs))
 
