@@ -37,4 +37,15 @@ The canonical nomination result was `direction_policy_noncontradiction_v1`. Its 
 
 ## Interpretation boundary
 
-This is one exploratory outcome from the preregistered two-instrument research variant. It does not authorize a production code change, baseline replacement, instrument substitution, or a claim that the original three-instrument strategy has been reproduced. A second identical execution must reproduce the externally retained outcome artifact before this result is treated as reproducible evidence.
+This is an exploratory outcome from the preregistered two-instrument research variant. It does not authorize a production code change, baseline replacement, instrument substitution, or a claim that the original three-instrument strategy has been reproduced.
+
+## Reproducibility replay
+
+An identical second execution read the same retained inputs and derived bars, with the same manifest, cutoff boundaries, code revision, and frozen 10,000-replicate resampling plan. It wrote its result to the separate external directory `D:\Josué\Documents\dukascopy-run-2026-09-23-replay`.
+
+| Artifact | SHA-256 | Comparison |
+|---|---|---|
+| First outcome: `outcome-results-2026-09-22.json` | `5bc888d345b570dcb8b87c1ade558686392372f51a3d4cab3e0ae061d418e945` | Baseline |
+| Replay outcome: `outcome-results-2026-09-23-replay.json` | `5bc888d345b570dcb8b87c1ade558686392372f51a3d4cab3e0ae061d418e945` | Byte-identical |
+
+The replay therefore reproduced the retained outcome artifact exactly. This establishes reproducibility of this documented local run; it does not establish that Dukascopy publishes an immutable, versioned closure calendar or extend the finding beyond the approved EURUSD + GBPUSD research variant.
