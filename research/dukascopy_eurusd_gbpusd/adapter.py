@@ -81,8 +81,10 @@ EXPECTED_OFFER_SIDE = "Bid"
 EXPECTED_TIMEZONE_LABEL = "EET"
 
 # Exact Dukascopy JForex 1-minute CSV column order.
+# The real export header is: Time (EET),Open,High,Low,Close,Volume<trailing-space>
+# parse_csv_bytes strips each column before comparison, so the trailing space is absorbed.
 DUKASCOPY_M1_COLUMNS: tuple[str, ...] = (
-    "Timestamp",
+    "Time (EET)",
     "Open",
     "High",
     "Low",
@@ -145,9 +147,18 @@ def resolve_identity(
 
 
 def verify_sha256(data: bytes, expected_hex: str) -> None:
-    """Raise ValueError when the SHA-256 digest of data does not match expected_hex."""
+    """Raise ValueError when the SHA-256 digest of data does not match expected_hex.
+
+    expected_hex is compared case-insensitively; Dukascopy documentation uses
+    uppercase hex.  A malformed expected_hex (wrong length or non-hex characters)
+    raises ValueError before any digest computation.
+    """
+    if len(expected_hex) != 64 or not all(c in "0123456789abcdefABCDEF" for c in expected_hex):
+        raise ValueError(
+            f"malformed expected_hex: must be 64 hexadecimal characters, got {expected_hex!r}"
+        )
     actual = hashlib.sha256(data).hexdigest()
-    if actual != expected_hex:
+    if actual != expected_hex.lower():
         raise ValueError(
             f"SHA-256 mismatch: expected {expected_hex!r}, got {actual!r}"
         )
@@ -265,29 +276,37 @@ def aggregate_ohlcv(
     if not rows:
         return []
 
-    td = timedelta(minutes=timeframe_minutes)
-    anchor = parse_eet_timestamp(rows[0].timestamp)
-
     bars: list[OHLCVBar] = []
-    bucket_start = anchor
+    bucket_start_utc: datetime | None = None
     bucket: list[MinuteRow] = []
 
     for r in rows:
         ts = parse_eet_timestamp(r.timestamp)
-        if ts >= bucket_start + td:
-            if bucket:
-                bars.append(_close_bucket(bucket_start, bucket))
-            # Advance the bucket boundary past ts.
-            while bucket_start + td <= ts:
-                bucket_start += td
+        current_bucket_start = _local_bucket_start(ts, timeframe_minutes)
+        if bucket_start_utc != current_bucket_start:
+            if bucket and bucket_start_utc is not None:
+                bars.append(_close_bucket(bucket_start_utc, bucket))
+            bucket_start_utc = current_bucket_start
             bucket = [r]
         else:
             bucket.append(r)
 
-    if bucket:
-        bars.append(_close_bucket(bucket_start, bucket))
+    if bucket and bucket_start_utc is not None:
+        bars.append(_close_bucket(bucket_start_utc, bucket))
 
     return bars
+
+
+def _local_bucket_start(timestamp_utc: datetime, timeframe_minutes: int) -> datetime:
+    """Return a UTC bucket boundary derived from Europe/Helsinki wall time."""
+    local = timestamp_utc.astimezone(_EET)
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed_minutes = (
+        local.replace(tzinfo=None) - midnight.replace(tzinfo=None)
+    ).total_seconds() // 60
+    bucket_minutes = int(elapsed_minutes // timeframe_minutes * timeframe_minutes)
+    local_start = midnight + timedelta(minutes=bucket_minutes)
+    return local_start.astimezone(timezone.utc)
 
 
 def _close_bucket(timestamp: datetime, rows: list[MinuteRow]) -> OHLCVBar:
