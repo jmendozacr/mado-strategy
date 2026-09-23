@@ -34,10 +34,12 @@ The values below were read from the retained run manifest at the external run ro
 | Run ID | `dukascopy-eurusd-gbpusd-2026-09-22-001` |
 | External run root | `D:\Josué\Documents\dukascopy-run-2026-09-22` |
 | Run manifest | `D:\Josué\Documents\dukascopy-run-2026-09-22\run-manifest.json` |
-| Manifest SHA-256 | `98c7d6767e6bb1b93b7da05ec07012ef32b9194e1ceb4fd4f5876695840b7958` |
+| Manifest SHA-256 | `d4124e7536bca06680714b2f3c145c19b4f819417ecf460ac75a028f33403e7f` |
 | Offline-domain receipt SHA-256 | `4ec765f25b49b16b02d45e12a0ffcd69edbd24b0cb98e3607ffefeeed5c4c9ba` |
 | Gap-ledger v1 SHA-256 | `d9026e3a1dbcd4a4cad0e826ebe814f95fd5c6f2aeb625393996d780931860f5` |
 | Gap-ledger v2 SHA-256 | `85755a70045f7b121278c5a8009aa5de623e96eaba9c371862d44f541bfb398d` |
+| Candidate admission cutoff | `2026-08-19T00:00:00Z` |
+| Outcome follow-up cutoff | `2026-08-19T20:30:00Z` |
 
 ## Derived outputs
 
