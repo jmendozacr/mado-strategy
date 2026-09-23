@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timezone
 
 from research.dukascopy_eurusd_gbpusd.manifest import (
     APPROVED_STRATEGY_INSTRUMENTS,
@@ -8,6 +9,7 @@ from research.dukascopy_eurusd_gbpusd.manifest import (
     build_manifest,
     deserialize_manifest,
     serialize_manifest,
+    validate_execution_boundaries,
 )
 
 # Synthetic SHA-256 digests: 64 lowercase hex characters each.
@@ -33,6 +35,8 @@ _BASE = dict(
     run_id="run-2026-09-22-001",
     population_start="2022-08-08",
     population_end="2026-08-19",
+    candidate_cutoff_end_utc="2026-08-19T00:00:00Z",
+    outcome_followup_end_utc="2026-08-19T20:30:00Z",
     inputs=[_EURUSD_ENTRY, _GBPUSD_ENTRY],
     timezone_label="EET",
     dst_rule="Europe/Helsinki",
@@ -62,6 +66,8 @@ def test_build_manifest_happy_path() -> None:
     assert m.run_id == "run-2026-09-22-001"
     assert m.population_start == "2022-08-08"
     assert m.population_end == "2026-08-19"
+    assert m.candidate_cutoff_end_utc == "2026-08-19T00:00:00Z"
+    assert m.outcome_followup_end_utc == "2026-08-19T20:30:00Z"
     assert m.timezone_label == "EET"
     assert m.dst_rule == "Europe/Helsinki"
     assert m.offer_side == "Bid"
@@ -267,6 +273,38 @@ def test_manifest_rejects_population_end_before_start() -> None:
         _build(population_start="2026-08-19", population_end="2022-08-08")
 
 
+def test_manifest_rejects_non_utc_candidate_cutoff() -> None:
+    with pytest.raises(ValueError, match="candidate_cutoff_end_utc must be UTC"):
+        _build(candidate_cutoff_end_utc="2026-08-19T00:00:00+02:00")
+
+
+def test_manifest_rejects_reversed_execution_boundaries() -> None:
+    with pytest.raises(ValueError, match="candidate cutoff"):
+        _build(
+            candidate_cutoff_end_utc="2026-08-19T20:30:00Z",
+            outcome_followup_end_utc="2026-08-19T00:00:00Z",
+        )
+
+
+def test_execution_boundary_validation_rejects_manifest_mismatch() -> None:
+    manifest = _build()
+    with pytest.raises(ValueError, match="candidate cutoff"):
+        validate_execution_boundaries(
+            manifest,
+            datetime(2026, 8, 19, 0, 1),
+            datetime(2026, 8, 19, 20, 30),
+        )
+
+
+def test_execution_boundary_validation_rejects_aware_datetime() -> None:
+    with pytest.raises(ValueError, match="naive UTC"):
+        validate_execution_boundaries(
+            _build(),
+            datetime(2026, 8, 19, tzinfo=timezone.utc),
+            datetime(2026, 8, 19, 20, 30),
+        )
+
+
 def test_manifest_same_start_and_end_accepted() -> None:
     m = _build(population_start="2024-01-15", population_end="2024-01-15")
     assert m.population_start == m.population_end
@@ -398,6 +436,8 @@ def test_serialization_contains_all_manifest_fields() -> None:
         "run_id",
         "population_start",
         "population_end",
+        "candidate_cutoff_end_utc",
+        "outcome_followup_end_utc",
         "inputs",
         "timezone_label",
         "dst_rule",

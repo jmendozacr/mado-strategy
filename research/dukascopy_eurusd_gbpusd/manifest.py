@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from research.dukascopy_eurusd_gbpusd.adapter import (
     EXPECTED_OFFER_SIDE,
@@ -37,6 +37,16 @@ def _require_sha256(value: str, field: str) -> str:
     return value.lower()
 
 
+def _require_utc_instant(value: str, field: str) -> str:
+    try:
+        instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, ValueError) as exc:
+        raise ValueError(f"{field} must be an ISO UTC instant, got {value!r}") from exc
+    if instant.tzinfo is None or instant.utcoffset().total_seconds() != 0:
+        raise ValueError(f"{field} must be UTC, got {value!r}")
+    return instant.replace(tzinfo=None).isoformat(timespec="seconds") + "Z"
+
+
 @dataclass(frozen=True)
 class InputManifestEntry:
     """Provenance record for one external JForex CSV input file."""
@@ -59,6 +69,8 @@ class RunManifest:
     run_id: str
     population_start: str                       # ISO date YYYY-MM-DD
     population_end: str                         # ISO date YYYY-MM-DD
+    candidate_cutoff_end_utc: str               # ISO UTC instant, candidate admission boundary
+    outcome_followup_end_utc: str               # ISO UTC instant, outcome-completeness boundary
     inputs: tuple[InputManifestEntry, ...]
     timezone_label: str                         # must be "EET"
     dst_rule: str                               # must be "Europe/Helsinki"
@@ -74,11 +86,33 @@ class RunManifest:
     exclusion_ledger_reference: str             # path to the exclusion-ledger artifact
 
 
+def validate_execution_boundaries(
+    manifest: RunManifest,
+    candidate_cutoff_end_utc: datetime,
+    outcome_followup_end_utc: datetime,
+) -> None:
+    """Reject caller-supplied boundaries that differ from the frozen manifest."""
+    for field, value in (
+        ("candidate_cutoff_end_utc", candidate_cutoff_end_utc),
+        ("outcome_followup_end_utc", outcome_followup_end_utc),
+    ):
+        if value.tzinfo is not None:
+            raise ValueError(f"{field} must be naive UTC")
+    candidate = candidate_cutoff_end_utc.isoformat(timespec="seconds") + "Z"
+    followup = outcome_followup_end_utc.isoformat(timespec="seconds") + "Z"
+    if candidate != manifest.candidate_cutoff_end_utc:
+        raise ValueError("candidate cutoff does not match run manifest")
+    if followup != manifest.outcome_followup_end_utc:
+        raise ValueError("outcome followup boundary does not match run manifest")
+
+
 def build_manifest(
     *,
     run_id: str,
     population_start: str,
     population_end: str,
+    candidate_cutoff_end_utc: str,
+    outcome_followup_end_utc: str,
     inputs: list[InputManifestEntry],
     timezone_label: str,
     dst_rule: str,
@@ -116,6 +150,14 @@ def build_manifest(
             f"population_start {population_start!r} must not be after"
             f" population_end {population_end!r}"
         )
+    candidate_cutoff_end_utc = _require_utc_instant(
+        candidate_cutoff_end_utc, "candidate_cutoff_end_utc"
+    )
+    outcome_followup_end_utc = _require_utc_instant(
+        outcome_followup_end_utc, "outcome_followup_end_utc"
+    )
+    if candidate_cutoff_end_utc >= outcome_followup_end_utc:
+        raise ValueError("candidate cutoff must be before outcome followup boundary")
 
     # Inputs
     if not inputs:
@@ -217,6 +259,8 @@ def build_manifest(
         run_id=run_id,
         population_start=population_start,
         population_end=population_end,
+        candidate_cutoff_end_utc=candidate_cutoff_end_utc,
+        outcome_followup_end_utc=outcome_followup_end_utc,
         inputs=tuple(normalized_inputs),
         timezone_label=timezone_label,
         dst_rule=dst_rule,
@@ -239,6 +283,8 @@ def serialize_manifest(manifest: RunManifest) -> str:
         "run_id": manifest.run_id,
         "population_start": manifest.population_start,
         "population_end": manifest.population_end,
+        "candidate_cutoff_end_utc": manifest.candidate_cutoff_end_utc,
+        "outcome_followup_end_utc": manifest.outcome_followup_end_utc,
         "inputs": [
             {
                 "strategy_instrument": e.strategy_instrument,
@@ -280,6 +326,8 @@ def deserialize_manifest(text: str) -> RunManifest:
         run_id=d["run_id"],
         population_start=d["population_start"],
         population_end=d["population_end"],
+        candidate_cutoff_end_utc=d["candidate_cutoff_end_utc"],
+        outcome_followup_end_utc=d["outcome_followup_end_utc"],
         inputs=inputs,
         timezone_label=d["timezone_label"],
         dst_rule=d["dst_rule"],

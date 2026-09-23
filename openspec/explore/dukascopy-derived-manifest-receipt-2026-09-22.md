@@ -9,9 +9,11 @@ The deterministic M15, H4, and D1 intermediates were generated from the retained
 | Run ID | `dukascopy-eurusd-gbpusd-2026-09-22-001` |
 | External run root | `D:\Josué\Documents\dukascopy-run-2026-09-22` |
 | Run manifest | `D:\Josué\Documents\dukascopy-run-2026-09-22\run-manifest.json` |
-| Manifest SHA-256 | `98c7d6767e6bb1b93b7da05ec07012ef32b9194e1ceb4fd4f5876695840b7958` |
+| Manifest SHA-256 | `d4124e7536bca06680714b2f3c145c19b4f819417ecf460ac75a028f33403e7f` |
 | Offline-domain receipt SHA-256 | `4ec765f25b49b16b02d45e12a0ffcd69edbd24b0cb98e3607ffefeeed5c4c9ba` |
 | Gap-ledger SHA-256 | `d9026e3a1dbcd4a4cad0e826ebe814f95fd5c6f2aeb625393996d780931860f5` |
+| Candidate admission cutoff | `2026-08-19T00:00:00Z` |
+| Outcome follow-up cutoff | `2026-08-19T20:30:00Z` |
 
 ## Derived outputs
 
