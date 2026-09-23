@@ -26,3 +26,6 @@ The deterministic M15, H4, and D1 intermediates were generated from the retained
 
 The manifest was deserialized successfully through the research manifest validator. No detector signals, outcomes, statistical estimates, baselines, or production files were changed.
 
+## Replay verification
+
+The versioned streaming aggregation runner regenerated all six outputs into a separate external replay directory. Every replayed CSV matched the corresponding manifest SHA-256 exactly. The runner's focused synthetic tests and the full research test suite passed before this replay.
