@@ -52,3 +52,6 @@ The values below were read from the retained run manifest at the external run ro
 
 The manifest was deserialized successfully through the research manifest validator. No detector signals, outcomes, statistical estimates, baselines, or production files were changed.
 
+## Replay verification
+
+The versioned streaming aggregation runner regenerated all six outputs into a separate external replay directory. Every replayed CSV matched the corresponding manifest SHA-256 exactly. The runner's focused synthetic tests and the full research test suite passed before this replay.
