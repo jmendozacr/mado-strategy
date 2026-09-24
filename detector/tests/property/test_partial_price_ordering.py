@@ -9,8 +9,11 @@ property.
 import glob
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
+
+_PAIRS_DIR = Path(__file__).resolve().parents[3] / "pairs"
 
 from alignment.htf_ltf import tag_alignment
 from backtest.levels import Direction, entry_price, partial_price, risk_reward, stop_loss, take_profit
@@ -147,6 +150,7 @@ def _real_rr_floor_survivors(instrument: str) -> list[_OrderingCandidate]:
     return survivors
 
 
+@pytest.mark.skipif(not _PAIRS_DIR.is_dir(), reason="pairs/ corpus not present")
 def test_partial_price_ordering_holds_across_real_corpus():
     """REQ-70.1: for every trade candidate surviving the R:R floor, across
     all 3 real instruments, stop_loss < entry_price < partial_price <
