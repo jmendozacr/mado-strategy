@@ -1,10 +1,16 @@
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from runner.errors import AuthorizationError
-from runner.manifest_builder import PROTECTED_PATHS, build_manifest, validate_protected_paths
+from runner.manifest_builder import (
+    CANONICAL_STATISTICAL_SPEC_SHA256,
+    PROTECTED_PATHS,
+    build_manifest,
+    validate_protected_paths,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -55,3 +61,19 @@ def test_protected_paths_require_exact_minimum_and_exclusions():
 def test_protected_paths_reject_overinclusive_and_excluded_directories(path):
     with pytest.raises(AuthorizationError, match="excluded"):
         validate_protected_paths(PROTECTED_PATHS + (path,))
+
+
+_STATISTICAL_SPEC = (
+    PROJECT_ROOT
+    / "openspec"
+    / "changes"
+    / "crt-detector-direction-policy-statistical-runner"
+    / "spec.md"
+)
+
+
+@pytest.mark.skipif(not _STATISTICAL_SPEC.is_file(), reason="spec.md not checked out")
+def test_statistical_spec_checked_out_as_lf():
+    data = _STATISTICAL_SPEC.read_bytes()
+    assert b"\r\n" not in data, "spec.md contains CRLF; .gitattributes eol=lf not in effect"
+    assert hashlib.sha256(data).hexdigest() == CANONICAL_STATISTICAL_SPEC_SHA256
