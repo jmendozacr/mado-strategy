@@ -1,5 +1,30 @@
 # Pending Changes
 
+## From `crt-detector-calendar-aware-gap-validation` (2026-09-16)
+
+- **Calendar authority activation outcome-check** (outcome-check, L) — separately authorize and implement activation only after complete admissible broker/server closure evidence covers the inclusive 2022-08-08 through 2026-08-19 window; record new lineage, refresh architecture/baseline review, complete sensitive-area re-triage, then verify that the resulting authority is usable and materially resolves the original preflight problem. The dormant contract intentionally leaves current preflight blocked.
+## Recommended Strategy Roadmap (2026-09-20)
+
+This is the recommended decision order for the Forex strategy work. It consolidates the active 1 AM work with the new 5 AM evidence from Charter 10; detailed historical follow-ups remain below for traceability. A priority is a recommendation, not an authorization to implement.
+
+| Priority | Change or decision | Why it comes here |
+| --- | --- | --- |
+| 0 | Complete validation and archive of `crt-detector-forex-protraction-profiles` Phase 1 (measurement-only). | The committed measurement layer is the existing, signed foundation for the 21:00 Asia context. Do not invent its normal/delayed classification threshold. |
+| 1 | `crt-detector-forex-5am-clock-policy` (new): identify the Forex 05:00-09:00 H4 CRT, link 21:00 Asia and 01:00 London, and measure M15 windows 06:00-07:00 and 07:00-08:30. | Charter 10 is the first explicit 5 AM CRT definition. This makes the new source observable without asserting an unproven profile or directional gate. |
+| 2 | `crt-detector-forex-policy-csv-context`: expose the prior-range context and time-window labels in output. | The source checklist requires the 01:00 high/low/midpoint and the 21:00 range to be inspectable; hidden in-memory facts cannot be audited or backtested. |
+| 3 | `crt-detector-forex-5am-profile-metrics` (new): record objective consolidation, sweep, expansion, and relationship facts for the 21:00, 01:00, and 05:00 sequence. | Charter 10 defines three scenarios and three profiles, but requires observation rather than prediction and gives no quantitative classification threshold. |
+| 4 | Decide the allowed 5 AM scenario/profile set and its measurable criteria before creating a classifier or filter. | Profiles 1 and 2 are not distinguishable ex ante, and the source separates a valid setup from one that belongs in an individual plan. This is a human product decision, not a detector default. |
+| 5 | Extend the deferred `crt-detector-forex-order-flow-gate` and `crt-detector-forex-daily-narrative` work to 5 AM, initially as reported dimensions. | Higher-timeframe order flow, key levels, SMT, and daily/weekly narrative are explicit 5 AM confluences. Existing Key-Level experiments do not justify promoting them directly to hard gates. |
+| 6 | Define 5 AM entry modes as reportable populations: Model 1, Turtle Soup, and CISD. | Charter 10 uses all three; its second example explicitly says the setup is Turtle Soup rather than Model 1. A Model-1-only label must not be silently generalized. |
+| 7 | Reopen `crt-detector-forex-target-policy` after the entry/profile populations are measurable. | Charter 10 adds opposite-range and next-liquidity-draw targets without resolving the prior 3R versus opposite-range conflict. |
+| 8 | Consider indices (06:00 CRT) only as a separate, future instrument policy. | The current policy and evidence base are Forex-only; Charter 10 supplies no equivalent index execution contract. |
+
+### Charter 10 Evidence and Guardrails
+
+- The current broker-clock policy deliberately accepts only the 01:00 H4 CRT and 02:00-04:00 M15 anchors. Charter 10 adds, rather than replaces, a Forex 05:00 H4 CRT with 06:00-07:00 and 07:00-08:30 windows. Source: `docs/charter-10.md` [00:02:08-00:03:24], [00:17:47-00:20:46].
+- The 05:00 model must read both completed preceding ranges: 21:00 Asia and 01:00 London. Source: `docs/charter-10.md` [00:05:08-00:09:02].
+- No profile, confluence, or entry mode becomes a production gate before measurement plus backtest/forward-test evidence. Source: `docs/charter-10.md` [00:06:07-00:06:22], [00:12:59-00:13:13], [00:29:07-00:29:54].
+
 Follow-ups registered during planning that are correctly out of scope for their originating change, tracked here so they don't silently vanish. None of these are triaged or planned yet — they're a backlog, not commitments.
 
 ## From `crt-pattern-detector-v1`

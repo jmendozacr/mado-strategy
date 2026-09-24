@@ -1,0 +1,28 @@
+change: crt-detector-calendar-aware-gap-validation
+triage: L
+completed_phases:
+  - triage
+  - explore
+  - propose
+  - spec
+  - design
+  - slice
+  - verify-plan
+  - apply
+  - verify-in-loop
+  - simplify
+  - verify-final
+  - outcome-reckoning
+  - archive
+current_phase: archive
+status: complete
+in_loop_iteration: 1
+next_phase: none
+spec_status: signed
+slices: true
+plan_verify: ready
+verify_final: pass
+arch_audit: none
+outcome: delivered-pending-activation
+viz_url: none
+updated_at: 2026-09-16T22:30:00Z

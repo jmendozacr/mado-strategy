@@ -6,17 +6,29 @@ root_packages =
     composite
     entries
     alignment
+    policy
     backtest
+    evaluation
     viz
     research
+    selection
+    adapter
+    causal
+    runner
 
 [importlinter:contract:layers]
 name = Layered pipeline (ADR-01)
 type = layers
+# `alignment | policy` are declared INDEPENDENT siblings, not stacked:
+# timeframe alignment and direction arbitration are separate concerns over
+# the same evidence layers, and neither imports the other. Stacking them
+# would silently permit a coupling nobody has argued for; a future consumer
+# that genuinely needs one from the other should have to change this line.
 layers =
     viz : ingestion
+    evaluation
     backtest
-    alignment
+    alignment | policy
     composite | entries
     primitives
     core
@@ -37,7 +49,122 @@ source_modules =
     alignment
     entries
     composite
+    policy
+    evaluation
     viz
 forbidden_modules =
     research
 
+[importlinter:contract:evaluation-outcome-firewall]
+name = evaluation -> outcome-bearing modules is forbidden
+type = forbidden
+source_modules =
+    evaluation
+allow_indirect_imports = true
+forbidden_modules =
+    backtest.simulate
+    backtest.metrics
+    backtest.levels
+    research
+
+[importlinter:contract:no-policy-in-research]
+name = Research tooling must not consume the policy layer
+# The reverse direction of the contract above, which the layers contract
+# cannot express (`research` is deliberately outside it). Line A explores
+# the corpus; Line B's DirectionPolicy candidates are pre-registered
+# hypotheses that must not be silently re-tuned from research findings.
+type = forbidden
+source_modules =
+    research
+forbidden_modules =
+    policy
+    evaluation
+
+[importlinter:contract:selection-layer1-purity]
+name = DirectionPolicy statistical core (Layer 1) stays outcome-access-free
+# REQ-STAT-22: Layer 1 accepts only in-memory DirectionPolicyObservation
+# records built by a caller. `research`/`backtest` (real-data access,
+# outcomes) and `evaluation`/`ingestion` (the join/loading concerns Layer 2
+# will own) are all off limits from inside `selection` today; a future
+# Layer-2 adapter needing them is a distinct package, not this one.
+type = forbidden
+source_modules =
+    selection
+forbidden_modules =
+    research
+    backtest
+    evaluation
+    ingestion
+
+[importlinter:contract:no-selection-in-outcome-layers]
+name = evaluation/backtest must not import the statistical layer
+# spec.md Section G: "neither evaluation nor backtest may import the new
+# package" -- the statistical core sits strictly downstream of both, never
+# the reverse.
+type = forbidden
+source_modules =
+    evaluation
+    backtest
+forbidden_modules =
+    selection
+
+[importlinter:contract:no-adapter-in-upstream-layers]
+name = evaluation/backtest/alignment/policy/selection must not import the Layer-2 adapter
+# REQ-STAT-33: the Layer-2 adapter imports evaluation/backtest/alignment/
+# selection.model (never the reverse). Mirrors no-selection-in-outcome-layers
+# for the new adapter package.
+type = forbidden
+source_modules =
+    evaluation
+    backtest
+    alignment
+    policy
+    selection
+forbidden_modules =
+    adapter
+
+[importlinter:contract:no-causal-in-research]
+name = Research tooling must not consume the causal candidate-generation path
+# REQ-CAUSAL-10(a): mirrors no-policy-in-research's intent -- Line-A's
+# exploratory research code must not silently consume the new causal Line-B
+# path.
+type = forbidden
+source_modules =
+    research
+forbidden_modules =
+    causal
+
+[importlinter:contract:no-causal-in-evaluation]
+name = evaluation must not import the causal candidate-generation path
+# REQ-CAUSAL-10(b): mirrors no-selection-in-outcome-layers -- the outcome-
+# evaluation seam stays a pure consumer of whatever population it is handed,
+# never a source of causal-generation logic.
+type = forbidden
+source_modules =
+    evaluation
+forbidden_modules =
+    causal
+
+[importlinter:contract:no-causal-in-adapter]
+name = Layer-2 adapter must not import the causal candidate-generation path
+# Layer 3 owns causal generation; the adapter receives aligned_signals as a
+# bundle field and must never generate them itself.
+type = forbidden
+source_modules =
+    adapter
+forbidden_modules =
+    causal
+
+[importlinter:contract:no-runner-in-upstream-layers]
+name = upstream layers must not import the Layer-3 runner
+type = forbidden
+source_modules =
+    evaluation
+    backtest
+    alignment
+    policy
+    selection
+    adapter
+    causal
+forbidden_modules =
+    runner

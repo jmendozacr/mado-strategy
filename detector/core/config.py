@@ -22,6 +22,11 @@ class MSSConfig:
 
 
 @dataclass(frozen=True)
+class OrderFlowConfig:
+    pass  # rejection/break are hard geometric tests (wick-cross + close-back / close-beyond) — no discretionary threshold is justified at v1 (spec REQ-OF-01/02/03)
+
+
+@dataclass(frozen=True)
 class ICTOrderBlockConfig:
     pass  # base rule is fully structural — engulfment and touch-invalidation are hard geometric tests, no discretionary threshold
 

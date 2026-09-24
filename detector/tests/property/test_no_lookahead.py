@@ -13,26 +13,50 @@ from datetime import datetime, timedelta
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from fixtures.synthetic import CandleSeriesBuilder
+
 from alignment.htf_ltf import tag_alignment
 from core.candle import Candle, OHLCSeries
 from core.config import BacktestConfig, DetectorConfig
 from composite.mss import detect_mss_events
+from composite.order_flow import OrderFlowEvent, detect_order_flow_events
 from entries.model1 import detect_model1_signals
+from policy.direction import (
+    direction_policy_bias_veto_v1,
+    direction_policy_corroboration_v1,
+    direction_policy_noncontradiction_v1,
+    direction_policy_structural_priority_v1,
+)
+from primitives.bias import BiasEvidence, detect_bias_evidence
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs
 from primitives.ict_order_block import detect_ict_order_blocks
-from primitives.swing import detect_swings
+from primitives.liquidity import detect_liquidity_candidates
+from primitives.swing import SwingPoint, detect_swings
 
 from backtest.levels import entry_price, stop_loss
 from backtest.simulate import simulate
 
 _SWING_K = 1
+_BIAS_K = 0
 _FVG_K = 3
 _CRT_RANGE_K = 20
 _MSS_K = 1
 _ICT_ORDER_BLOCK_K = 1
 _MODEL1_K = 20
 _ALIGNMENT_LTF_PER_HTF = 4
+
+
+def _direction_policy_event(direction: str, confirmation_index: int) -> OrderFlowEvent:
+    """DirectionPolicy reads only `direction` and `confirmation_index`, so
+    the two references are structural filler here."""
+    return OrderFlowEvent(
+        direction=direction,
+        rejection_reference=SwingPoint(index=0, price=1.0950, kind="low"),
+        break_reference=SwingPoint(index=1, price=1.1050, kind="high"),
+        rejection_index=confirmation_index - 1,
+        confirmation_index=confirmation_index,
+    )
 
 
 def _ohlc_candle(draw, index: int) -> Candle:
@@ -68,6 +92,36 @@ def test_swing_detection_has_no_lookahead(series: OHLCSeries):
         settled_full_swings = [s for s in full_swings if s.index <= settled_boundary]
 
         assert truncated_swings == settled_full_swings
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_liquidity_candidate_detection_has_no_lookahead(series: OHLCSeries):
+    """REQ-LIQ-06: k=0 -- a candidate at `source_index=i` depends only on
+    candle i itself, so a truncated view's output must match the
+    full-series output EXACTLY for every source_index < n."""
+    full_candidates = detect_liquidity_candidates(series)
+
+    for n in range(1, len(series.candles) + 1):
+        truncated_candidates = detect_liquidity_candidates(series.up_to(n))
+        settled_full_candidates = [c for c in full_candidates if c.source_index < n]
+        assert truncated_candidates == settled_full_candidates
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_bias_detection_has_no_lookahead(series: OHLCSeries):
+    """REQ-BIAS-06: k=0, the strictest variant in this family — evidence at
+    `observation_index=i` depends only on candles i-1 and i, so a truncated
+    view's output must match the full-series output EXACTLY for every
+    observation_index < n (nothing can still resolve with more data, unlike
+    FVG's fill_status or MSS's break search)."""
+    full_evidence = detect_bias_evidence(series)
+
+    for n in range(2, len(series.candles) + 1):
+        truncated_evidence = detect_bias_evidence(series.up_to(n))
+        settled_full_evidence = [e for e in full_evidence if e.observation_index < n]
+        assert truncated_evidence == settled_full_evidence
 
 
 @given(series=ohlc_series())
@@ -164,6 +218,164 @@ def test_mss_detection_has_no_lookahead(series: OHLCSeries):
             full_event = full_by_key[key]
             assert truncated_event.index == full_event.index
             assert truncated_event.broken_swing == full_event.broken_swing
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_order_flow_detection_has_no_lookahead(series: OHLCSeries):
+    """REQ-OF-05: unlike MSS/FVG's unbounded-window monotonicity, an
+    OrderFlowEvent's `confirmation_index` is itself the exact boundary of
+    what a truncated view can know — every event a truncated series can
+    possibly report necessarily has `confirmation_index <= n - 1 < n`
+    (it references only candles within its own bounds), so the full-series
+    events with `confirmation_index < n` must match the truncated output
+    EXACTLY, not just monotonically (REQ-OF-05's own literal wording).
+    """
+    full_events = detect_order_flow_events(series)
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_no_lookahead_all_flat_candles():
+    """REQ-OF-05.1 named case: a fully flat, degenerate series (every
+    candle identical) — `detect_swings`'s strict inequalities never fire on
+    exactly-equal neighbors, so there are no swings and no candidates at
+    any prefix length. Mirrors the project's own registered flat-candle
+    lookahead lesson (`test_alignment_detection_has_no_lookahead`'s bug
+    class).
+    """
+    series = OHLCSeries(
+        candles=tuple(
+            Candle(
+                timestamp=datetime(2026, 1, 1) + timedelta(hours=i),
+                open=1.1000, high=1.1010, low=1.0990, close=1.1000,
+            )
+            for i in range(20)
+        ),
+        instrument="EURUSD", timeframe="1H",
+    )
+    full_events = detect_order_flow_events(series)
+    assert full_events == []
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events == []
+
+
+def test_order_flow_no_lookahead_equal_highs():
+    """REQ-OF-05.1 named case: several candles share the SAME high value —
+    `detect_swings`'s strict `>` never treats an equal neighbor as a swing
+    high, so no bearish rejection reference ever forms from this plateau;
+    the property must still hold exactly at every prefix length."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.1000, low=1.0975, close=1.0985)  # 0
+        .candle(open=1.0985, high=1.1000, low=1.0980, close=1.0990)  # 1 — same high as 0
+        .candle(open=1.0990, high=1.1000, low=1.0985, close=1.0995)  # 2 — same high as 0/1
+        .candle(open=1.0995, high=1.1000, low=1.0990, close=1.0985)  # 3 — same high again
+        .candle(open=1.0985, high=1.0995, low=1.0975, close=1.0980)  # 4 — filler
+        .build()
+    )
+    full_events = detect_order_flow_events(series)
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_no_lookahead_equal_lows():
+    """REQ-OF-05.1 named case: several candles share the SAME low value —
+    mirror of the equal-highs case for the bullish side."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.1020, high=1.1025, low=1.1000, close=1.1015)  # 0
+        .candle(open=1.1015, high=1.1020, low=1.1000, close=1.1010)  # 1 — same low as 0
+        .candle(open=1.1010, high=1.1015, low=1.1000, close=1.1005)  # 2 — same low as 0/1
+        .candle(open=1.1005, high=1.1015, low=1.1000, close=1.1020)  # 3 — same low again
+        .candle(open=1.1020, high=1.1025, low=1.1005, close=1.1015)  # 4 — filler
+        .build()
+    )
+    full_events = detect_order_flow_events(series)
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_no_lookahead_outside_bar():
+    """REQ-OF-05.1 named case: an outside-bar candle qualifying as a
+    rejection for BOTH directions at once (REQ-OF-08) — reusing the
+    fixture from `test_outside_bar_creates_both_direction_rejections_with_no_tie_break`
+    in `tests/test_order_flow.py`."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.0985, low=1.0975, close=1.0980)  # 0
+        .candle(open=1.0960, high=1.0965, low=1.0950, close=1.0955)  # 1 — L swing low
+        .candle(open=1.0975, high=1.0990, low=1.0970, close=1.0985)  # 2
+        .candle(open=1.0990, high=1.1200, low=1.0980, close=1.1010)  # 3 — H swing high
+        .candle(open=1.1010, high=1.1020, low=1.1000, close=1.1015)  # 4
+        .candle(open=1.1015, high=1.1210, low=1.0930, close=1.1050)  # 5 — OUTSIDE BAR
+        .candle(open=1.1050, high=1.1060, low=1.1040, close=1.1055)  # 6
+        .candle(open=1.1055, high=1.1100, low=1.1045, close=1.1080)  # 7
+        .candle(open=1.1080, high=1.1090, low=1.1060, close=1.1070)  # 8
+        .candle(open=1.1070, high=1.1160, low=1.1050, close=1.1150)  # 9
+        .candle(open=1.1150, high=1.1155, low=1.1050, close=1.1060)  # 10
+        .candle(open=1.1060, high=1.1070, low=1.0850, close=1.0900)  # 11
+        .build()
+    )
+    full_events = detect_order_flow_events(series)
+    assert len(full_events) == 2  # sanity: this fixture does produce both directions
+
+    for n in range(3, len(series.candles) + 1):
+        truncated_events = detect_order_flow_events(series.up_to(n))
+        settled_full_events = [e for e in full_events if e.confirmation_index < n]
+        assert truncated_events == settled_full_events
+
+
+def test_order_flow_future_candles_never_change_already_confirmed_events():
+    """Explicit regression, distinct from the general property test above:
+    appending ARBITRARY future candles to a series never changes events
+    already confirmed within the original series — proven by comparing the
+    original series' output against the output after appending 15 random-ish
+    extra candles, none of which existed when the original events fired.
+    """
+    base = (
+        CandleSeriesBuilder()
+        .candle(open=1.0980, high=1.0985, low=1.0975, close=1.0980)  # 0
+        .candle(open=1.0960, high=1.0965, low=1.0950, close=1.0955)  # 1 — swing low
+        .candle(open=1.0975, high=1.0990, low=1.0970, close=1.0985)  # 2
+        .candle(open=1.0980, high=1.0990, low=1.0975, close=1.0985)  # 3
+        .candle(open=1.0970, high=1.0980, low=1.0940, close=1.0960)  # 4 — rejection
+        .candle(open=1.0965, high=1.0975, low=1.0955, close=1.0970)  # 5
+        .candle(open=1.0975, high=1.1050, low=1.0970, close=1.1010)  # 6 — swing high
+        .candle(open=1.1010, high=1.1020, low=1.1000, close=1.1015)  # 7
+        .candle(open=1.1015, high=1.1070, low=1.1010, close=1.1060)  # 8 — break -> event
+        .build()
+    )
+    original_events = detect_order_flow_events(base)
+    assert len(original_events) == 1
+
+    builder = CandleSeriesBuilder()
+    for candle in base.candles:
+        builder.candle(open=candle.open, high=candle.high, low=candle.low, close=candle.close)
+    for i in range(15):  # arbitrary future candles, unrelated price action
+        wiggle = 0.001 * ((i % 5) - 2)
+        builder.candle(
+            open=1.1060 + wiggle, high=1.1080 + wiggle,
+            low=1.1040 + wiggle, close=1.1055 + wiggle,
+        )
+    extended = builder.build()
+
+    extended_events = detect_order_flow_events(extended)
+    settled_extended_events = [e for e in extended_events if e.confirmation_index < len(base.candles)]
+
+    assert settled_extended_events == original_events
 
 
 @given(series=ohlc_series())
@@ -305,11 +517,9 @@ def test_alignment_detection_has_no_lookahead(pair):
     htf_size = len(htf_series.candles)
 
     def _key(signal):
-        # Overlapping, non-deduplicated LTF CRT range candidates (design
-        # 4.4) can independently produce a purge_engulf signal at the SAME
-        # anchor_index/direction — purge_target disambiguates between
-        # those distinct candidates.
-        return (signal.anchor_index, signal.direction, signal.confirmation_type, signal.purge_target)
+        # Two overlapping ranges can share anchor_index, direction, and
+        # purge_target; origin_index distinguishes their signals.
+        return (signal.anchor_index, signal.direction, signal.confirmation_type, signal.purge_target, signal.origin_index)
 
     full_tags = tag_alignment(htf_series, ltf_series)
     full_by_key = {_key(t.ltf_signal): t for t in full_tags}
@@ -495,3 +705,69 @@ def test_backtest_exit_is_local_to_its_own_window(pair):
         assert (matched.entry_index, matched.exit_index, matched.outcome) == (
             trade.entry_index, trade.exit_index, trade.outcome
         )
+
+
+_DIRECTION_POLICIES = (
+    direction_policy_structural_priority_v1,
+    direction_policy_corroboration_v1,
+    direction_policy_noncontradiction_v1,
+    direction_policy_bias_veto_v1,
+)
+
+
+@given(series=ohlc_series())
+@settings(max_examples=100)
+def test_direction_policy_decisions_have_no_lookahead(series: OHLCSeries):
+    """REQ-DIRPOL-09: a DirectionDecision taken at `cutoff_index` must be
+    identical whether it is computed from the full series' detections or
+    from detections over the truncated series that ends at that candle.
+    DirectionPolicy inherits this rather than re-deriving it: the Order Flow
+    filter is `confirmation_index <= cutoff_index` (and OrderFlowEvent is
+    itself exactly-truncatable, proven above), Bias is k=0 and exactly
+    aligned, and every normalizer/combiner is a pure function of enum
+    values that reads no index at all.
+    """
+    full_events = detect_order_flow_events(series)
+    full_bias = {e.observation_index: e for e in detect_bias_evidence(series)}
+
+    for n in range(2, len(series.candles) + 1):
+        cutoff = n - 1  # >= 1, so BiasEvidence is guaranteed present
+        truncated = series.up_to(n)
+        truncated_events = detect_order_flow_events(truncated)
+        truncated_bias = {e.observation_index: e for e in detect_bias_evidence(truncated)}
+
+        for policy in _DIRECTION_POLICIES:
+            assert policy(full_events, full_bias[cutoff], cutoff) == policy(
+                truncated_events, truncated_bias[cutoff], cutoff
+            )
+
+
+@given(
+    cutoff_index=st.integers(min_value=1, max_value=40),
+    past=st.lists(st.integers(min_value=1, max_value=40), min_size=0, max_size=6, unique=True),
+    future_offsets=st.lists(st.integers(min_value=1, max_value=50), min_size=1, max_size=6),
+    close_signal=st.sampled_from(["bullish", "bearish", None]),
+    wick_signal=st.sampled_from(["bullish", "bearish", "conflict", None]),
+)
+@settings(max_examples=200)
+def test_appending_future_order_flow_events_never_changes_an_earlier_decision(
+    cutoff_index, past, future_offsets, close_signal, wick_signal
+):
+    """The append-invariance half of REQ-DIRPOL-09, checked field by field
+    (not just on `direction`): events confirmed strictly after the cutoff
+    are invisible, so adding any number of them leaves every field of the
+    earlier decision untouched."""
+    eligible_indices = sorted({i for i in past if i <= cutoff_index})
+    events = [_direction_policy_event("bullish", i) for i in eligible_indices]
+    later = [
+        _direction_policy_event("bearish", cutoff_index + offset) for offset in future_offsets
+    ]
+    bias = BiasEvidence(
+        observation_index=cutoff_index,
+        close_relation="inside",
+        close_signal=close_signal,
+        wick_signal=wick_signal,
+    )
+
+    for policy in _DIRECTION_POLICIES:
+        assert policy(events, bias, cutoff_index) == policy(events + later, bias, cutoff_index)
