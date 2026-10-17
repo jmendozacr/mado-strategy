@@ -1,0 +1,21 @@
+{
+  "change": "dukascopy-backtest-readiness",
+  "triage": "L",
+  "phase": "verify",
+  "phase_status": "all 4 slices (S-000..S-003) applied, including the official approved-cost run; full regression suite and architecture-fitness check passed. SDD archive not run.",
+  "spec_status": "signed",
+  "slices": {
+    "total": 4,
+    "completed": 4,
+    "current": "none"
+  },
+  "plan_verify": "ready",
+  "verify_final": "pass",
+  "verify_final_detail": "uv run pytest (detector + research), 2026-10-17: 1065 passed, 0 failed.",
+  "arch_audit": "clean",
+  "arch_audit_detail": "uv run lint-imports, 2026-10-17: 11/11 contracts kept, 0 broken.",
+  "outcome": "delivered",
+  "outcome_detail": "Reproducible two-pair (EURUSD/GBPUSD) canonical backtest evidence published at openspec/explore/dukascopy-canonical-backtest-receipt-2026-09-25.md. Research-only evidence; shadow mode, broker integration, and demo execution remain explicitly out of scope per triage.md.",
+  "updated_at": "2026-10-17T00:00:00-06:00",
+  "viz_url": "none"
+}
