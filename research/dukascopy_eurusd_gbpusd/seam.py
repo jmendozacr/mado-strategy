@@ -31,7 +31,7 @@ from research.dukascopy_eurusd_gbpusd.manifest import (
 from adapter.build import build_direction_policy_observations
 from adapter.bundle import InstrumentRunBundle
 from backtest.population import build_stage6_population
-from backtest.simulate import simulate
+from backtest.simulate import ReconciliationReport, Trade, simulate
 from causal.generate import generate_causal_aligned_signals
 from composite.order_flow import detect_order_flow_events
 from evaluation.direction import DirectionEvidence, evaluate_direction_policies
@@ -57,6 +57,8 @@ class SeamInstrumentResult:
     observations: tuple[DirectionPolicyObservation, ...]
     candidate_count: int
     candidate_fingerprint: str
+    trades: tuple[Trade, ...]
+    reconciliation: ReconciliationReport
 
 
 APPROVED_STRATEGY_INSTRUMENTS: frozenset[str] = frozenset({
@@ -218,6 +220,8 @@ def run_instrument_seam(
         observations=observations,
         candidate_count=len(population.candidates),
         candidate_fingerprint=candidate_fp,
+        trades=tuple(trades),
+        reconciliation=reconciliation,
     )
 
 
