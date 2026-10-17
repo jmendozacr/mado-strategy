@@ -50,6 +50,7 @@ class ReconciliationReport:
     excluded_kill_zone: int
     excluded_rr_floor: int
     excluded_never_filled: int
+    excluded_confirmed_no_retest: int = 0
 
 
 def _directional_sides(get_price, get_direction, invert_bullish: bool = False) -> tuple[SweepSide, SweepSide]:
@@ -255,12 +256,54 @@ def _resolve_trade(
     )
 
 
+def _fill_candle_immediate_loss(
+    candidate: Candidate, fill_index: int, candles: tuple, trading_cost_price: float
+) -> Trade | None:
+    """SL touched on the fill candle wins over any favourable level reached
+    the same bar -- their intrabar order is unknowable, so it counts against
+    the trade, never for it. An open strictly beyond SL is exempt: we
+    cannot know the position was live before that gap, so no loss is
+    inferred from it. Returns None in both the exempt and the untouched
+    case; the caller then falls through to the unchanged post-fill sweep."""
+    fill_candle = candles[fill_index]
+    direction = candidate.direction
+    stop_loss = candidate.stop_loss
+    sl_touched = fill_candle.low <= stop_loss if direction == "bullish" else fill_candle.high >= stop_loss
+    if not sl_touched:
+        return None
+    if _exit_gap_beyond(fill_candle.open, stop_loss, direction, chosen_is_stop=True):
+        return None
+
+    take_profit = candidate.take_profit
+    ambiguous_bar = (
+        fill_candle.high >= take_profit if direction == "bullish" else fill_candle.low <= take_profit
+    )
+    r_multiple = _net_r_multiple(candidate.entry_price, stop_loss, stop_loss, direction, trading_cost_price)
+    return Trade(
+        signal_id=candidate.signal_id, anchor_index=candidate.anchor_index, direction=direction,
+        entry_index=fill_index, entry_price=candidate.entry_price, stop_loss=stop_loss,
+        take_profit=take_profit, exit_index=fill_index, exit_price=stop_loss,
+        outcome="win" if r_multiple > 0 else "loss", r_multiple=r_multiple,
+        ambiguous_bar=ambiguous_bar, gap_filled=False,
+        partial_exit_index=None, partial_exit_price=None, partial_r_multiple=None, partial_gap_filled=False,
+    )
+
+
 def _resolve_exits(
     filled: list[tuple[Candidate, int]], candles: tuple, trading_cost_price: float, partial_fraction: float
 ) -> list[Trade]:
-    """SL/TP/partial resolution sweeps, eligible_at = fill_index + 1 for
-    every candidate (REQ-37)."""
-    exit_order = sorted(filled, key=lambda pair: pair[1])
+    """Fill-candle SL exposure resolves before the post-fill sweep; only
+    candidates it doesn't resolve enter that sweep."""
+    immediate: list[Trade] = []
+    pending: list[tuple[Candidate, int]] = []
+    for candidate, fill_index in filled:
+        trade = _fill_candle_immediate_loss(candidate, fill_index, candles, trading_cost_price)
+        if trade is not None:
+            immediate.append(trade)
+        else:
+            pending.append((candidate, fill_index))
+
+    exit_order = sorted(pending, key=lambda pair: pair[1])
     sl_results = two_heap_sweep(
         candles, exit_order, eligible_at=lambda pair: pair[1] + 1, sides=_sl_sides(), default=None
     )
@@ -270,13 +313,14 @@ def _resolve_exits(
     partial_results = two_heap_sweep(
         candles, exit_order, eligible_at=lambda pair: pair[1] + 1, sides=_partial_sides(), default=None
     )
-    return [
+    resolved = [
         _resolve_trade(
             candidate, fill_index, sl_index, tp_index, partial_index, candles, trading_cost_price, partial_fraction
         )
         for (candidate, fill_index), sl_index, tp_index, partial_index
         in zip(exit_order, sl_results, tp_results, partial_results)
     ]
+    return immediate + resolved
 
 
 def simulate(
@@ -312,5 +356,6 @@ def simulate(
         excluded_kill_zone=population.excluded_kill_zone,
         excluded_rr_floor=population.excluded_rr_floor,
         excluded_never_filled=excluded_never_filled,
+        excluded_confirmed_no_retest=population.excluded_confirmed_no_retest,
     )
     return trades, report

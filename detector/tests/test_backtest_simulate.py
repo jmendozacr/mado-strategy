@@ -454,20 +454,16 @@ def test_entry_never_touched_within_max_fill_wait_window_is_excluded():
     assert trades == []
 
 
-def test_sl_tp_sweep_excludes_the_fill_candle_itself():
-    """REQ-37: the SL/TP resolution sweep begins at fill_index + 1, never
-    fill_index itself. The fill candle here ALSO reaches the stop-loss level
-    within its own range (low<=stop) — if the sweep started at fill_index,
-    the trade would resolve as a loss right there; starting at fill_index+1
-    instead, the next candle doesn't touch SL/TP, so the trade stays open."""
+def test_fill_candle_reaching_sl_now_resolves_there_not_at_fill_plus_one():
+    """Regression: a fill candle whose own range reaches SL now closes as an
+    immediate loss there, not deferred to fill_index + 1."""
     series = (
         CandleSeriesBuilder()
-        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor; stop=1.0984
+        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor
         .candle(open=1.1005, high=1.1010, low=1.1000, close=1.1003)  # 1 — filler
-        .candle(open=1.1003, high=1.1008, low=1.1002, close=1.1005)  # 2 — retest, no touch (low>1.1000)
-        .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1005)  # 3 — fills (low<=1.1000) AND its own range
-        # already reaches SL (low=1.0980<=1.0984) — must NOT resolve here
-        .candle(open=1.1000, high=1.1010, low=1.0995, close=1.1002)  # 4 — sweep starts here; no SL/TP touch
+        .candle(open=1.1003, high=1.1008, low=1.1002, close=1.1005)  # 2 — retest
+        .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1005)  # 3 — fills, reaches SL
+        .candle(open=1.1000, high=1.1010, low=1.0995, close=1.1002)  # 4
         .build()
     )
     signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
@@ -477,9 +473,10 @@ def test_sl_tp_sweep_excludes_the_fill_candle_itself():
     assert report.trades_opened == 1
     trade = trades[0]
     assert trade.entry_index == 3
-    assert series.candles[3].low <= trade.stop_loss  # sanity: the fill candle's own range DOES reach SL
-    assert trade.outcome == "open"  # proves the sweep did not resolve on the fill candle itself
-    assert trade.exit_index is None
+    assert series.candles[3].low <= trade.stop_loss
+    assert trade.outcome == "loss"
+    assert trade.exit_index == 3
+    assert trade.exit_price == trade.stop_loss
 
 
 def test_entry_touched_exactly_at_max_fill_wait_boundary_is_included():
@@ -505,11 +502,12 @@ def test_entry_touched_exactly_at_max_fill_wait_boundary_is_included():
     assert trades[0].entry_index == 4
 
 
-def test_retest_index_none_excludes_regardless_of_status():
-    """REQ-30.3: retest_index is None excludes a candidate under
-    excluded_never_confirmed regardless of status -- both the
-    pre-confirmation INVALIDATED variant and the never-retested PENDING
-    variant."""
+def test_retest_index_none_excludes_by_status_never_confirmed_vs_confirmed_no_retest():
+    """REQ-30.3/40.5/40.6: retest_index is None never produces a candidate,
+    but the exclusion bucket splits by status -- INVALIDATED (never reached
+    confirmation) lands in excluded_never_confirmed, while PENDING (the
+    anchor's body was engulfed but the retest sequence never completed)
+    lands in excluded_confirmed_no_retest."""
     series = _base_bullish_series().build()
     invalidated_never_retested = _signal(
         anchor_index=0, direction="bullish", entry_type="body", retest_index=None,
@@ -526,7 +524,8 @@ def test_retest_index_none_excludes_regardless_of_status():
 
     assert trades == []
     assert report.trades_opened == 0
-    assert report.excluded_never_confirmed == 2
+    assert report.excluded_never_confirmed == 1
+    assert report.excluded_confirmed_no_retest == 1
 
 
 def test_fvg_fill_confirmed_signal_excluded_as_no_crt_range():
@@ -788,6 +787,385 @@ def test_signal_anchored_outside_kill_zone_excluded():
     assert trades == []
     assert report.trades_opened == 0
     assert report.excluded_kill_zone == 1
+
+
+# --- S-002: fill-candle adverse SL exposure (REQ-33.4/.5, REQ-37.3-.6, REQ-68.3) ---
+
+_BEARISH_HTF_CONTEXT = CRTRange(
+    model="2-candle", high=1.1050, low=1.0950, start_index=0, end_index=1,
+    resolution="true_break", resolved_at_index=1,
+)
+
+
+def _bullish_prefix() -> CandleSeriesBuilder:
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor
+        .candle(open=1.1005, high=1.1010, low=1.1000, close=1.1005)  # 1 — filler
+        .candle(open=1.1002, high=1.1008, low=1.1001, close=1.1004)  # 2 — retest, no touch
+    )
+
+
+def _bearish_prefix() -> CandleSeriesBuilder:
+    return (
+        CandleSeriesBuilder()
+        .candle(open=1.1010, high=1.1020, low=1.1000, close=1.1005)  # 0 — anchor
+        .candle(open=1.1005, high=1.1008, low=1.1000, close=1.1003)  # 1 — filler
+        .candle(open=1.1006, high=1.1009, low=1.1004, close=1.1007)  # 2 — retest, no touch
+    )
+
+
+def _bullish_signal(**overrides) -> Model1Signal:
+    params = {"anchor_index": 0, "direction": "bullish", "entry_type": "body", "retest_index": 2}
+    params.update(overrides)
+    return _signal(**params)
+
+
+def _bearish_signal(**overrides) -> Model1Signal:
+    params = {"anchor_index": 0, "direction": "bearish", "entry_type": "body", "retest_index": 2}
+    params.update(overrides)
+    return _signal(**params)
+
+
+def test_fill_candle_adverse_sl_touch_bullish_closes_as_immediate_loss():
+    """REQ-37.3: SL touched on the fill candle."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1005)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.0984
+    assert trade.outcome == "loss"
+    assert trade.r_multiple == -1.0
+    assert trade.ambiguous_bar is False
+    assert trade.gap_filled is False
+
+
+def test_fill_candle_adverse_sl_touch_bearish_closes_as_immediate_loss():
+    """REQ-37.3, bearish mirror."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1015, high=1.1030, low=1.1005, close=1.1020)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.1026
+    assert trade.outcome == "loss"
+    assert trade.r_multiple == -1.0
+    assert trade.ambiguous_bar is False
+    assert trade.gap_filled is False
+
+
+def test_fill_candle_sl_equality_bullish_still_closes_as_immediate_loss():
+    """REQ-37.3: SL equals the candle's extreme."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.1010, high=1.1005, low=1.0984, close=1.1000)  # 3 — low == stop
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.0984
+    assert trade.outcome == "loss"
+    assert trade.gap_filled is False
+
+
+def test_fill_candle_sl_equality_bearish_still_closes_as_immediate_loss():
+    """REQ-37.3, bearish mirror."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1015, high=1.1026, low=1.1005, close=1.1020)  # 3 — high == stop
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.1026
+    assert trade.outcome == "loss"
+    assert trade.gap_filled is False
+
+
+def test_fill_candle_sl_and_tp_bullish_loses_at_sl_and_flags_ambiguous():
+    """REQ-33.4: SL and TP both touched on the fill candle."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.1010, high=1.1060, low=1.0980, close=1.1020)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.0984
+    assert trade.outcome == "loss"
+    assert trade.ambiguous_bar is True
+
+
+def test_fill_candle_sl_and_tp_bearish_loses_at_sl_and_flags_ambiguous():
+    """REQ-33.4, bearish mirror."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1015, high=1.1030, low=1.0940, close=1.0990)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.1026
+    assert trade.outcome == "loss"
+    assert trade.ambiguous_bar is True
+
+
+def test_fill_candle_sl_and_partial_bullish_is_a_single_leg_loss():
+    """REQ-33.5/68.3: SL and the partial level both touched on the fill
+    candle, TP not touched."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.1010, high=1.1030, low=1.0980, close=1.1015)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.0984
+    assert trade.outcome == "loss"
+    assert trade.r_multiple == -1.0
+    assert trade.ambiguous_bar is False
+    assert trade.partial_exit_index is None
+    assert trade.partial_exit_price is None
+    assert trade.partial_r_multiple is None
+    assert trade.partial_gap_filled is False
+
+
+def test_fill_candle_sl_and_partial_bearish_is_a_single_leg_loss():
+    """REQ-33.5/68.3, bearish mirror."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1015, high=1.1030, low=1.0970, close=1.1000)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.1026
+    assert trade.outcome == "loss"
+    assert trade.r_multiple == -1.0
+    assert trade.ambiguous_bar is False
+    assert trade.partial_exit_index is None
+    assert trade.partial_exit_price is None
+    assert trade.partial_r_multiple is None
+    assert trade.partial_gap_filled is False
+
+
+def test_fill_candle_strict_pre_entry_gap_beyond_sl_bullish_infers_no_loss():
+    """REQ-37.5: fill candle opens strictly beyond SL, then reaches entry."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.0970, high=1.1005, low=1.0965, close=1.1000)  # 3
+        .candle(open=1.1000, high=1.1010, low=1.0995, close=1.1005)  # 4
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.outcome == "open"
+    assert trade.exit_index is None
+    assert trade.exit_price is None
+
+
+def test_fill_candle_strict_pre_entry_gap_beyond_sl_bearish_infers_no_loss():
+    """REQ-37.5, bearish mirror."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1040, high=1.1045, low=1.1005, close=1.1010)  # 3
+        .candle(open=1.1020, high=1.1025, low=1.1015, close=1.1018)  # 4
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.outcome == "open"
+    assert trade.exit_index is None
+    assert trade.exit_price is None
+
+
+def test_fill_candle_open_exactly_at_sl_bullish_the_exemption_does_not_apply():
+    """REQ-37.6: open exactly at SL, not strictly beyond it."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.0984, high=1.1005, low=1.0980, close=1.1000)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.0984
+    assert trade.outcome == "loss"
+    assert trade.gap_filled is False
+
+
+def test_fill_candle_open_exactly_at_sl_bearish_the_exemption_does_not_apply():
+    """REQ-37.6, bearish mirror."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1026, high=1.1030, low=1.1015, close=1.1020)  # 3
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.exit_index == 3
+    assert trade.exit_price == 1.1026
+    assert trade.outcome == "loss"
+    assert trade.gap_filled is False
+
+
+def test_fill_candle_tp_without_sl_bullish_is_never_credited():
+    """REQ-37.4: TP touched on the fill candle, SL not touched."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.1010, high=1.1055, low=1.0995, close=1.1020)  # 3
+        .candle(open=1.1000, high=1.1010, low=1.0995, close=1.1002)  # 4
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.outcome == "open"
+    assert trade.exit_index is None
+
+
+def test_fill_candle_partial_without_sl_bullish_is_never_credited():
+    """REQ-37.4 extended to the partial level."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.1010, high=1.1030, low=1.0995, close=1.1020)  # 3
+        .candle(open=1.1000, high=1.1010, low=1.0995, close=1.1002)  # 4
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bullish_signal())], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.outcome == "open"
+    assert trade.exit_index is None
+    assert trade.partial_exit_index is None
+
+
+def test_fill_candle_tp_or_partial_without_sl_bearish_is_never_credited():
+    """REQ-37.4, bearish mirror."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1015, high=1.1020, low=1.0940, close=1.1000)  # 3
+        .candle(open=1.1015, high=1.1020, low=1.1010, close=1.1012)  # 4
+        .build()
+    )
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.entry_index == 3
+    assert trade.outcome == "open"
+    assert trade.exit_index is None
+
+
+def test_fill_candle_adverse_sl_applies_uniformly_to_invalidated_and_pending():
+    """REQ-37.2 extended to the fill-candle adverse-SL check."""
+    series = (
+        _bullish_prefix()
+        .candle(open=1.1010, high=1.1015, low=1.0980, close=1.1005)  # 3
+        .build()
+    )
+
+    for status in (DetectionStatus.INVALIDATED, DetectionStatus.PENDING):
+        signal = _bullish_signal(status=status)
+        trades, _ = simulate([_aligned(signal)], series, DetectorConfig())
+        trade = trades[0]
+        assert trade.exit_index == 3
+        assert trade.exit_price == 1.0984
+        assert trade.outcome == "loss"
+
+
+def test_confirmed_signal_fills_and_resolves_open_bearish():
+    """Bearish mirror of test_confirmed_signal_fills_and_resolves_open."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1008, high=1.1012, low=1.1005, close=1.1009)  # 3
+        .candle(open=1.1009, high=1.1013, low=1.1005, close=1.1010)  # 4
+        .build()
+    )
+
+    trades, report = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, DetectorConfig())
+
+    assert report.trades_opened == 1
+    trade = trades[0]
+    assert trade.outcome == "open"
+    assert trade.exit_index is None
+    assert trade.exit_price is None
+    assert trade.ambiguous_bar is False
+    assert trade.gap_filled is False
+
+
+def test_partial_fraction_zero_reproduces_single_leg_output_bearish():
+    """Bearish mirror of test_partial_fraction_zero_reproduces_single_leg_output
+    (REQ-68.5)."""
+    series = (
+        _bearish_prefix()
+        .candle(open=1.1008, high=1.1012, low=1.1005, close=1.1009)  # 3
+        .candle(open=1.1005, high=1.1008, low=1.0940, close=1.0945)  # 4
+        .build()
+    )
+    config = DetectorConfig(backtest=BacktestConfig(partial_fraction=0.0))
+
+    trades, _ = simulate([_aligned(_bearish_signal(), htf_context=_BEARISH_HTF_CONTEXT)], series, config)
+
+    trade = trades[0]
+    entry, stop = 1.1010, 1.1026
+    expected_r = (entry - 1.0950) / (stop - entry)
+
+    assert trade.exit_index == 4
+    assert trade.exit_price == 1.0950
+    assert trade.outcome == "win"
+    assert abs(trade.r_multiple - expected_r) < 1e-9
+    assert trade.partial_exit_index is None
+    assert trade.partial_exit_price is None
+    assert trade.partial_r_multiple is None
+    assert trade.partial_gap_filled is False
 
 
 def test_anchor_inside_kill_zone_not_excluded_even_when_confirmation_lands_outside():
