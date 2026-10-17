@@ -12,6 +12,7 @@ from backtest.levels import take_profit as _take_profit
 from core.candle import OHLCSeries
 from core.config import DetectorConfig
 from core.kill_zone import in_ny_kill_zone
+from core.results import DetectionStatus
 from primitives.swing import SwingPoint, detect_swings
 
 
@@ -26,6 +27,7 @@ class Stage6Population:
     excluded_duplicate: int
     excluded_kill_zone: int
     excluded_rr_floor: int
+    excluded_confirmed_no_retest: int = 0
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class _PopulationCuts:
     unaligned: int
     never_confirmed: int
     no_key_level: int
+    confirmed_no_retest: int
 
 
 def _build_candidate(
@@ -65,6 +68,7 @@ def _build_candidate(
 def _population_cuts(aligned_signals: list[AlignedSignal]) -> _PopulationCuts:
     survivors: list[AlignedSignal] = []
     excluded_no_crt_range = excluded_unaligned = excluded_never_confirmed = excluded_no_key_level = 0
+    excluded_confirmed_no_retest = 0
     for tagged in aligned_signals:
         signal = tagged.ltf_signal
         if signal.confirmation_type == "fvg_fill":
@@ -72,7 +76,13 @@ def _population_cuts(aligned_signals: list[AlignedSignal]) -> _PopulationCuts:
         elif tagged.aligned != "aligned":
             excluded_unaligned += 1
         elif signal.retest_index is None:
-            excluded_never_confirmed += 1
+            # REQ-30.3/40.5/40.6: PENDING means the anchor's body was
+            # already engulfed (confirmed) but the retest sequence never
+            # completed -- distinct from INVALIDATED, which never confirmed.
+            if signal.status == DetectionStatus.INVALIDATED:
+                excluded_never_confirmed += 1
+            else:
+                excluded_confirmed_no_retest += 1
         elif tagged.key_level is None:
             excluded_no_key_level += 1
         else:
@@ -80,6 +90,7 @@ def _population_cuts(aligned_signals: list[AlignedSignal]) -> _PopulationCuts:
     return _PopulationCuts(
         survivors=survivors, no_crt_range=excluded_no_crt_range, unaligned=excluded_unaligned,
         never_confirmed=excluded_never_confirmed, no_key_level=excluded_no_key_level,
+        confirmed_no_retest=excluded_confirmed_no_retest,
     )
 
 
@@ -142,4 +153,5 @@ def build_stage6_population(
         excluded_duplicate=excluded_duplicate,
         excluded_kill_zone=excluded_kill_zone,
         excluded_rr_floor=excluded_rr_floor,
+        excluded_confirmed_no_retest=cuts.confirmed_no_retest,
     )

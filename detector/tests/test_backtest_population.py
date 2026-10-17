@@ -117,13 +117,14 @@ def test_stage6_population_is_consumed_unchanged_by_fill_and_evaluation(monkeypa
     assert (
         report.excluded_no_crt_range,
         report.excluded_unaligned,
+        report.excluded_confirmed_no_retest,
         report.excluded_never_confirmed,
         report.excluded_no_key_level,
         report.excluded_duplicate,
         report.excluded_kill_zone,
         report.excluded_rr_floor,
         report.excluded_never_filled,
-    ) == (0, 0, 0, 0, 0, 0, 0, 0)
+    ) == (0, 0, 0, 0, 0, 0, 0, 0, 0)
 
 
 def test_stage6_population_preserves_duplicate_and_rr_exclusion_counts():
@@ -164,6 +165,7 @@ def test_simulate_keeps_the_existing_fill_and_report_result():
         trades_opened=1,
         excluded_no_crt_range=0,
         excluded_unaligned=0,
+        excluded_confirmed_no_retest=0,
         excluded_never_confirmed=0,
         excluded_no_key_level=0,
         excluded_duplicate=0,
@@ -171,3 +173,28 @@ def test_simulate_keeps_the_existing_fill_and_report_result():
         excluded_rr_floor=0,
         excluded_never_filled=0,
     )
+
+
+def test_confirmed_signal_without_retest_is_distinct_from_never_confirmed():
+    """REQ-30.3/40.5/40.6: retest_index is None splits by status -- a
+    signal that reached confirmation (status PENDING: the anchor's body was
+    engulfed but the retest sequence never completed) is
+    excluded_confirmed_no_retest, while a signal invalidated before ever
+    confirming (status INVALIDATED) is excluded_never_confirmed. Neither
+    produces a candidate."""
+    series = _series()
+    base = _aligned_signal()
+    confirmed_no_retest = AlignedSignal(
+        ltf_signal=replace(base.ltf_signal, retest_index=None, status=DetectionStatus.PENDING, origin_index=1),
+        htf_context=base.htf_context, aligned=base.aligned, key_level=base.key_level,
+    )
+    never_confirmed = AlignedSignal(
+        ltf_signal=replace(base.ltf_signal, retest_index=None, status=DetectionStatus.INVALIDATED, origin_index=2),
+        htf_context=base.htf_context, aligned=base.aligned, key_level=base.key_level,
+    )
+
+    population = build_stage6_population([confirmed_no_retest, never_confirmed], series, DetectorConfig())
+
+    assert population.candidates == []
+    assert population.excluded_confirmed_no_retest == 1
+    assert population.excluded_never_confirmed == 1

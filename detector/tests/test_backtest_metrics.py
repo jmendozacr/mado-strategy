@@ -29,8 +29,8 @@ _KEY_LEVEL = KeyLevel(kind="fvg", top=1.1050, bottom=1.0950, origin_index=0, exp
 
 _ZERO_RECONCILIATION = ReconciliationReport(
     signals_considered=0, trades_opened=0, excluded_no_crt_range=0, excluded_unaligned=0,
-    excluded_never_confirmed=0, excluded_no_key_level=0, excluded_duplicate=0, excluded_kill_zone=0,
-    excluded_rr_floor=0, excluded_never_filled=0,
+    excluded_confirmed_no_retest=0, excluded_never_confirmed=0, excluded_no_key_level=0,
+    excluded_duplicate=0, excluded_kill_zone=0, excluded_rr_floor=0, excluded_never_filled=0,
 )
 
 
@@ -145,10 +145,10 @@ def test_partial_exits_count_in_mixed_population():
 
 
 def test_reconciliation_buckets_plus_trades_opened_sum_to_signals_considered():
-    """REQ-40.1: for a real simulate() run mixing distinct bucket outcomes
-    (no_crt_range, unaligned, no_key_level, and a trade), trades_opened +
-    every one of the 8 exclusion buckets sums EXACTLY to
-    signals_considered."""
+    """REQ-40.1/40.5/40.6: for a real simulate() run mixing distinct bucket
+    outcomes (no_crt_range, unaligned, no_key_level, confirmed_no_retest,
+    never_confirmed, and a trade), trades_opened + every one of the 9
+    exclusion buckets sums EXACTLY to signals_considered."""
     series = (
         CandleSeriesBuilder()
         .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor
@@ -166,25 +166,37 @@ def test_reconciliation_buckets_plus_trades_opened_sum_to_signals_considered():
     )
     unaligned = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2, origin_index=2)
     no_key_level = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2, origin_index=3)
+    confirmed_no_retest = _signal(
+        anchor_index=0, direction="bullish", entry_type="body", retest_index=None,
+        status=DetectionStatus.PENDING, origin_index=4,
+    )
+    never_confirmed = _signal(
+        anchor_index=0, direction="bullish", entry_type="body", retest_index=None,
+        status=DetectionStatus.INVALIDATED, origin_index=5,
+    )
 
     population = [
         _aligned(opens_a_trade),
         _aligned(no_crt_range),
         _aligned(unaligned, htf_context=None, aligned="unaligned"),
         _aligned(no_key_level, key_level=None),
+        _aligned(confirmed_no_retest),
+        _aligned(never_confirmed),
     ]
     trades, report = simulate(population, series, DetectorConfig())
 
     bucket_sum = report.trades_opened + sum([
-        report.excluded_no_crt_range, report.excluded_unaligned, report.excluded_never_confirmed,
-        report.excluded_no_key_level, report.excluded_duplicate, report.excluded_kill_zone,
-        report.excluded_rr_floor, report.excluded_never_filled,
+        report.excluded_no_crt_range, report.excluded_unaligned, report.excluded_confirmed_no_retest,
+        report.excluded_never_confirmed, report.excluded_no_key_level, report.excluded_duplicate,
+        report.excluded_kill_zone, report.excluded_rr_floor, report.excluded_never_filled,
     ])
-    assert bucket_sum == report.signals_considered == 4
+    assert bucket_sum == report.signals_considered == 6
     assert report.trades_opened == 1
     assert report.excluded_no_crt_range == 1
     assert report.excluded_unaligned == 1
     assert report.excluded_no_key_level == 1
+    assert report.excluded_confirmed_no_retest == 1
+    assert report.excluded_never_confirmed == 1
 
 
 def test_unaligned_and_outside_kill_zone_lands_in_excluded_unaligned_not_kill_zone():

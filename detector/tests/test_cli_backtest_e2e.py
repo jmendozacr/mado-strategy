@@ -257,6 +257,7 @@ def test_types_excluding_model1_produces_empty_zero_disclosure_run(tmp_path):
     assert "open trades: 0" in summary
     assert "no crt range: 0" in summary
     assert "unaligned: 0" in summary
+    assert "confirmed, no retest: 0" in summary
     assert "never confirmed: 0" in summary
     assert "duplicate: 0" in summary
     assert "kill zone: 0" in summary

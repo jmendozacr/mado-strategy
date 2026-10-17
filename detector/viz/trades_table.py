@@ -99,6 +99,7 @@ def write_metrics_summary(
         "reconciliation:",
         f"  no crt range: {r.excluded_no_crt_range}",
         f"  unaligned: {r.excluded_unaligned}",
+        f"  confirmed, no retest: {r.excluded_confirmed_no_retest}",
         f"  never confirmed: {r.excluded_never_confirmed}",
         f"  no key level: {r.excluded_no_key_level}",
         f"  duplicate: {r.excluded_duplicate}",
