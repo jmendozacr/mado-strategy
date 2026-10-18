@@ -215,6 +215,75 @@ def test_high_side_breach_credited_when_extreme_inside_unexpired_zone():
     assert signal_tag.key_level == key_level
 
 
+def test_purge_candle_closing_back_inside_the_range_is_tagged_reject_close_inside():
+    """charter-1 [00:12:59]/charter-6 [00:03:25]: the methodology's own
+    'confirmación real' requires the purge candle to close back inside the
+    CRT range it breached, not merely wick-touch the Key Level. This is the
+    reaction shape charter-2 [00:21:14] calls the M-shaped reaction."""
+    htf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 1 — purges High(1.1035), closes back inside (1.1005)
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    key_level = KeyLevel(kind="fvg", top=1.1050, bottom=1.1030, origin_index=0)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[key_level])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.key_level == key_level
+    assert signal_tag.key_level_reaction == "reject_close_inside"
+
+
+def test_purge_candle_closing_outside_the_range_is_tagged_continuation():
+    """charter-1 [00:13:45-00:14:40]/charter-2 [00:22:03]: the purge candle
+    can instead touch the Key Level and expand straight through in the same
+    move (V-shaped reaction) — still credited (geometric touch unchanged),
+    but NOT a close-back-inside rejection. Only the close value changes
+    from the reject_close_inside fixture above (1.1025 instead of 1.1005,
+    now above range.high=1.1020); the wick high stays 1.1035 so the same
+    Key Level is credited either way."""
+    htf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1025),  # 1 — purges High(1.1035), closes OUTSIDE (above 1.1020)
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+    key_level = KeyLevel(kind="fvg", top=1.1050, bottom=1.1030, origin_index=0)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[key_level])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.key_level == key_level
+    assert signal_tag.key_level_reaction == "continuation"
+
+
+def test_aligned_signal_with_no_key_level_has_no_reaction():
+    """key_level_reaction is only meaningful alongside a credited
+    key_level — mirrors key_level's own None-means-none convention."""
+    htf_specs = [
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 1 — purges High(1.1035), no Key Level registered
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 2 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(0), timeframe="5M")
+
+    tags = tag_alignment(htf_series, ltf_series)
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.key_level is None
+    assert signal_tag.key_level_reaction is None
+
+
 def test_low_side_breach_credited_when_extreme_inside_unexpired_zone():
     """REQ-55.2: mirror of REQ-55.1 for a low-side purge breach."""
     htf_specs = [

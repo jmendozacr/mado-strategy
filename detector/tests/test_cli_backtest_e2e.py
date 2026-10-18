@@ -188,14 +188,14 @@ def test_trades_csv_partial_columns_populated_when_fired(tmp_path):
 
 def test_trades_csv_signal_id_joins_exactly_one_detections_csv_row(tmp_path):
     """REQ-42.1/41.3: on a --backtest run, detections.csv gains the
-    trailing signal_id column (9 cols) and every trades.csv row's
+    trailing signal_id column (10 cols) and every trades.csv row's
     signal_id joins exactly one detections.csv row."""
     exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--types", "model1"])
 
     assert exit_code == 0
     detections_rows = _read_csv_rows(output_dir / "detections.csv")
     assert detections_rows[0][-1] == "signal_id"
-    assert len(detections_rows[0]) == 9
+    assert len(detections_rows[0]) == 10
 
     trades_rows = _read_csv_rows(output_dir / "trades.csv")
     detection_signal_ids = [row[-1] for row in detections_rows[1:] if row[-1] != ""]
@@ -323,6 +323,7 @@ def test_backtest_does_not_change_overlay_but_detections_gains_signal_id_column(
     backtest_header = _read_csv_rows(backtest_dir / "detections.csv")[0]
     assert plain_header == [
         "timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source",
+        "key_level_reaction",
     ]
     assert backtest_header == plain_header + ["signal_id"]
     assert not (plain_dir / "trades.csv").exists()

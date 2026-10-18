@@ -19,6 +19,7 @@ class AlignedSignal:
     htf_context: CRTRange | None
     aligned: Alignment
     key_level: KeyLevel | None = None
+    key_level_reaction: Literal["reject_close_inside", "continuation"] | None = None
 
 
 def tag_alignment(
@@ -95,10 +96,15 @@ def tag_alignment(
 
         crt_range = purge_index_to_range.get(relevant_index)
         if crt_range is not None:
+            credited_key_level = key_level_credit_map.get(relevant_index)
             tags.append(
                 AlignedSignal(
                     ltf_signal=signal, htf_context=crt_range, aligned="aligned",
-                    key_level=key_level_credit_map.get(relevant_index),
+                    key_level=credited_key_level,
+                    key_level_reaction=(
+                        _purge_reaction(htf_candles[relevant_index], crt_range)
+                        if credited_key_level is not None else None
+                    ),
                 )
             )
         else:
@@ -119,6 +125,21 @@ def _purge_wick_extremes(purge_candle: Candle, crt_range: CRTRange) -> tuple[flo
     if purge_candle.low < crt_range.low:
         extremes.append(purge_candle.low)
     return tuple(extremes)
+
+
+def _purge_reaction(purge_candle: Candle, crt_range: CRTRange) -> Literal["reject_close_inside", "continuation"]:
+    """Reportable alongside `key_level` (never gates it): charter-1
+    [00:12:59]/charter-6 [00:03:25] describe the methodology's own
+    'confirmación real' as the purge candle closing back inside the CRT
+    range after touching the Key Level — the M-shaped reaction (charter-2
+    [00:21:14]). charter-1 [00:13:45-00:14:40]/charter-2 [00:22:03] also
+    document a second valid shape where the same candle instead closes
+    through, continuing straight to the opposite extreme (V-shaped) — this
+    purely classifies which shape the credited purge candle took; it does
+    not change whether `key_level` itself is credited."""
+    return (
+        "reject_close_inside" if crt_range.low <= purge_candle.close <= crt_range.high else "continuation"
+    )
 
 
 def _key_level_credit_map(

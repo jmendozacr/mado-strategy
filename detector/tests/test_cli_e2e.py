@@ -54,7 +54,7 @@ def test_full_pipeline_produces_populated_overlay_and_detections_csv(tmp_path):
 
     rows = _read_csv_rows(output_dir / "detections.csv")
     header, data_rows = rows[0], rows[1:]
-    assert header == ["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source"]
+    assert header == ["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source", "key_level_reaction"]
     types_present = {row[1] for row in data_rows}
     assert "fvg" in types_present
     assert "crt_range" in types_present
@@ -74,7 +74,7 @@ def test_zero_detections_still_emits_valid_empty_outputs(tmp_path):
     assert exit_code == 0
     assert (output_dir / "overlay.png").stat().st_size > 0
     rows = _read_csv_rows(output_dir / "detections.csv")
-    assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source"]]
+    assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source", "key_level_reaction"]]
 
 
 def test_types_filter_narrows_detections_csv_to_selected_types(tmp_path):
@@ -131,7 +131,7 @@ def test_date_filter_excludes_all_results_outside_range(tmp_path):
 
     assert exit_code == 0
     rows = _read_csv_rows(output_dir / "detections.csv")
-    assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source"]]
+    assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source", "key_level_reaction"]]
 
 
 def _write_dual_csv_at(path, date_str, start_hour):
@@ -250,7 +250,7 @@ def test_session_filter_excludes_results_outside_ny_kill_zone(tmp_path):
 
     assert exit_code == 0
     rows = _read_csv_rows(output_dir / "detections.csv")
-    assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source"]]
+    assert rows == [["timestamp", "type", "direction", "price_high", "price_low", "status", "aligned", "key_level_source", "key_level_reaction"]]
 
 
 def test_unknown_session_token_is_rejected(tmp_path, capsys):
