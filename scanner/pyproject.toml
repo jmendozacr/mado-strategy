@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scanner"
+version = "0.1.0"
+description = "Live Telegram scanner for the validated CRT Key Level signal rules"
+requires-python = ">=3.12"
+dependencies = [
+    "detector",
+    "MetaTrader5>=5.0.45",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+include = ["mt5_feed.py", "telegram_notify.py", "rules.py", "state.py", "main.py"]
+
+[tool.uv.sources]
+detector = { path = "../detector", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

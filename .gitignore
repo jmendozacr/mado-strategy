@@ -1,5 +1,9 @@
 .claude/settings.local.json
 .agents/
+.atl/
 .playwright-mcp/
 pairs/
 .sdd/evidence/
+.env
+scanner/.env
+scanner/state.json
