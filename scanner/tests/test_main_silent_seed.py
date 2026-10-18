@@ -62,7 +62,8 @@ def test_silent_run_never_sends_telegram_but_marks_state(monkeypatch):
     result_state = main.run_once(empty_state, silent=True)
 
     assert sent_messages == []
-    assert "sig-1" in result_state["alerted_ids"]
+    assert len(result_state["alerted_ids"]) == 1
+    assert result_state["alerted_ids"][0].startswith("EURUSDm|")
 
 
 def _fake_candidate(signal_id):
