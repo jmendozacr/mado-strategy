@@ -1,5 +1,12 @@
 """Runnable entry point for `experimental.order_block_structural_break_check`
-over a real series. Reuses `detect_ict_order_blocks` and `detect_mss_events`
+over a real series. With `--redefined` it measures
+`composite.ict_order_block.detect_order_blocks` (the structural
+BOS->Displacement->backward-scan chain, `odd/tasks/
+detector-order-block-redefinition.md` T5) instead of the archived
+`primitives.ict_order_block.detect_ict_order_blocks` (the bare 2-candle
+engulfment rule this change is meant to replace) -- same
+`summarize`/`ob_followed_by_real_break` measurement either way, so the
+two numbers are directly comparable. Reuses `detect_mss_events`
 unmodified; no production file touched.
 """
 from __future__ import annotations
@@ -17,15 +24,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m experimental.order_block_structural_break_check_runner",
         description=(
-            "EXPERIMENTAL measurement: of the Order Blocks "
-            "primitives.ict_order_block detects on a real series, how many "
-            "are actually followed by a real structural break (MSS), same "
-            "direction, before they invalidate?"
+            "EXPERIMENTAL measurement: of the Order Blocks detected on a "
+            "real series, how many are actually followed by a real "
+            "structural break (MSS), same direction, before they "
+            "invalidate?"
         ),
     )
     parser.add_argument("--csv", required=True, help="MT5 CSV for the series to measure")
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--label", default=None, help="printed label for this series")
+    parser.add_argument(
+        "--redefined", action="store_true",
+        help="measure composite.ict_order_block (structural) instead of the archived engulfing rule",
+    )
     return parser
 
 
@@ -33,8 +44,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     series = load_mt5_csv(args.csv, symbol=args.symbol)
 
-    obs = detect_ict_order_blocks(series)
     mss_events = detect_mss_events(series)
+    if args.redefined:
+        from composite.ict_order_block import detect_order_blocks
+        obs = detect_order_blocks(series, mss_events=mss_events)
+    else:
+        obs = detect_ict_order_blocks(series)
 
     by_direction = {}
     for direction in ("bullish", "bearish"):
