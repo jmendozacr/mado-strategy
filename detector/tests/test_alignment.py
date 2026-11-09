@@ -362,6 +362,115 @@ def _daily_series():
     )
 
 
+def test_credit_priority_none_default_preserves_recency_tiebreak():
+    """Sanity check the opt-in default: with `credit_priority` omitted,
+    an older ict_order_block must NOT beat a newer fvg -- same fixture as
+    `test_credit_priority_overrides_recency_when_given` below, priority
+    omitted, confirming the baseline this session's own measurement
+    (sdd/crt-detector-order-block-redefinition) is about to change."""
+    htf_specs = [
+        (1.1000, 1.1010, 1.0995, 1.1005),  # 0 — earliest possible origin
+        (1.1005, 1.1010, 1.0995, 1.1008),  # 1 — more recent possible origin
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 2 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 3 — purges High(1.1035), closes back inside
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 4 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(hours=2), timeframe="5M")
+    older_ob = KeyLevel(kind="ict_order_block", top=1.1050, bottom=1.1030, origin_index=0)
+    newer_fvg = KeyLevel(kind="fvg", top=1.1040, bottom=1.1032, origin_index=1)
+
+    tags = tag_alignment(htf_series, ltf_series, htf_key_levels=[older_ob, newer_fvg])
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.key_level == newer_fvg
+
+
+def test_credit_priority_overrides_recency_when_given():
+    """Opt-in: `credit_priority` ranks `kind` above pure recency.
+    Grounded in real measurement, not a guess -- the redefined
+    ict_order_block detector shows ~75-82% real-break confirmation vs
+    fvg's ~48-50% (sdd/crt-detector-order-block-redefinition), a gap pure
+    recency cannot express. Identical fixture to the default-preserving
+    test above; only `credit_priority` differs."""
+    htf_specs = [
+        (1.1000, 1.1010, 1.0995, 1.1005),  # 0 — earliest possible origin
+        (1.1005, 1.1010, 1.0995, 1.1008),  # 1 — more recent possible origin
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 2 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 3 — purges High(1.1035), closes back inside
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 4 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(hours=2), timeframe="5M")
+    older_ob = KeyLevel(kind="ict_order_block", top=1.1050, bottom=1.1030, origin_index=0)
+    newer_fvg = KeyLevel(kind="fvg", top=1.1040, bottom=1.1032, origin_index=1)
+
+    tags = tag_alignment(
+        htf_series, ltf_series, htf_key_levels=[older_ob, newer_fvg],
+        credit_priority={"ict_order_block": 1, "fvg": 0},
+    )
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.key_level == older_ob
+
+
+def test_credit_priority_still_breaks_ties_by_origin_index_within_a_tier():
+    """Two levels of the SAME (top-ranked) kind must still resolve by
+    recency within that tier -- credit_priority only reorders ACROSS
+    kinds, it does not disable the within-kind recency rule."""
+    htf_specs = [
+        (1.1000, 1.1010, 1.0995, 1.1005),  # 0 — older ict_order_block origin
+        (1.1005, 1.1010, 1.0995, 1.1008),  # 1 — newer ict_order_block origin
+        (1.1000, 1.1020, 1.0980, 1.1010),  # 2 — range H=1.1020 L=1.0980
+        (1.1010, 1.1035, 1.1000, 1.1005),  # 3 — purges High(1.1035), closes back inside
+        (1.1000, 1.1005, 1.0950, 1.0960),  # 4 — closes below Low -> true_break
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(hours=2), timeframe="5M")
+    older_ob = KeyLevel(kind="ict_order_block", top=1.1050, bottom=1.1030, origin_index=0)
+    newer_ob = KeyLevel(kind="ict_order_block", top=1.1040, bottom=1.1032, origin_index=1)
+
+    tags = tag_alignment(
+        htf_series, ltf_series, htf_key_levels=[older_ob, newer_ob],
+        credit_priority={"ict_order_block": 1, "fvg": 0},
+    )
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.key_level == newer_ob
+
+
+def test_credit_priority_unlisted_kind_defaults_to_zero():
+    """A kind absent from `credit_priority` is not an error -- it
+    defaults to priority 0, the same as an explicit fvg entry above."""
+    htf_specs = [
+        (1.1000, 1.1010, 1.0995, 1.1005),
+        (1.1005, 1.1010, 1.0995, 1.1008),
+        (1.1000, 1.1020, 1.0980, 1.1010),
+        (1.1010, 1.1035, 1.1000, 1.1005),
+        (1.1000, 1.1005, 1.0950, 1.0960),
+    ]
+    htf_series = _htf_series(
+        candle_specs=htf_specs, start=datetime(2026, 1, 1, 12, 0, 0), step=timedelta(hours=1), timeframe="1H",
+    )
+    ltf_series = _shift(model1_purge_engulf_charter2_setup(), offset=timedelta(hours=2), timeframe="5M")
+    older_ob = KeyLevel(kind="ict_order_block", top=1.1050, bottom=1.1030, origin_index=0)
+    newer_unlisted = KeyLevel(kind="fvg", top=1.1040, bottom=1.1032, origin_index=1)
+
+    tags = tag_alignment(
+        htf_series, ltf_series, htf_key_levels=[older_ob, newer_unlisted],
+        credit_priority={"ict_order_block": 1},  # "fvg" absent -> defaults to 0
+    )
+
+    signal_tag = _bearish_signal_tag(tags)
+    assert signal_tag.key_level == older_ob
+
+
 def test_daily_key_level_confirmed_before_purge_boundary_is_credited():
     """REQ-63.5: a Daily-sourced KeyLevel confirmed on Daily candle 0 (whose
     close boundary lands at/before the HTF purge candle) IS reindexed into

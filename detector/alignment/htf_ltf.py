@@ -33,6 +33,7 @@ def tag_alignment(
     htf_key_levels: list[KeyLevel] | None = None,
     daily_series: OHLCSeries | None = None,
     daily_key_levels: list[KeyLevel] | None = None,
+    credit_priority: dict[str, int] | None = None,
 ) -> list[AlignedSignal]:
     """Tag each LTF Model-1 signal against the HTF CRT purge window it
     falls in (REQ-05). A resolved HTF CRTRange's "purge candle" is the
@@ -58,6 +59,18 @@ def tag_alignment(
     before joining `htf_key_levels` in the credit map. Both must be
     provided together; either omitted means no Daily-sourced Key Levels
     (mirrors `htf_key_levels`'s own None-means-none convention).
+
+    `credit_priority` (opt-in, `None` default preserves the existing
+    highest-`origin_index`-wins tiebreak exactly): a `KeyLevel.kind ->
+    int` ranking, highest wins, `origin_index` only breaks a tie WITHIN
+    the same priority tier. Grounded in measurement, not a guess —
+    `sdd/crt-detector-order-block-redefinition` found a ~2x real-break
+    confirmation-rate gap between Key Level sources (fvg ~48-50% vs a
+    redefined ict_order_block ~75-82%) that pure recency cannot express:
+    FVG is H4-native and continuously refreshed, so it wins the
+    highest-origin_index tiebreak almost by construction regardless of
+    which source is actually more trustworthy. An unlisted `kind`
+    defaults to priority `0`.
     """
     htf_candles = htf_series.candles
     htf_timestamps = [c.timestamp for c in htf_candles]
@@ -72,7 +85,7 @@ def tag_alignment(
             daily_key_levels, daily_series.candles, htf_candles, htf_timestamps
         )
     key_level_credit_map = _key_level_credit_map(
-        htf_candles, purge_index_to_range, all_key_levels
+        htf_candles, purge_index_to_range, all_key_levels, credit_priority=credit_priority
     )
     htf_duration = TIMEFRAME_DURATIONS[htf_series.timeframe]
     last_htf_index = len(htf_candles) - 1
@@ -146,6 +159,7 @@ def _key_level_credit_map(
     candles: tuple[Candle, ...],
     purge_index_to_range: dict[int, CRTRange],
     key_levels: list[KeyLevel],
+    credit_priority: dict[str, int] | None = None,
 ) -> dict[int, KeyLevel]:
     """Eager, keyed by purge index — O(purges x levels x extremes<=2),
     independent of LTF signal count (design §12). A level qualifies for a
@@ -156,7 +170,16 @@ def _key_level_credit_map(
     qualifying levels pooled; the HIGHEST origin_index (most recent) wins
     across the pool (REQ-63.4, V3 — was lowest/oldest under V2's REQ-55.6,
     flipped because the most-recent Key Level is the more relevant one for
-    a Daily-tier source, ADR-E)."""
+    a Daily-tier source, ADR-E) — unless `credit_priority` ranks `kind`
+    above pure recency, in which case `origin_index` only breaks a tie
+    within the top-ranked tier. `credit_priority=None` (the default)
+    reproduces the original tiebreak exactly, byte-for-byte — every
+    existing caller is unaffected."""
+    tiebreak_key = (
+        (lambda level: level.origin_index)
+        if credit_priority is None
+        else (lambda level: (credit_priority.get(level.kind, 0), level.origin_index))
+    )
     credit_map: dict[int, KeyLevel] = {}
     for purge_index, crt_range in purge_index_to_range.items():
         extremes = _purge_wick_extremes(candles[purge_index], crt_range)
@@ -169,7 +192,7 @@ def _key_level_credit_map(
             and level.bottom <= extreme <= level.top
         ]
         if qualifying:
-            credit_map[purge_index] = max(qualifying, key=lambda level: level.origin_index)
+            credit_map[purge_index] = max(qualifying, key=tiebreak_key)
     return credit_map
 
 

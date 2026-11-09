@@ -43,13 +43,15 @@ def daily_key_levels(daily_series: OHLCSeries, *, redefined: bool) -> list[KeyLe
 
 
 def recipe_signals(
-    m15: OHLCSeries, h4: OHLCSeries, daily: OHLCSeries, config: DetectorConfig, *, redefined: bool
+    m15: OHLCSeries, h4: OHLCSeries, daily: OHLCSeries, config: DetectorConfig, *,
+    redefined: bool, credit_priority: dict[str, int] | None = None,
 ) -> list[AlignedSignal]:
     """Mirrors `cli._detect_all`'s own HTF/Daily key-level wiring (FVG on
     H4, Order Block on Daily) and `research.eurusd_recipe_validation
     .pipeline.recipe_signals`'s `reject_close_inside` filter -- the exact
     population the live scanner recipe considers, except for the one
-    swapped source."""
+    swapped source. `credit_priority` passes through to `tag_alignment`
+    unchanged (`None` = the existing recency-only tiebreak)."""
     ltf_crt_ranges = detect_crt_ranges(m15, config.crt_range)
     model1_signals = detect_model1_signals(
         m15, config.crt_range, config.fvg, config.model1, crt_ranges=ltf_crt_ranges,
@@ -62,6 +64,7 @@ def recipe_signals(
         h4, m15, config.crt_range, config.fvg, config.model1,
         ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
         htf_key_levels=fvg_key_levels, daily_series=daily, daily_key_levels=order_block_key_levels,
+        credit_priority=credit_priority,
     )
     return [
         signal for signal in aligned
