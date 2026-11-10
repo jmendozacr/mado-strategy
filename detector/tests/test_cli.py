@@ -623,3 +623,17 @@ def test_htf_key_levels_concatenate_fvg_and_ict_order_block_sources(tmp_path):
     htf_key_levels = tag_alignment_spy.call_args.kwargs["htf_key_levels"]
     assert fake_fvg_key_level in htf_key_levels
     assert fake_ict_key_level in htf_key_levels
+
+
+def test_cli_order_block_detection_uses_the_redefined_composite_detector():
+    """odd/tasks/detector-order-block-redefinition.md S8: the archived
+    `primitives.ict_order_block` detector (2-candle engulfment, body-only
+    zone, ~26% real-break confirmation per T5) is swapped for
+    `composite.ict_order_block` (MSS -> displacement -> backward-scan
+    chain, ~75-82% confirmation) as the production source for HTF/Daily
+    ICTOrderBlock Key Levels — the deferred, higher-risk step S8 itself
+    named as separate from the walking skeleton."""
+    import composite.ict_order_block as redefined
+
+    assert cli.detect_ict_order_blocks is redefined.detect_order_blocks
+    assert cli.ict_order_block_to_key_levels is redefined.to_key_levels

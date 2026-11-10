@@ -24,8 +24,8 @@ from ingestion.loader import LoadError, load_mt5_csv
 from ingestion.pairing import load_pair
 from primitives.crt_range import CRTRange, detect_crt_ranges
 from primitives.fvg import FVG, detect_fvgs, to_key_levels
-from primitives.ict_order_block import detect_ict_order_blocks
-from primitives.ict_order_block import to_key_levels as ict_order_block_to_key_levels
+from composite.ict_order_block import detect_order_blocks as detect_ict_order_blocks
+from composite.ict_order_block import to_key_levels as ict_order_block_to_key_levels
 from primitives.swing import SwingPoint, detect_swings
 from viz.chart import render_chart
 from viz.table import write_detections_csv
@@ -226,8 +226,15 @@ def _detect_all(
         # §4a's correction note for why gating it on daily_series being
         # present is a bug (it silently drops V2's existing ICTOrderBlock
         # contribution when Daily is omitted).
+        #
+        # V4 (odd/tasks/detector-order-block-redefinition.md S8): the
+        # detector itself is now `composite.ict_order_block` (MSS ->
+        # displacement -> backward-scan chain), not the archived 2-candle
+        # engulfment rule — it takes no ICTOrderBlockConfig, self-computing
+        # swings/MSS for this series since nothing else in `_detect_all`
+        # already holds them.
         htf_order_blocks = detect_ict_order_blocks(
-            daily_series if daily_series is not None else htf_series, config.ict_order_block
+            daily_series if daily_series is not None else htf_series
         )
         order_block_key_levels = ict_order_block_to_key_levels(htf_order_blocks)
         fvg_key_levels = to_key_levels(detect_fvgs(htf_series, config.fvg))
