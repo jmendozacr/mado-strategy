@@ -171,6 +171,180 @@ def _window_outcome(
     )
 
 
+@dataclass(frozen=True)
+class TargetWindowOutcome:
+    """One notional account, started on `start_date`, run until it either
+    PASSES (reaches `profit_target_pct`), breaches a cap, or the window
+    ends with neither. `days_to_target` is the calendar-day gap from
+    `start_date` to the close date the target was reached on -- `None`
+    whenever `passed` is `False`."""
+
+    start_date: date
+    passed: bool
+    days_to_target: int | None
+    breached_before_target: bool
+
+
+def _target_outcome(
+    rows: list[tuple[date, float]],
+    start: date,
+    end: date,
+    risk_per_trade_pct: float,
+    profit_target_pct: float,
+    max_drawdown_pct: float,
+    daily_loss_limit_pct: float,
+    drawdown_basis: DrawdownBasis,
+) -> TargetWindowOutcome:
+    """Single forward walk, stopping at the FIRST trade that either
+    breaches a cap or reaches the target -- a cap breach on the same
+    trade that would also clear the target is read as a breach (a real
+    platform flags the drawdown regardless of same-trade profit), so caps
+    are checked before the target on every trade."""
+    equity_r = peak_r = 0.0
+    worst_floor_r = worst_peak_to_trough_r = 0.0
+    current_day: date | None = None
+    current_day_r = 0.0
+
+    for close_date, r_multiple in rows:
+        if close_date < start or close_date > end:
+            continue
+        if close_date != current_day:
+            current_day = close_date
+            current_day_r = 0.0
+        current_day_r += r_multiple
+        equity_r += r_multiple
+        peak_r = max(peak_r, equity_r)
+        worst_floor_r = max(worst_floor_r, -equity_r)
+        worst_peak_to_trough_r = max(worst_peak_to_trough_r, peak_r - equity_r)
+        worst_drawdown_r = (
+            worst_floor_r if drawdown_basis == "initial_balance_floor" else worst_peak_to_trough_r
+        )
+        breached = (
+            worst_drawdown_r * risk_per_trade_pct >= max_drawdown_pct
+            or max(0.0, -current_day_r) * risk_per_trade_pct >= daily_loss_limit_pct
+        )
+        if breached:
+            return TargetWindowOutcome(start, False, None, True)
+        if equity_r * risk_per_trade_pct >= profit_target_pct:
+            return TargetWindowOutcome(start, True, (close_date - start).days, False)
+
+    return TargetWindowOutcome(start, False, None, False)
+
+
+def _window_starts(rows: list[tuple[date, float]], window_days: int) -> list[date]:
+    if not rows:
+        return []
+    first, last = rows[0][0], rows[-1][0]
+    starts = []
+    start = first
+    while start + timedelta(days=window_days - 1) <= last:
+        starts.append(start)
+        start += timedelta(days=1)
+    return starts
+
+
+def simulate_rolling_windows_with_target(
+    trades: Sequence[ClosedTrade],
+    *,
+    risk_per_trade_pct: float,
+    profit_target_pct: float,
+    max_drawdown_pct: float,
+    daily_loss_limit_pct: float = 5.0,
+    window_days: int = 250,
+    drawdown_basis: DrawdownBasis = "initial_balance_floor",
+) -> tuple[TargetWindowOutcome, ...]:
+    """Same window enumeration as `simulate_rolling_windows`, but each
+    window stops as soon as it either breaches a cap or reaches
+    `profit_target_pct`, recording which happened and how many days it
+    took -- `simulate_rolling_windows`'s own `RollingWindowResult` has no
+    profit-target concept at all (see this module's own docstring, "every
+    window is run for its full length")."""
+    rows = sorted(
+        (session_day(trade.exit_time), trade.r_multiple)
+        for trade in trades
+        if trade.exit_time is not None and trade.r_multiple is not None
+    )
+    return tuple(
+        _target_outcome(
+            rows, start, start + timedelta(days=window_days - 1), risk_per_trade_pct,
+            profit_target_pct, max_drawdown_pct, daily_loss_limit_pct, drawdown_basis,
+        )
+        for start in _window_starts(rows, window_days)
+    )
+
+
+@dataclass(frozen=True)
+class TwoPhaseOutcome:
+    """One notional account attempting Phase 1 then, only if it passes,
+    Phase 2 -- each with its OWN risk%/target/max-DD, Phase 2's equity
+    restarting at zero from the day Phase 1 was passed, within the SAME
+    overall window's end boundary (not a fresh day budget)."""
+
+    start_date: date
+    passed_phase1: bool
+    days_phase1: int | None
+    passed_phase2: bool
+    days_phase2: int | None
+    total_days: int | None
+
+
+def simulate_two_phase_rolling_windows(
+    trades: Sequence[ClosedTrade],
+    *,
+    phase1_risk_pct: float,
+    phase1_target_pct: float,
+    phase1_max_dd_pct: float,
+    phase2_risk_pct: float,
+    phase2_target_pct: float,
+    phase2_max_dd_pct: float,
+    daily_loss_limit_pct: float = 5.0,
+    window_days: int = 250,
+    drawdown_basis: DrawdownBasis = "initial_balance_floor",
+) -> tuple[TwoPhaseOutcome, ...]:
+    rows = sorted(
+        (session_day(trade.exit_time), trade.r_multiple)
+        for trade in trades
+        if trade.exit_time is not None and trade.r_multiple is not None
+    )
+    results = []
+    for start in _window_starts(rows, window_days):
+        end = start + timedelta(days=window_days - 1)
+        phase1 = _target_outcome(
+            rows, start, end, phase1_risk_pct, phase1_target_pct, phase1_max_dd_pct,
+            daily_loss_limit_pct, drawdown_basis,
+        )
+        if not phase1.passed:
+            results.append(TwoPhaseOutcome(start, False, None, False, None, None))
+            continue
+        # +1: phase 2's OWN equity walk starts the day AFTER phase 1's
+        # passing trade closed -- that trade's own close already decided
+        # phase 1 and must not be re-counted toward phase 2's equity.
+        phase2_start = start + timedelta(days=phase1.days_to_target + 1)
+        phase2 = _target_outcome(
+            rows, phase2_start, end, phase2_risk_pct, phase2_target_pct, phase2_max_dd_pct,
+            daily_loss_limit_pct, drawdown_basis,
+        )
+        # Reported relative to phase 1's OWN pass date (the day the
+        # account entered Phase 2), not phase2_start -- "how long did
+        # Phase 2 take once you passed Phase 1" is the intuitive question;
+        # +1 undoes the shift above.
+        days_phase2 = phase2.days_to_target + 1 if phase2.passed else None
+        total_days = phase1.days_to_target + days_phase2 if phase2.passed else None
+        results.append(
+            TwoPhaseOutcome(start, True, phase1.days_to_target, phase2.passed, days_phase2, total_days)
+        )
+    return tuple(results)
+
+
+def two_phase_pass_fraction(results: Sequence[TwoPhaseOutcome]) -> float | None:
+    """`None` when there are no windows to judge -- mirrors
+    `RollingWindowResult.fail_dd_fraction`'s own empty-population
+    convention."""
+    if not results:
+        return None
+    return sum(1 for r in results if r.passed_phase2) / len(results)
+
+
 def simulate_rolling_windows(
     trades: Sequence[ClosedTrade],
     *,

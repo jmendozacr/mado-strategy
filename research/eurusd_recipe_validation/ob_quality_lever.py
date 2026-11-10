@@ -39,7 +39,11 @@ from research.eurusd_recipe_validation.pipeline import (
     load_series,
     recipe_signals,
 )
-from research.eurusd_recipe_validation.sizing import simulate_rolling_windows
+from research.eurusd_recipe_validation.sizing import (
+    simulate_rolling_windows,
+    simulate_two_phase_rolling_windows,
+    two_phase_pass_fraction,
+)
 from research.eurusd_recipe_validation.trades import ClosedTrade
 
 DEFAULT_H4 = os.path.join("pairs", "H4", "EURUSDm_H4_202001020000_202609042000.csv")
@@ -53,6 +57,18 @@ WINDOW_DAYS = 250
 DRAWDOWN_BASIS = "initial_balance_floor"  # the user-confirmed static rule (see README.md)
 PARTIAL_FRACTIONS: tuple[float, ...] = (0.0, 0.5)  # both published, same rigor as compare.py --
 # "the exit model is load-bearing for the conclusion" (README.md)
+
+# Generic FTMO-style two-phase parameters. Risk%/max-DD match the user's own
+# confirmed sizing (mado-eurusd-scanner-recipe memory); the +10%/+5% profit
+# targets are the standard FTMO Challenge/Verification figures, not
+# separately user-confirmed -- flagged here so a different provider's
+# numbers can be swapped in.
+PHASE1_RISK_PCT = 0.50
+PHASE1_TARGET_PCT = 10.0
+PHASE1_MAX_DD_PCT = 10.0
+PHASE2_RISK_PCT = 0.75
+PHASE2_TARGET_PCT = 5.0
+PHASE2_MAX_DD_PCT = 5.0
 
 
 def _gated_closed_trades(trades, m15) -> list[ClosedTrade]:
@@ -83,6 +99,13 @@ def _report_row(label: str, closed_trades: list[ClosedTrade]) -> None:
         f"avg_r={stats.average_r if stats.average_r else 0:+.4f} total_r={stats.total_r:+.2f} "
         f"max_dd_r={stats.max_drawdown_r:.2f} calmar={stats.calmar_ratio if stats.calmar_ratio else 0:.2f}"
     )
+    if stats.first_close is not None and stats.last_close is not None:
+        span_weeks = (stats.last_close - stats.first_close).days / 7
+        if span_weeks > 0:
+            print(
+                f"span: {stats.first_close} .. {stats.last_close} ({span_weeks:.1f} weeks) "
+                f"-> {stats.closed / span_weeks:.2f} closed trades/week"
+            )
     for risk in RISK_LEVELS:
         window_result = simulate_rolling_windows(
             tuple(closed_trades), risk_per_trade_pct=risk, max_drawdown_pct=PHASE_1_MAX_DD_PCT,
@@ -90,6 +113,37 @@ def _report_row(label: str, closed_trades: list[ClosedTrade]) -> None:
         )
         fail = window_result.fail_dd_fraction
         print(f"  risk={risk:.2f}%  windows={len(window_result.windows):<5}  fail_dd={('n/a' if fail is None else f'{fail*100:.1f}%')}")
+
+    two_phase = simulate_two_phase_rolling_windows(
+        tuple(closed_trades),
+        phase1_risk_pct=PHASE1_RISK_PCT, phase1_target_pct=PHASE1_TARGET_PCT, phase1_max_dd_pct=PHASE1_MAX_DD_PCT,
+        phase2_risk_pct=PHASE2_RISK_PCT, phase2_target_pct=PHASE2_TARGET_PCT, phase2_max_dd_pct=PHASE2_MAX_DD_PCT,
+        daily_loss_limit_pct=DAILY_LOSS_LIMIT_PCT, window_days=WINDOW_DAYS, drawdown_basis=DRAWDOWN_BASIS,
+    )
+    pass_frac = two_phase_pass_fraction(two_phase)
+    passed_both = [r for r in two_phase if r.passed_phase2]
+    passed_p1_only = [r for r in two_phase if r.passed_phase1 and not r.passed_phase2]
+    print(
+        f"  two-phase (P1 {PHASE1_RISK_PCT:.2f}%/{PHASE1_TARGET_PCT:.0f}%target/"
+        f"{PHASE1_MAX_DD_PCT:.0f}%DD -> P2 {PHASE2_RISK_PCT:.2f}%/{PHASE2_TARGET_PCT:.0f}%target/"
+        f"{PHASE2_MAX_DD_PCT:.0f}%DD): windows={len(two_phase)}  "
+        f"pass_both={('n/a' if pass_frac is None else f'{pass_frac*100:.1f}%')}  "
+        f"passed_phase1_only={len(passed_p1_only)}"
+    )
+    if passed_both:
+        days1 = sorted(r.days_phase1 for r in passed_both)
+        days2 = sorted(r.days_phase2 for r in passed_both)
+        total = sorted(r.total_days for r in passed_both)
+
+        def _pctl(xs, p):
+            return xs[min(len(xs) - 1, int(len(xs) * p))]
+
+        print(
+            f"    among the {len(passed_both)} that passed BOTH phases -- "
+            f"days to P1 median={_pctl(days1, 0.5)} p90={_pctl(days1, 0.9)}; "
+            f"days P1->P2 median={_pctl(days2, 0.5)} p90={_pctl(days2, 0.9)}; "
+            f"total days median={_pctl(total, 0.5)} p90={_pctl(total, 0.9)} max={total[-1]}"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

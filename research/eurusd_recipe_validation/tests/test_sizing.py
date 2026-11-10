@@ -2,7 +2,11 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from research.eurusd_recipe_validation.sizing import simulate_rolling_windows
+from research.eurusd_recipe_validation.sizing import (
+    simulate_rolling_windows,
+    simulate_rolling_windows_with_target,
+    simulate_two_phase_rolling_windows,
+)
 from research.eurusd_recipe_validation.trades import ClosedTrade
 
 _DAY_ZERO = datetime(2024, 1, 1, 12, 0)  # 12:00 UTC is the same NY calendar date year-round
@@ -150,3 +154,103 @@ def test_the_result_echoes_the_parameters_it_was_run_with():
     result = _run([_trade("a", 0, 1.0), _trade("b", 9, 1.0)], window_days=10)
     assert (result.risk_per_trade_pct, result.max_drawdown_pct, result.window_days) == (1.0, 10.0, 10)
     assert result.drawdown_basis == "initial_balance_floor"
+
+
+def _run_target(trades, **overrides):
+    kwargs = dict(
+        risk_per_trade_pct=1.0, profit_target_pct=10.0, max_drawdown_pct=10.0,
+        daily_loss_limit_pct=5.0, window_days=4,
+    )
+    kwargs.update(overrides)
+    return simulate_rolling_windows_with_target(trades, **kwargs)
+
+
+class TestSimulateRollingWindowsWithTarget:
+    def test_passes_and_records_days_to_target(self) -> None:
+        # risk=1%, target=10% -> needs cumulative R*1% >= 10%, i.e. R >= 10.
+        trades = [_trade("a", 0, 6.0), _trade("b", 3, 5.0)]  # cumulative 11R by day 3
+        result = _run_target(trades, window_days=4)[0]
+        assert result.passed is True
+        assert result.days_to_target == 3
+        assert result.breached_before_target is False
+
+    def test_breach_before_target_fails_the_window(self) -> None:
+        trades = [_trade("a", 0, -11.0), _trade("b", 1, 20.0)]  # -11R breaches 10% cap first
+        result = _run_target(trades, window_days=2)[0]
+        assert result.passed is False
+        assert result.breached_before_target is True
+        assert result.days_to_target is None
+
+    def test_window_ends_without_reaching_target_or_breaching(self) -> None:
+        trades = [_trade("a", 0, 1.0), _trade("b", 1, 1.0)]
+        result = _run_target(trades, profit_target_pct=50.0, window_days=2)[0]
+        assert result.passed is False
+        assert result.breached_before_target is False
+        assert result.days_to_target is None
+
+    def test_a_trade_that_both_breaches_and_would_hit_target_counts_as_a_breach(self) -> None:
+        """Conservative tie-break: a single trade crossing both thresholds
+        at once is read as the account failing, not passing -- a real
+        prop-firm platform would flag the drawdown breach regardless of
+        same-trade profit. Pinned here using two trades on the SAME close
+        day, so both land in the same incremental check."""
+        same_day = [_trade("a", 0, -11.0), _trade("b", 0, 20.0)]
+        result = _run_target(same_day, window_days=1)[0]
+        assert result.passed is False
+        assert result.breached_before_target is True
+
+    def test_empty_population_produces_no_windows(self) -> None:
+        assert _run_target([]) == ()
+
+    def test_window_count_matches_the_plain_rolling_window_enumeration(self) -> None:
+        trades = [_trade("a", 0, 1.0), _trade("b", 11, 1.0)]
+        assert len(_run_target(trades, window_days=10)) == len(_run(trades, window_days=10).windows)
+
+
+def _run_two_phase(trades, **overrides):
+    kwargs = dict(
+        phase1_risk_pct=1.0, phase1_target_pct=10.0, phase1_max_dd_pct=10.0,
+        phase2_risk_pct=1.0, phase2_target_pct=5.0, phase2_max_dd_pct=10.0,
+        daily_loss_limit_pct=5.0, window_days=6,
+    )
+    kwargs.update(overrides)
+    return simulate_two_phase_rolling_windows(trades, **kwargs)
+
+
+class TestSimulateTwoPhaseRollingWindows:
+    def test_passes_both_phases_and_sums_days(self) -> None:
+        # Phase 1 (target 10R @ 1%): reached day 3 (6+5=11R). Phase 2
+        # restarts equity at 0 from day 3 (target 5R @ 1%): reached day 5
+        # (the day-5 trade alone is 5R).
+        trades = [_trade("a", 0, 6.0), _trade("b", 3, 5.0), _trade("c", 5, 5.0)]
+        result = _run_two_phase(trades, window_days=6)[0]
+        assert result.passed_phase1 is True
+        assert result.days_phase1 == 3
+        assert result.passed_phase2 is True
+        assert result.days_phase2 == 2
+        assert result.total_days == 5
+
+    def test_never_passing_phase1_never_attempts_phase2(self) -> None:
+        trades = [_trade("a", 0, 1.0), _trade("b", 1, 1.0)]
+        result = _run_two_phase(trades, phase1_target_pct=50.0, window_days=2)[0]
+        assert result.passed_phase1 is False
+        assert result.passed_phase2 is False
+        assert result.days_phase2 is None
+        assert result.total_days is None
+
+    def test_phase2_breach_fails_the_window_even_though_phase1_passed(self) -> None:
+        trades = [_trade("a", 0, 6.0), _trade("b", 3, 5.0), _trade("c", 5, -11.0)]
+        result = _run_two_phase(trades, window_days=6)[0]
+        assert result.passed_phase1 is True
+        assert result.passed_phase2 is False
+
+    def test_pass_fraction_counts_both_phases_passing(self) -> None:
+        passing = [_trade("a", 0, 6.0), _trade("b", 3, 5.0), _trade("c", 5, 5.0)]
+        failing = [_trade("a", 0, 1.0), _trade("b", 1, 1.0)]
+        from research.eurusd_recipe_validation.sizing import two_phase_pass_fraction
+
+        results = (
+            _run_two_phase(passing, window_days=6)[0],
+            _run_two_phase(failing, phase1_target_pct=50.0, window_days=2)[0],
+        )
+        assert two_phase_pass_fraction(results) == pytest.approx(0.5)
