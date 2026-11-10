@@ -42,6 +42,48 @@ def daily_key_levels(daily_series: OHLCSeries, *, redefined: bool) -> list[KeyLe
     return archived_to_key_levels(blocks)
 
 
+def htf_pooled_key_levels(h4: OHLCSeries, *, redefined: bool) -> list[KeyLevel]:
+    """FVG + Order Block pooled natively on H4, no Daily tier -- mirrors
+    `cli._detect_all`'s own non-daily branch (`fvg_key_levels +
+    order_block_key_levels`). Gives the Order Block source a MUCH larger
+    sample than the Daily-tier wiring: H4 has ~10754 candles against
+    Daily's ~2086, so the redefined detector gets far more chances to
+    actually win a confluence credit, which the Daily-tier measurement
+    (431/311 credits, 11 closed trades each pair) could not supply
+    (`detector/key-level-credit-tiebreak/quality-priority-corrected`)."""
+    fvg_key_levels = fvg_to_key_levels(detect_fvgs(h4))
+    if redefined:
+        order_block_key_levels = redefined_to_key_levels(detect_order_blocks(h4))
+    else:
+        order_block_key_levels = archived_to_key_levels(detect_ict_order_blocks(h4))
+    return fvg_key_levels + order_block_key_levels
+
+
+def recipe_signals_htf_pooled(
+    m15: OHLCSeries, h4: OHLCSeries, config: DetectorConfig, *,
+    redefined: bool, credit_priority: dict[str, int] | None = None,
+) -> list[AlignedSignal]:
+    """Same `reject_close_inside` recipe filter as `recipe_signals`, but
+    sourced from `htf_pooled_key_levels` (no Daily tier at all) --
+    see that function's docstring for why."""
+    ltf_crt_ranges = detect_crt_ranges(m15, config.crt_range)
+    model1_signals = detect_model1_signals(
+        m15, config.crt_range, config.fvg, config.model1, crt_ranges=ltf_crt_ranges,
+    )
+    htf_crt_ranges = detect_crt_ranges(h4, config.crt_range)
+    htf_key_levels = htf_pooled_key_levels(h4, redefined=redefined)
+
+    aligned = tag_alignment(
+        h4, m15, config.crt_range, config.fvg, config.model1,
+        ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
+        htf_key_levels=htf_key_levels, credit_priority=credit_priority,
+    )
+    return [
+        signal for signal in aligned
+        if signal.key_level is not None and signal.key_level_reaction == "reject_close_inside"
+    ]
+
+
 def recipe_signals(
     m15: OHLCSeries, h4: OHLCSeries, daily: OHLCSeries, config: DetectorConfig, *,
     redefined: bool, credit_priority: dict[str, int] | None = None,

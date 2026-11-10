@@ -1,7 +1,11 @@
 from datetime import datetime, timedelta
 
 from core.candle import Candle, OHLCSeries
-from experimental.order_block_redefinition_backtest import daily_key_levels, trade_stats
+from experimental.order_block_redefinition_backtest import (
+    daily_key_levels,
+    htf_pooled_key_levels,
+    trade_stats,
+)
 
 
 class _FakeTrade:
@@ -74,6 +78,37 @@ class TestDailyKeyLevels:
 
         module.daily_key_levels(_series_with_a_bearish_engulfing_pair_and_a_real_bos(), redefined=True)
         assert calls == ["redefined"]
+
+
+class TestHtfPooledKeyLevels:
+    def test_pools_fvg_and_ob_natively_on_h4_no_daily_reindex(self) -> None:
+        """Mirrors cli._detect_all's own non-daily branch: `fvg_key_levels
+        + order_block_key_levels`, both H4-native -- the larger-sample
+        alternative to the Daily-tier wiring (Daily has ~2086 candles vs
+        H4's ~10754, so the Daily OB source rarely accumulates a large
+        enough closed-trade sample to judge)."""
+        series = _series_with_a_bearish_engulfing_pair_and_a_real_bos()
+        archived = htf_pooled_key_levels(series, redefined=False)
+        redefined = htf_pooled_key_levels(series, redefined=True)
+        assert {level.kind for level in archived} <= {"fvg", "ict_order_block"}
+        assert {level.kind for level in redefined} <= {"fvg", "ict_order_block"}
+
+    def test_dispatch_reaches_the_right_ob_detector(self, monkeypatch) -> None:
+        import experimental.order_block_redefinition_backtest as module
+
+        calls = []
+        monkeypatch.setattr(module, "detect_fvgs", lambda series, config=None: [])
+        monkeypatch.setattr(
+            module, "detect_ict_order_blocks", lambda series: calls.append("archived") or []
+        )
+        monkeypatch.setattr(
+            module, "detect_order_blocks", lambda series: calls.append("redefined") or []
+        )
+
+        module.htf_pooled_key_levels(
+            _series_with_a_bearish_engulfing_pair_and_a_real_bos(), redefined=False
+        )
+        assert calls == ["archived"]
 
 
 class TestTradeStats:
