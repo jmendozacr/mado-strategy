@@ -313,7 +313,8 @@ def model1_wick_priority_setup() -> OHLCSeries:
     """REQ-20.1: candle 1 purges the CRT High (bearish anchor). Candle 2's
     close (1.0995) goes beyond the anchor's WICK-low extreme (1.1005), not
     just its body extreme (1.1010) -> Wick used regardless of body size,
-    entry_price = anchor's wick extreme (1.1035, the swept side).
+    entry_price = the retest-side body boundary (1.1010), never the
+    anchor's protected/swept extreme (1.1035).
     """
     return (
         CandleSeriesBuilder()
@@ -344,8 +345,8 @@ def model1_body_tiebreak_small_body_setup() -> OHLCSeries:
     """REQ-20: anchor candle 1 has a small body and long wick (body_ratio=
     0.044, < body_ratio_tiebreak=0.6). Candle 2's close (1.1000) clears the
     anchor's BODY extreme (1.1015) but not its WICK extreme (1.0995) ->
-    middle zone -> tiebreak favors Wick (small body): entry_price =
-    anchor's wick extreme (1.1040), per charter-2 [00:12:02].
+    middle zone -> tiebreak favors Wick (small body): entry_price = the
+    retest-side body boundary (1.1015), per charter-2 [00:12:02].
     """
     return (
         CandleSeriesBuilder()

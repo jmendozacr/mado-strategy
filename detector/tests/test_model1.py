@@ -39,7 +39,9 @@ def _find(signals, anchor_index, direction, confirmation_type="purge_engulf"):
 
 def test_close_beyond_wick_extreme_uses_wick_regardless_of_body_size():
     """REQ-20.1: confirming close clears the anchor's WICK extreme ->
-    entry_type=wick, entry_price=anchor's wick extreme (the swept side),
+    entry_type=wick, entry_price=the retest-side body boundary (REQ-47.2's
+    formula, mirrored here — real-trade evidence showed the swept extreme
+    itself is never where a Model-1 wick entry actually fills),
     regardless of the anchor's body_ratio.
     """
     series = model1_wick_priority_setup()
@@ -47,7 +49,7 @@ def test_close_beyond_wick_extreme_uses_wick_regardless_of_body_size():
     signal = _find(detect_model1_signals(series), anchor_index=1, direction="bearish")
 
     assert signal.entry_type == "wick"
-    assert signal.entry_price == 1.1035
+    assert signal.entry_price == 1.1010
 
 
 def test_middle_zone_close_with_big_body_tiebreaks_to_body():
@@ -67,14 +69,14 @@ def test_middle_zone_close_with_big_body_tiebreaks_to_body():
 def test_middle_zone_close_with_small_body_tiebreaks_to_wick():
     """REQ-20, charter-2 [00:12:02]: same middle-zone close condition, but
     anchor's body_ratio (0.044) < body_ratio_tiebreak (0.6) -> tiebreak
-    favors Wick, entry_price = anchor's wick extreme.
+    favors Wick, entry_price = the retest-side body boundary.
     """
     series = model1_body_tiebreak_small_body_setup()
 
     signal = _find(detect_model1_signals(series), anchor_index=1, direction="bearish")
 
     assert signal.entry_type == "wick"
-    assert signal.entry_price == 1.1040
+    assert signal.entry_price == 1.1015
 
 
 def test_middle_zone_close_with_anchor_color_aligned_to_direction_uses_anchor_open_bearish():
@@ -139,7 +141,7 @@ def test_retest_and_same_candle_close_beyond_own_open_confirms():
     assert signal.status == DetectionStatus.CONFIRMED
     assert signal.retest_index == 3
     assert signal.entry_type == "wick"
-    assert signal.entry_price == 1.1035
+    assert signal.entry_price == 1.1010
 
 
 def test_close_beyond_protected_extreme_before_retest_invalidates():
@@ -168,7 +170,7 @@ def test_pre_confirmation_breach_invalidates_immediately_instead_of_dropping_the
     assert signal.status == DetectionStatus.INVALIDATED
     assert signal.retest_index is None
     assert signal.entry_type == "wick"
-    assert signal.entry_price == 1.1035
+    assert signal.entry_price == 1.1010
 
 
 def test_no_retest_by_series_end_is_pending_not_dropped():
@@ -215,7 +217,7 @@ def test_purge_engulf_matches_charter2_example1():
 
     assert signal.purge_target == 1.1020
     assert signal.entry_type == "wick"
-    assert signal.entry_price == 1.1035
+    assert signal.entry_price == 1.1010
     assert signal.retest_index == 3
     assert signal.status == DetectionStatus.CONFIRMED
 
@@ -231,7 +233,7 @@ def test_delayed_engulf_matches_charter2_example2():
 
     assert signal.purge_target == 1.0980
     assert signal.entry_type == "wick"
-    assert signal.entry_price == 1.0960
+    assert signal.entry_price == 1.0990
     assert signal.retest_index == 4
     assert signal.status == DetectionStatus.CONFIRMED
 
@@ -251,7 +253,7 @@ def test_dual_purge_and_fvg_fill_matches_charter2_example3():
     assert fvg_signal.purge_target == 1.1010
     for signal in (purge_signal, fvg_signal):
         assert signal.entry_type == "wick"
-        assert signal.entry_price == 1.1005
+        assert signal.entry_price == 1.1030
         assert signal.retest_index == 6
         assert signal.status == DetectionStatus.CONFIRMED
 

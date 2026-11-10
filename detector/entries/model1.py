@@ -140,14 +140,12 @@ def _track_anchor(
             if not confirmed:
                 # REQ-18: a close beyond the anchor's protected extreme
                 # before any confirmation invalidates immediately — the
-                # signal is still emitted, not dropped. `protected_extreme`
-                # doubles as the wick-entry price _select_entry would have
-                # returned (the anchor's swept side), since no confirming
-                # close ever happened to select an entry from.
-                # Pre-confirmation breach: entry_price is the breached
-                # protected extreme, not a planned entry — no
-                # confirmation/engulf ever occurred for this signal.
-                entry_type, entry_price = "wick", protected_extreme
+                # signal is still emitted, not dropped. entry_price mirrors
+                # what `_select_entry` would have returned for a wick-type
+                # signal (the retest-side body boundary), since no
+                # confirming close ever happened to actually select one.
+                entry_type = "wick"
+                entry_price = max(anchor.open, anchor.close) if direction == "bullish" else min(anchor.open, anchor.close)
                 return signal(None, DetectionStatus.INVALIDATED, j)
             return signal(retest_index, DetectionStatus.INVALIDATED, j)
 
@@ -195,20 +193,26 @@ def _wick_overlaps(candle: Candle, body_low: float, body_high: float) -> bool:
 def _select_entry(
     close: float, anchor: Candle, direction: Direction, body_ratio_tiebreak: float
 ) -> tuple[Literal["wick", "body"], float]:
+    """Wick entry is the retest-side body boundary (REQ-47.2's own
+    formula, mirrored here) -- never the anchor's protected/swept extreme.
+    A real executed Model-1 trade (GBPUSD, 2026-11-10) confirmed the fill
+    sits at the side of the anchor the price breaks OUT through and later
+    retests, not the side that was originally swept for liquidity -- entry
+    there collapses risk to near-zero (ADR-05's own rejected alternative)."""
     if direction == "bullish":
         wick_extreme = anchor.high
         if close > wick_extreme:
-            return "wick", anchor.low
+            return "wick", max(anchor.open, anchor.close)
         if _body_ratio(anchor) >= body_ratio_tiebreak:
             return "body", anchor.open
-        return "wick", anchor.low
+        return "wick", max(anchor.open, anchor.close)
 
     wick_extreme = anchor.low
     if close < wick_extreme:
-        return "wick", anchor.high
+        return "wick", min(anchor.open, anchor.close)
     if _body_ratio(anchor) >= body_ratio_tiebreak:
         return "body", anchor.open
-    return "wick", anchor.high
+    return "wick", min(anchor.open, anchor.close)
 
 
 def _body_ratio(anchor: Candle) -> float:
