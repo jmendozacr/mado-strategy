@@ -142,10 +142,10 @@ def _track_anchor(
                 # before any confirmation invalidates immediately — the
                 # signal is still emitted, not dropped. entry_price mirrors
                 # what `_select_entry` would have returned for a wick-type
-                # signal (the retest-side body boundary), since no
+                # signal (the anchor's own wick extreme), since no
                 # confirming close ever happened to actually select one.
                 entry_type = "wick"
-                entry_price = max(anchor.open, anchor.close) if direction == "bullish" else min(anchor.open, anchor.close)
+                entry_price = anchor.high if direction == "bullish" else anchor.low
                 return signal(None, DetectionStatus.INVALIDATED, j)
             return signal(retest_index, DetectionStatus.INVALIDATED, j)
 
@@ -193,26 +193,34 @@ def _wick_overlaps(candle: Candle, body_low: float, body_high: float) -> bool:
 def _select_entry(
     close: float, anchor: Candle, direction: Direction, body_ratio_tiebreak: float
 ) -> tuple[Literal["wick", "body"], float]:
-    """Wick entry is the retest-side body boundary (REQ-47.2's own
-    formula, mirrored here) -- never the anchor's protected/swept extreme.
-    A real executed Model-1 trade (GBPUSD, 2026-11-10) confirmed the fill
-    sits at the side of the anchor the price breaks OUT through and later
-    retests, not the side that was originally swept for liquidity -- entry
-    there collapses risk to near-zero (ADR-05's own rejected alternative)."""
+    """Wick entry is the anchor's own wick extreme (`wick_extreme` itself,
+    the breakout side the confirming close broke through) -- never the
+    anchor's protected/swept extreme, and never a body-edge compromise
+    either. Two real executed Model-1 trades (GBPUSD 2026-11-10, a buy
+    entering at the anchor's high; EURUSD 2026-11-10b, a sell entering
+    exactly at the anchor's low) confirmed this: the first trade alone
+    was ambiguous (its anchor's open nearly coincided with its high), but
+    the second anchor had long wicks on BOTH sides, cleanly ruling out
+    the body-edge formula this function used until then. Entry there
+    does not collapse risk to near-zero (ADR-05's own rejected
+    alternative) because `wick_extreme` sits on the OPPOSITE side of the
+    candle from `protected_extreme` (the stop's own anchor point) --
+    ADR-05 rejected the swept-side wick tip, the same point as the stop,
+    not this one."""
     if direction == "bullish":
         wick_extreme = anchor.high
         if close > wick_extreme:
-            return "wick", max(anchor.open, anchor.close)
+            return "wick", wick_extreme
         if _body_ratio(anchor) >= body_ratio_tiebreak:
             return "body", anchor.open
-        return "wick", max(anchor.open, anchor.close)
+        return "wick", wick_extreme
 
     wick_extreme = anchor.low
     if close < wick_extreme:
-        return "wick", min(anchor.open, anchor.close)
+        return "wick", wick_extreme
     if _body_ratio(anchor) >= body_ratio_tiebreak:
         return "body", anchor.open
-    return "wick", min(anchor.open, anchor.close)
+    return "wick", wick_extreme
 
 
 def _body_ratio(anchor: Candle) -> float:

@@ -17,10 +17,20 @@ Direction = Literal["bullish", "bearish"]
 
 def entry_price(anchor: Candle, direction: Direction, entry_type: Literal["wick", "body"]) -> float:
     """REQ-47: backtest-local entry price, independent of
-    `Model1Signal.entry_price`/`detections.csv` (ADR-05)."""
+    `Model1Signal.entry_price`/`detections.csv` (ADR-05). Wick entry is the
+    anchor's own wick extreme (`anchor.high` bullish / `anchor.low`
+    bearish) -- corrected 2026-11-10b: the original "retest-side body
+    boundary" (max/min of open,close) was itself a misreading of ADR-05's
+    rejected "entry at the wick extreme" alternative, which evaluated the
+    SWEPT-side wick tip (the same point as `protected_extreme`, the stop's
+    own anchor -- a real collapse risk), not this OPPOSITE-side one. Two
+    real executed Model-1 trades (a GBPUSD buy and a EURUSD sell, both
+    2026-11-10) confirmed entry sits at the full wick tip, never a body
+    edge -- the sell's anchor had long wicks on both sides, cleanly ruling
+    the body-edge formula out."""
     if entry_type == "body":
         return anchor.open
-    return max(anchor.open, anchor.close) if direction == "bullish" else min(anchor.open, anchor.close)
+    return anchor.high if direction == "bullish" else anchor.low
 
 
 def stop_loss(

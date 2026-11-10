@@ -415,7 +415,7 @@ def test_wick_entry_resolves_at_retest_index_itself():
     special-cased."""
     series = (
         CandleSeriesBuilder()
-        .candle(open=1.0998, high=1.1005, low=1.0990, close=1.1002)  # 0 — anchor; wick entry = max(open,close) = 1.1002
+        .candle(open=1.0998, high=1.1005, low=1.0990, close=1.1002)  # 0 — anchor; wick entry = anchor.high = 1.1005
         .candle(open=1.1000, high=1.1004, low=1.0999, close=1.1001)  # 1 — filler
         .candle(open=1.1001, high=1.1006, low=1.1000, close=1.1003)  # 2 — retest candle, low<=1.1002 -> touches immediately
         .candle(open=1.1002, high=1.1010, low=1.0998, close=1.1005)  # 3 — after
@@ -427,7 +427,7 @@ def test_wick_entry_resolves_at_retest_index_itself():
 
     assert report.trades_opened == 1
     assert trades[0].entry_index == 2
-    assert trades[0].entry_price == 1.1002
+    assert trades[0].entry_price == 1.1005
 
 
 def test_entry_never_touched_within_max_fill_wait_window_is_excluded():
@@ -660,12 +660,13 @@ def test_three_duplicate_candidates_collapse_to_one_lowest_origin_index_survives
 def test_differing_entry_type_at_same_anchor_and_price_both_survive():
     """REQ-46.2: entry_type is part of the dedup identity key -- a wick and
     a body candidate at the same anchor survive as distinct candidates, even
-    when their computed entry_price VALUES coincide (anchor close<=open
-    collapses wick entry (max(open,close)) onto body entry (open), leaving
-    entry_type as the only field able to separate the two)."""
+    when their computed entry_price VALUES coincide (anchor.open == anchor.high,
+    no upper wick at all, collapses wick entry (anchor.high) onto body entry
+    (anchor.open), leaving entry_type as the only field able to separate the
+    two)."""
     series = (
         CandleSeriesBuilder()
-        .candle(open=1.1005, high=1.1010, low=1.0990, close=1.1000)  # 0 — anchor; close<=open -> body entry==wick entry==1.1005
+        .candle(open=1.1005, high=1.1005, low=1.0990, close=1.1000)  # 0 — anchor; open==high -> body entry==wick entry==1.1005
         .candle(open=1.1005, high=1.1010, low=1.1000, close=1.1005)  # 1 — filler
         .candle(open=1.1002, high=1.1008, low=1.1001, close=1.1004)  # 2 — retest; low<=1.1005 -> fills immediately
         .build()

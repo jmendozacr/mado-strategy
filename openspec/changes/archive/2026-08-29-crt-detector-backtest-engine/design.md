@@ -80,6 +80,8 @@ Full text of all 5 ADRs, restored after an earlier revision cycle elided them to
 
 **Consequences**: risk varies per setup (REQ-35.2 pins a real 1.43 R:R rejection). Backtest entry differs from `detections.csv`'s for wick signals — paid down by the `signal_id` join (REQ-42.1) and REQ-42.2's explicit divergence note.
 
+**Amendment (2026-11-10b)**: "entry is the retest-side body boundary" above (and the "entry at the wick extreme (rejected — reproduces the collapse)" alternative) conflated two different points. Two real executed Model-1 trades confirmed entry actually sits at the anchor's own wick extreme (`anchor.high` bullish / `anchor.low` bearish) — a DIFFERENT value from the body boundary this ADR originally chose, and not the same value as the rejected alternative either: that alternative was the SWEPT-side wick tip (the same point as `protected_extreme`, which does collapse risk), while the wick extreme actually used sits on the OPPOSITE side of the candle from `protected_extreme`, so no collapse applies. `backtest/levels.py::entry_price`'s wick case now returns `anchor.high`/`anchor.low` directly — see REQ-47.2 (corrected) and `odd/tasks/model1-wick-entry-retest-side-fix.md`. The original Decision/Alternatives/Consequences text above is left unedited as the historical record of what was actually built and why, through 2026-11-10.
+
 ## Risks (numbered, as recorded in design V6)
 
 1. The SL/TP sweep starts at `fill_index + 1`, so a trade stopped out on its own fill candle books no loss — a systematic optimistic bias, ratified by the human as acceptable, bounded to one candle per trade.

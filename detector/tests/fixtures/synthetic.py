@@ -313,8 +313,8 @@ def model1_wick_priority_setup() -> OHLCSeries:
     """REQ-20.1: candle 1 purges the CRT High (bearish anchor). Candle 2's
     close (1.0995) goes beyond the anchor's WICK-low extreme (1.1005), not
     just its body extreme (1.1010) -> Wick used regardless of body size,
-    entry_price = the retest-side body boundary (1.1010), never the
-    anchor's protected/swept extreme (1.1035).
+    entry_price = the anchor's own wick extreme (1.1005), never its
+    protected/swept extreme (1.1035).
     """
     return (
         CandleSeriesBuilder()
@@ -346,7 +346,7 @@ def model1_body_tiebreak_small_body_setup() -> OHLCSeries:
     0.044, < body_ratio_tiebreak=0.6). Candle 2's close (1.1000) clears the
     anchor's BODY extreme (1.1015) but not its WICK extreme (1.0995) ->
     middle zone -> tiebreak favors Wick (small body): entry_price = the
-    retest-side body boundary (1.1015), per charter-2 [00:12:02].
+    anchor's own wick extreme (1.0995), per charter-2 [00:12:02].
     """
     return (
         CandleSeriesBuilder()
@@ -412,7 +412,7 @@ def model1_confirmed_setup() -> OHLCSeries:
         CandleSeriesBuilder()
         .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
         .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
-        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1035)
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1005)
         .candle(open=1.0995, high=1.1012, low=1.0980, close=1.0990)  # 3 — retest + same-candle close -> CONFIRMED
         .build()
     )
@@ -428,7 +428,7 @@ def model1_invalidated_setup() -> OHLCSeries:
         CandleSeriesBuilder()
         .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
         .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
-        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1035)
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1005)
         .candle(open=1.0995, high=1.1040, low=1.0990, close=1.1038)  # 3 — closes beyond 1.1035 -> INVALIDATED
         .build()
     )
@@ -498,7 +498,7 @@ def model1_delayed_engulf_charter2_setup() -> OHLCSeries:
         .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
         .candle(open=1.0990, high=1.1000, low=1.0960, close=1.0985)  # 1 — anchor, purges Low
         .candle(open=1.0985, high=1.0995, low=1.0975, close=1.0980)  # 2 — delay: no confirm, no invalidate
-        .candle(open=1.0980, high=1.1040, low=1.0975, close=1.1030)  # 3 — delayed confirm, entry=wick @1.0960
+        .candle(open=1.0980, high=1.1040, low=1.0975, close=1.1030)  # 3 — delayed confirm, entry=wick @1.1000
         .candle(open=1.1030, high=1.1032, low=1.0987, close=1.1020)  # 4 — retest (overlaps anchor body [1.0985,1.0990])
         .candle(open=1.1020, high=1.1055, low=1.1015, close=1.1050)  # 5 — expansion, close beyond retest's own open -> CONFIRMED
         .build()
@@ -540,7 +540,7 @@ def model1_delayed_confirmation_after_retest_setup() -> OHLCSeries:
         CandleSeriesBuilder()
         .candle(open=1.1000, high=1.1020, low=1.0980, close=1.1010)  # 0 — range: H=1.1020 L=1.0980
         .candle(open=1.1010, high=1.1035, low=1.1005, close=1.1015)  # 1 — anchor, purges High
-        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1035)
+        .candle(open=1.1000, high=1.1005, low=1.0990, close=1.0995)  # 2 — confirms (wick entry @1.1005)
         .candle(open=1.1005, high=1.1012, low=1.1008, close=1.1010)  # 3 — retest (overlaps anchor body [1.1010,1.1015]), no same-candle beat
         .candle(open=1.1008, high=1.1012, low=1.1004, close=1.1010)  # 4 — flat, no breach/beat
         .candle(open=1.1008, high=1.1012, low=1.1004, close=1.1010)  # 5 — flat
