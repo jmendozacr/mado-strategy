@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 
 from composite.mss import detect_mss_events
+from composite.significant_swing import detect_significant_swings
 from ingestion.loader import load_mt5_csv
 from primitives.swing import detect_swings
 
@@ -29,6 +30,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--window", type=int, default=None,
         help="bound 'confirmed' to within this many candles of the swing's own index (None = unbounded)",
     )
+    parser.add_argument(
+        "--significant", action="store_true",
+        help="measure composite.significant_swing (displacement-filtered) instead of the raw fractal",
+    )
     return parser
 
 
@@ -36,8 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     series = load_mt5_csv(args.csv, symbol=args.symbol)
 
-    swings = detect_swings(series)
+    raw_swings = detect_swings(series)
+    swings = detect_significant_swings(series) if args.significant else raw_swings
     mss_events = detect_mss_events(series, swings=swings)
+    print(f"raw swings: {len(raw_swings)}; measured swings: {len(swings)}")
 
     by_kind = {}
     for kind in ("high", "low"):
