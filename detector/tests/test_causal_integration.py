@@ -10,6 +10,8 @@ from composite.order_flow import detect_order_flow_events
 from core.candle import Candle, OHLCSeries
 from core.config import DetectorConfig
 from core.key_level import KeyLevel
+from core.results import DetectionStatus
+from fixtures.synthetic import model1_pending_setup
 from backtest.population import build_stage6_population
 from backtest.simulate import simulate
 from evaluation.direction import DirectionEvidence, evaluate_direction_policies
@@ -50,6 +52,73 @@ def _htf_series() -> OHLCSeries:
 
 def _causal_tags():
     return generate_causal_aligned_signals(_ltf_series(), _htf_series(), htf_key_levels=[_KEY_LEVEL])
+
+
+# Deliberately NOT a literal copy of test_alignment.py's reject/continuation
+# fixtures: those close candle2 below range0's low, which is ALSO below the
+# low of a second, competing CRT range that independently starts at index 1
+# (candle1's own high/low) -- under causal's H-A rule (largest purge_index
+# wins, unlike legacy's timestamp-window matching), that second range would
+# win the HTF context selection instead of range0, entangling this
+# key_level_reaction test with H-A's own range-competition semantics. Each
+# fixture below is shaped so the index-1 range either never resolves (stays
+# pending, dropped) or never exists long enough to compete, leaving range0
+# as the only candidate either way.
+_REACTION_HTF_SPECS_REJECT = [
+    (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+    (1.1010, 1.1035, 1.1000, 1.1005),  # 1 — purges High(1.1035), closes back inside (1.1005) -> poke_side=high
+    (1.1000, 1.1005, 1.0995, 1.1000),  # 2 — close=1.1000 (range0's own midpoint) -> false_break for range0;
+    #       low=1.0995 only POKES (never resolves) the competing range starting at index 1 ([1.1000,1.1035]),
+    #       which then has no further candle and is dropped unresolved.
+]
+_REACTION_HTF_SPECS_CONTINUATION = [
+    (1.1000, 1.1020, 1.0980, 1.1010),  # 0 — range H=1.1020 L=1.0980
+    (1.1010, 1.1035, 1.1000, 1.1025),  # 1 — purges High(1.1035), closes OUTSIDE (above 1.1020) -> true_break
+    #       immediately at index 1 itself; the series ends here, so a competing range starting at
+    #       index 1 never even gets a candle to test resolution against.
+]
+_REACTION_KEY_LEVEL = KeyLevel(kind="fvg", top=1.1050, bottom=1.1030, origin_index=0, expiry_index=None)
+
+
+def _reaction_htf_series(specs) -> OHLCSeries:
+    candles = tuple(
+        Candle(timestamp=_HTF_START + timedelta(hours=i), open=o, high=h, low=l, close=c)
+        for i, (o, h, l, c) in enumerate(specs)
+    )
+    return OHLCSeries(candles=candles, instrument="EURUSD", timeframe="1H")
+
+
+def _bearish_tag(tags):
+    return next(t for t in tags if t.ltf_signal.anchor_index == 1 and t.ltf_signal.direction == "bearish")
+
+
+def test_causal_purge_candle_closing_back_inside_is_tagged_reject_close_inside():
+    """REQ-CAUSAL parity with legacy `tag_alignment` (test_alignment.py's
+    equivalent): `generate_causal_aligned_signals` must populate
+    `key_level_reaction`, not leave it `None`, once a key_level is
+    credited — it was previously never set at all (always `None`)."""
+    tags = generate_causal_aligned_signals(
+        _ltf_series(), _reaction_htf_series(_REACTION_HTF_SPECS_REJECT), htf_key_levels=[_REACTION_KEY_LEVEL],
+    )
+    tag = _bearish_tag(tags)
+    assert tag.key_level == _REACTION_KEY_LEVEL
+    assert tag.key_level_reaction == "reject_close_inside"
+
+
+def test_causal_purge_candle_closing_outside_is_tagged_continuation():
+    tags = generate_causal_aligned_signals(
+        _ltf_series(), _reaction_htf_series(_REACTION_HTF_SPECS_CONTINUATION), htf_key_levels=[_REACTION_KEY_LEVEL],
+    )
+    tag = _bearish_tag(tags)
+    assert tag.key_level == _REACTION_KEY_LEVEL
+    assert tag.key_level_reaction == "continuation"
+
+
+def test_causal_aligned_signal_with_no_key_level_has_no_reaction():
+    tags = generate_causal_aligned_signals(_ltf_series(), _reaction_htf_series(_REACTION_HTF_SPECS_REJECT))
+    tag = _bearish_tag(tags)
+    assert tag.key_level is None
+    assert tag.key_level_reaction is None
 
 
 def test_stage6_admits_a_candidate_from_causal_signals_unmodified():

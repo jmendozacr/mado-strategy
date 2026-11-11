@@ -26,7 +26,7 @@ per signal, seeded with exactly the range `select_htf_context` returned for
 it.
 """
 
-from alignment.htf_ltf import AlignedSignal, _key_level_credit_map, _reindex_daily_key_levels
+from alignment.htf_ltf import AlignedSignal, _key_level_credit_map, _purge_reaction, _reindex_daily_key_levels
 from causal.htf import select_htf_context
 from causal.ranges import causal_crt_ranges
 from causal.signals import causal_purge_engulf_signals
@@ -71,6 +71,7 @@ def generate_causal_aligned_signals(
             high=htf_context.high, low=htf_context.low,
         )
         key_level = None
+        key_level_reaction = None
         if purge_index is not None:
             # Seed the credit map with exactly the range H-A selected for
             # THIS signal's own `t` -- never a global, all-ranges-derived
@@ -79,7 +80,12 @@ def generate_causal_aligned_signals(
             key_level = _key_level_credit_map(
                 htf_candles, {purge_index: htf_context}, all_key_levels
             ).get(purge_index)
+            if key_level is not None:
+                key_level_reaction = _purge_reaction(htf_candles[purge_index], htf_context)
         tags.append(
-            AlignedSignal(ltf_signal=signal, htf_context=htf_context, aligned="aligned", key_level=key_level)
+            AlignedSignal(
+                ltf_signal=signal, htf_context=htf_context, aligned="aligned",
+                key_level=key_level, key_level_reaction=key_level_reaction,
+            )
         )
     return tags
