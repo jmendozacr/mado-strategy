@@ -52,7 +52,9 @@ def generate_causal_aligned_signals(
 ) -> list[AlignedSignal]:
     ltf_ranges = causal_crt_ranges(ltf_series, crt_config)
     htf_ranges = causal_crt_ranges(htf_series, crt_config)
-    causal_signals = causal_purge_engulf_signals(ltf_series, ltf_ranges, model1_config)
+    causal_signals = causal_purge_engulf_signals(
+        ltf_series, ltf_ranges, model1_config, htf_series=htf_series, htf_ranges=htf_ranges,
+    )
 
     htf_candles = htf_series.candles
     htf_timestamps = [c.timestamp for c in htf_candles]
