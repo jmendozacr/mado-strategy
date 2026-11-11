@@ -21,6 +21,17 @@ Branch: `detector-key-level-reaction-probe`. Delivery: `ask-on-risk` — single 
 
 **Process note for next time**: writes to `authorization_manifest.json` were blocked repeatedly by the session's auto-mode classifier ("Modify Shared Resources") after the first edit, requiring explicit user permission ("Te doy el OK") to proceed with T4's correction — flagging this since it recurred 3 times across T1/T2/T4.
 
+- [x] T6 — **done** — route: inline. Ran `runner.run_discovery.run_discovery()` for real, for the first time in this project's history. Completed in 9624.6s (~2h40m), `status: "COMPLETED"`, published to `discovery_results/direction_policy_discovery_v1_amendment_1/`. **Result: `"nominee": "NO POLICY NOMINATED"`** — none of P1-P4 satisfied the frozen SEL-A rule (EST-B point >= +0.20R AND CI lower bound > 0, both required simultaneously, closed_n=5529 across the 3-instrument pooled population):
+
+| Policy | EST-B point | 95%/Bonferroni CI | Reasons failed |
+|---|---|---|---|
+| P1 structural_priority_v1 | -0.004R | [-0.145, +0.139] | BELOW_MEI, CI_LOWER_NOT_POSITIVE |
+| P2 corroboration_v1 | **+0.453R** | [-0.423, **+1.286**] | CI_LOWER_NOT_POSITIVE only (point passed MEI; wildly unreliable — only ~101 of 5583 candidates ever resolve under P2's strict-both-sources rule, so variance swamps the point estimate) |
+| P3 noncontradiction_v1 | +0.012R | [-0.129, +0.156] | BELOW_MEI, CI_LOWER_NOT_POSITIVE |
+| P4 bias_veto_v1 | -0.022R | [-0.245, +0.190] | BELOW_MEI, CI_LOWER_NOT_POSITIVE |
+
+No instrument-delta guard ever failed (all 3 per-instrument deltas stayed above the -0.20R floor for every policy) — the disqualification is uniformly "no detectable edge, or not reliably", never "edge reverses sign in one instrument." This is a genuine, complete negative result from the pre-registered protocol — not a bug, not a partial run. Answers the user's original question ("¿existe algo que nos define si estamos alcista o bajista?"): empirically, across 4 pre-registered ways of combining Order Flow + Bias evidence, none shows a reliable directional edge on real EURUSDm/GBPUSDm/DXYm data at the frictionless (no-cost) label.
+
 ## Log
 
 - L1 (2026-11-10, verbatim): "Vamos con la 2" — chose the re-pin path over running against the stale baseline.
