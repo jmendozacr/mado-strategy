@@ -121,6 +121,26 @@ def test_causal_aligned_signal_with_no_key_level_has_no_reaction():
     assert tag.key_level_reaction is None
 
 
+def test_causal_includes_a_pending_signal_with_no_retest_as_unaligned():
+    """`generate_causal_aligned_signals` used to silently drop every signal
+    with `retest_index is None` (`if signal.retest_index is None: continue`)
+    -- legacy `tag_alignment` never gates on `retest_index` at all (it keys
+    HTF matching off `anchor_index`'s timestamp), so a PENDING-without-
+    retest signal always appears in its output. There is no causally-valid
+    event time `t` to seed an HTF lookup for a signal that never retested
+    (using `anchor_index`'s timestamp instead would reintroduce exactly the
+    B5-style lookahead risk the causal path exists to avoid), so the fix
+    reports it, unconditionally tagged `unaligned`, rather than dropping it."""
+    series = model1_pending_setup()
+    tags = generate_causal_aligned_signals(series, _htf_series())
+
+    pending = next(t for t in tags if t.ltf_signal.status == DetectionStatus.PENDING)
+    assert pending.ltf_signal.retest_index is None
+    assert pending.htf_context is None
+    assert pending.aligned == "unaligned"
+    assert pending.key_level is None
+
+
 def test_stage6_admits_a_candidate_from_causal_signals_unmodified():
     tags = _causal_tags()
     population = build_stage6_population(tags, _ltf_series(), DetectorConfig())

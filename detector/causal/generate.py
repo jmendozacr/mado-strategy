@@ -4,12 +4,17 @@ produces, so it is a drop-in input to the UNCHANGED
 `backtest.population.build_stage6_population` / `backtest.simulate.simulate`
 (REQ-CAUSAL-12/13).
 
-Only `purge_engulf` signals with an actual retest event (`retest_index is
-not None`) are emitted — a signal that never retests has no event index
-`K`, so I1-I4 (each stated "at event index K") do not apply to it by
-construction, and `fvg_fill` signals are unconditionally excluded before a
-Candidate is ever built from them (`backtest.population._population_cuts`)
-— scope decisions documented in the change's own report, not omissions.
+Every `purge_engulf` signal is reported, matching legacy `tag_alignment`'s
+own behavior (it never gates on `retest_index` at all). A signal with no
+retest event (`retest_index is None` -- PENDING-without-retest, or
+INVALIDATED before any retest) has no event index `K`, so I1-I4 (each
+stated "at event index K") do not apply to it, and it is tagged `unaligned`
+with no HTF lookup attempted: using `anchor_index`'s timestamp instead (the
+only other time this signal has) would reintroduce exactly the B5-style
+lookahead risk this module exists to avoid. `fvg_fill` signals are
+unconditionally excluded before a Candidate is ever built from them
+(`backtest.population._population_cuts`) — a scope decision documented in
+the change's own report, not an omission.
 
 Key Level crediting reuses `alignment.htf_ltf`'s own private
 `_key_level_credit_map`/`_reindex_daily_key_levels` UNMODIFIED —
@@ -60,6 +65,7 @@ def generate_causal_aligned_signals(
     tags: list[AlignedSignal] = []
     for signal in causal_signals:
         if signal.retest_index is None:
+            tags.append(AlignedSignal(ltf_signal=signal, htf_context=None, aligned="unaligned"))
             continue
         t = ltf_series.candles[signal.retest_index].timestamp
         htf_context = select_htf_context(htf_series, htf_ranges, t)
