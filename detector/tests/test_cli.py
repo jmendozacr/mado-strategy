@@ -3,6 +3,7 @@ from unittest import mock
 
 from fixtures.mt5_csv import MT5_HEADER, _row
 from fixtures.synthetic import (
+    model1_dual_purge_and_fvg_fill_charter2_setup,
     model1_pre_confirmation_breach_setup,
     model1_purge_engulf_charter2_setup,
 )
@@ -350,10 +351,21 @@ def test_types_alignment_alone_includes_model1_and_alignment_rows(tmp_path):
     populate model1_signals/aligned_signals — `_filter_by_types` gated
     both purely on `"model1" in types`, so `--types alignment` alone
     produced zero rows/markers in both the chart and detections.csv.
+
+    odd/tasks/model1-causal-retry-chain.md T3: swapped the fixture from
+    the plain purge_engulf setup to the dual purge+fvg_fill one — the
+    plain setup registers no Key Level against this test's bare 3-candle
+    `_write_daily_csv` HTF (no FVG/Order Block forms on it), so its lone
+    signal is correctly withheld by the REQ-56 confluence gate regardless
+    of `--types` (the gate fix above now also withholds a causal
+    `"unaligned"` tag, not just `"aligned"`, when neither a Key Level nor
+    `fvg_fill` backs it) -- this test's own point is `--types alignment`
+    inclusion, not confluence gating, so it needs a signal exempt from
+    that gate on `fvg_fill` grounds alone, independent of any Key Level.
     """
     ltf_path = tmp_path / "eurusd_1h.csv"
     htf_path = tmp_path / "eurusd_daily.csv"
-    ltf_path.write_text(_series_to_mt5_csv_text(model1_purge_engulf_charter2_setup()))
+    ltf_path.write_text(_series_to_mt5_csv_text(model1_dual_purge_and_fvg_fill_charter2_setup()))
     _write_daily_csv(htf_path)
     output_dir = tmp_path / "out"
 
@@ -501,6 +513,43 @@ def test_filter_to_confluent_withholds_aligned_non_fvg_fill_signal_with_no_key_l
     assert result.model1_signals == []
 
 
+def test_filter_to_confluent_withholds_unaligned_non_fvg_fill_signal_with_no_key_level():
+    """odd/tasks/model1-causal-retry-chain.md T3 fix: the causal pipeline's
+    H-A rule (keyed by a signal's own `retest_index` timestamp, not legacy
+    `tag_alignment`'s `anchor_index`-window match) can correctly tag a
+    non-fvg_fill signal `aligned="unaligned"` for the same underlying reason
+    legacy would have tagged it `aligned="aligned", key_level=None` — no
+    HTF context backs this signal with a credited Key Level, just arrived
+    at differently. The gate's original `keep()` only excluded the
+    `aligned` case (`t.aligned != "aligned"` passed everything else
+    through), so an `unaligned`, non-fvg_fill, no-key-level signal used to
+    leak through uncredited -- it must be withheld identically to REQ-56.2's
+    `aligned` case above."""
+    signal = _model1_signal()
+    tagged = AlignedSignal(ltf_signal=signal, htf_context=None, aligned="unaligned", key_level=None)
+    detections = _detections(model1_signals=[signal], aligned_signals=[tagged])
+
+    result = cli._filter_to_confluent(detections)
+
+    assert result.aligned_signals == []
+    assert result.model1_signals == []
+
+
+def test_filter_to_confluent_keeps_insufficient_htf_data_signal():
+    """REQ-56.4 (unaligned/insufficient rows unchanged): `insufficient_htf_data`
+    means "not yet knowable", a genuinely different state from "evaluated,
+    no key level" -- it must stay exempt from the gate, unlike plain
+    `unaligned`/`aligned` with no key level."""
+    signal = _model1_signal()
+    tagged = AlignedSignal(ltf_signal=signal, htf_context=None, aligned="insufficient_htf_data", key_level=None)
+    detections = _detections(model1_signals=[signal], aligned_signals=[tagged])
+
+    result = cli._filter_to_confluent(detections)
+
+    assert result.aligned_signals == [tagged]
+    assert result.model1_signals == [signal]
+
+
 _NO_FVG_HTF_DAILY = [
     ("2026.07.02", 1.1000, 1.1005, 1.0995, 1.1000),  # 0 — flat filler, no gap possible
     ("2026.07.03", 1.1000, 1.1005, 1.0995, 1.1000),  # 1 — flat filler
@@ -588,12 +637,24 @@ def test_ny_kill_zone_upper_bound_is_exclusive():
 
 def test_htf_key_levels_concatenate_fvg_and_ict_order_block_sources(tmp_path):
     """REQ-63: `_detect_all` must compose BOTH HTF Key Level sources (FVG
-    and ICTOrderBlock) into the single `htf_key_levels` list handed to
-    `tag_alignment` — neither silently shadows the other (the naming-
+    and ICTOrderBlock) into the single `htf_key_levels` list handed to the
+    alignment layer — neither silently shadows the other (the naming-
     collision risk the design flags for `to_key_levels`). Both adapters are
     mocked so the test proves the composition wiring, independent of
     whether this specific fixture happens to form a real FVG or Order
-    Block organically."""
+    Block organically.
+
+    odd/tasks/model1-causal-retry-chain.md T3: this fixture's LTF series
+    (`_write_valid_csv`, 2 flat candles) never produces any Model-1 signal
+    at all, let alone an `fvg_fill` one — `cli.py`'s migrated `_detect_all`
+    only calls `tag_alignment` when there's an `fvg_fill` signal to tag, so
+    it's never invoked here and the old spy on it saw no call. Every
+    `purge_engulf`-path signal (none, in this fixture, but the composed
+    `htf_key_levels` still flow through unconditionally) now goes through
+    `causal.generate.generate_causal_aligned_signals` instead — that's the
+    function actually receiving the composed Key Levels for this fixture,
+    so the spy moves there.
+    """
     ltf_path = tmp_path / "eurusd_1h.csv"
     htf_path = tmp_path / "eurusd_daily.csv"
     _write_valid_csv(ltf_path)
@@ -602,12 +663,14 @@ def test_htf_key_levels_concatenate_fvg_and_ict_order_block_sources(tmp_path):
 
     fake_fvg_key_level = KeyLevel(kind="fvg", top=1.2000, bottom=1.1990, origin_index=0)
     fake_ict_key_level = KeyLevel(kind="ict_order_block", top=1.2100, bottom=1.2090, origin_index=1)
-    real_tag_alignment = cli.tag_alignment
+    real_generate_causal_aligned_signals = cli.generate_causal_aligned_signals
 
     with (
         mock.patch("cli.to_key_levels", return_value=[fake_fvg_key_level]) as fake_fvg_adapter,
         mock.patch("cli.ict_order_block_to_key_levels", return_value=[fake_ict_key_level]) as fake_ict_adapter,
-        mock.patch("cli.tag_alignment", side_effect=real_tag_alignment) as tag_alignment_spy,
+        mock.patch(
+            "cli.generate_causal_aligned_signals", side_effect=real_generate_causal_aligned_signals
+        ) as generate_causal_aligned_signals_spy,
     ):
         exit_code = main(
             [
@@ -620,7 +683,7 @@ def test_htf_key_levels_concatenate_fvg_and_ict_order_block_sources(tmp_path):
     assert exit_code == 0
     assert fake_fvg_adapter.call_count == 1
     assert fake_ict_adapter.call_count == 1
-    htf_key_levels = tag_alignment_spy.call_args.kwargs["htf_key_levels"]
+    htf_key_levels = generate_causal_aligned_signals_spy.call_args.kwargs["htf_key_levels"]
     assert fake_fvg_key_level in htf_key_levels
     assert fake_ict_key_level in htf_key_levels
 

@@ -30,21 +30,37 @@ _LTF_CANDLES = [
     (1.0965, 1.1010, 1.0790, 1.0910),  # 4 — expansion -> CONFIRMED; low also reaches take_profit (1.0800)
 ]
 
-# Daily HTF pair (design §8.2, redesigned): candles 0-2 form a bearish FVG
-# (zone [1.1030, 1.1040], origin_index=2 — the third candle, per REQ-54.1);
-# candle 3 is the CRT range (H=1.1028, L=1.0900 -> bearish take_profit,
-# clearing the R:R floor against the LTF entry ~1.1010/SL 1.1037); candle 4
-# (2026-07-06, the LTF anchor's own calendar day) purges the range, its
-# high (1.1035) landing INSIDE the unexpired FVG zone -> credited Key Level
-# (REQ-55.1). candle 5 exists so candle 4 is never the "last HTF candle"
-# (avoids insufficient_htf_data).
+# Daily HTF pair (design §8.2; re-timed for odd/tasks/model1-causal-retry-chain.md
+# T3 — causal correctness, not just chronological order): candles 0-1 form a
+# bearish FVG (zone [1.1030, 1.1040], origin_index=2 — the third candle, per
+# REQ-54.1, with candle2 doing double duty as BOTH the FVG's completing
+# candle and the CRT range's own start candle, so the whole purge+resolve
+# cycle finishes before the LTF anchor's calendar day); candle 2 is also the
+# CRT range (H=1.1030, L=1.0900 -> bearish take_profit, clearing the R:R
+# floor against the LTF entry ~1.1010/SL 1.1037); candle 3 purges the range
+# (high 1.1035 > 1.1030, landing INSIDE the FVG zone) without yet resolving
+# it; candle 4 resolves it via false_break (close 1.0925 <= the range's own
+# midpoint 1.0965).
+#
+# This matters causally (not just for legacy's window-matching): the
+# causal pipeline's H-A rule (`causal/htf.py::select_htf_context`) only
+# credits a Key Level from an HTF range whose OWN resolution is knowable by
+# the LTF signal's retest timestamp (2026-07-06, intraday) -- a range that
+# only resolves on 2026-07-06 itself (Daily candles close at midnight) is
+# NOT yet closed as of an intraday retest that same day. The original
+# design had candle 4 (2026-07-06, the LTF anchor's OWN day) as the purge
+# candle and candle 5 (2026-07-07) as the resolving candle -- correct under
+# legacy's anchor-timestamp window match, but one day too late for H-A,
+# which then fell back to a different, non-crediting competing range and
+# produced zero candidates system-wide (9 failing tests). Purge+resolve now
+# complete by 2026-07-05, a full day before the LTF anchor/retest.
 _HTF_DAILY = [
-    ("2026.07.02", 1.1060, 1.1065, 1.1040, 1.1045),  # 0 — FVG top = low 1.1040
-    ("2026.07.03", 1.1042, 1.1044, 1.1034, 1.1036),  # 1 — middle candle
-    ("2026.07.04", 1.1028, 1.1030, 1.1020, 1.1022),  # 2 — FVG bottom = high 1.1030 -> zone [1.1030, 1.1040]
-    ("2026.07.05", 1.1020, 1.1028, 1.0900, 1.0910),  # 3 — CRT range: H=1.1028 L=1.0900 (= take_profit)
-    ("2026.07.06", 1.0915, 1.1035, 1.0905, 1.0920),  # 4 — purge (high 1.1035 > 1.1028, inside FVG zone)
-    ("2026.07.07", 1.0920, 1.0930, 1.0910, 1.0925),  # 5 — trailing
+    ("2026.07.01", 1.1060, 1.1065, 1.1040, 1.1045),  # 0 — FVG top = low 1.1040
+    ("2026.07.02", 1.1042, 1.1044, 1.1034, 1.1036),  # 1 — middle candle
+    ("2026.07.03", 1.1028, 1.1030, 1.0900, 1.0910),  # 2 — FVG bottom = high 1.1030 -> zone [1.1030, 1.1040];
+    #       ALSO the CRT range's own start candle: H=1.1030 L=1.0900 (= take_profit)
+    ("2026.07.04", 1.0915, 1.1035, 1.0905, 1.0920),  # 3 — purge (high 1.1035 > 1.1030, inside FVG zone); poke only
+    ("2026.07.05", 1.0920, 1.0930, 1.0910, 1.0925),  # 4 — resolves via false_break (close 1.0925 <= midpoint 1.0965)
 ]
 
 
@@ -111,7 +127,12 @@ def test_mixed_htf_fixture_has_no_stray_fvg_near_purge_b():
         for i, (date_str, o, h, l, c) in enumerate(_HTF_DAILY_MIXED)
     )
     series = OHLCSeries(candles=candles, instrument="EURUSD", timeframe="D")
-    purge_b_high = candles[7].high
+    # odd/tasks/model1-causal-retry-chain.md T3: `_HTF_DAILY` shrank from 6
+    # to 5 candles (causal timing fix above), shifting purge B's index in
+    # `_HTF_DAILY_MIXED` from 7 to 6 -- derived from `_HTF_DAILY`'s own
+    # length instead of a hardcoded literal, so this never silently drifts
+    # again if `_HTF_DAILY` changes size.
+    purge_b_high = candles[len(_HTF_DAILY) + 1].high
 
     fvgs = detect_fvgs(series)
 

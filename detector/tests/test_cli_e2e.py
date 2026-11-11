@@ -322,6 +322,91 @@ def test_pair_mode_populates_aligned_column_on_model1_rows(tmp_path):
         assert row[6] in {"aligned", "unaligned", "insufficient_htf_data"}
 
 
+def test_pair_mode_confluence_gate_withholds_every_uncredited_purge_engulf_row(tmp_path):
+    """odd/tasks/model1-causal-retry-chain.md T3 regression: cli.py's
+    pair-mode `model1_signals`/`aligned_signals` now come from the causal
+    pipeline for `purge_engulf` signals (unchanged for `fvg_fill`, which has
+    no causal equivalent yet). This fixture's HTF (`_write_daily_csv`, 3
+    flat candles) registers no Key Level at all, so every `purge_engulf`
+    signal — aligned or not — is correctly withheld by the REQ-56
+    confluence gate (T3's `_filter_to_confluent` fix: an `"unaligned"` tag
+    with no key_level is withheld exactly like `"aligned"` with no
+    key_level). Only the `fvg_fill`-confirmed signal (exempt from the gate
+    regardless of key_level) survives into detections.csv.
+    """
+    ltf_path = tmp_path / "eurusd_1h.csv"
+    htf_path = tmp_path / "eurusd_daily.csv"
+    _write_dual_csv(ltf_path)
+    _write_daily_csv(htf_path)
+    output_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            "--csv", str(ltf_path), "--symbol", "EURUSD",
+            "--htf-csv", str(htf_path), "--htf-symbol", "EURUSD",
+            "--output-dir", str(output_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    rows = _read_csv_rows(output_dir / "detections.csv")
+    model1_rows = [row for row in rows[1:] if row[1] == "model1"]
+
+    # Only the fvg_fill-confirmed signal survives (anchor_index=4, bullish,
+    # entry 1.1035, CONFIRMED) — every purge_engulf row is gated out.
+    assert len(model1_rows) == 1
+    assert model1_rows[0][0] == "2026-01-01T04:00:00"
+    assert model1_rows[0][2] == "bullish"
+    assert model1_rows[0][5] == "confirmed"
+
+
+def test_causal_purge_engulf_status_reflects_only_data_known_by_its_own_retest():
+    """Direct unit-level pin for the causal correctness fact T3's migration
+    relies on (not observable through detections.csv once the REQ-56
+    confluence gate withholds the uncredited signal — see the e2e test
+    above): on `fixtures.synthetic`-shaped series (here, this file's own
+    `_DUAL_CANDLES`), the bearish anchor_index=2 signal (entry 1.1025,
+    retest_index=5) reports `status=INVALIDATED` under LEGACY
+    `entries.model1.detect_model1_signals` — but that value is only
+    reachable by reading candle 7 (AFTER its own retest at candle 5) to see
+    a LATER close breach its protected extreme. As of its own retest
+    event, this signal had NOT yet invalidated; `causal.signals.
+    causal_purge_engulf_signals` freezes status at the causal event
+    boundary and correctly reports `PENDING` instead — the exact class of
+    lookahead legacy `tag_alignment`/`detect_model1_signals` has
+    (REQ-CAUSAL-21).
+    """
+    from datetime import datetime, timedelta
+
+    from core.candle import Candle, OHLCSeries
+    from core.config import CRTRangeConfig, Model1Config
+    from core.results import DetectionStatus
+    from entries.model1 import detect_model1_signals
+    from causal.ranges import causal_crt_ranges
+    from causal.signals import causal_purge_engulf_signals
+
+    candles = tuple(
+        Candle(timestamp=datetime(2026, 1, 1) + timedelta(hours=i), open=o, high=h, low=l, close=c)
+        for i, (o, h, l, c) in enumerate(_DUAL_CANDLES)
+    )
+    series = OHLCSeries(candles=candles, instrument="EURUSD", timeframe="1H")
+
+    legacy = next(
+        s for s in detect_model1_signals(series)
+        if s.anchor_index == 2 and s.direction == "bearish" and s.confirmation_type == "purge_engulf"
+    )
+    assert legacy.status == DetectionStatus.INVALIDATED
+    assert legacy.retest_index == 5
+
+    ranges = causal_crt_ranges(series, CRTRangeConfig())
+    causal = next(
+        s for s in causal_purge_engulf_signals(series, ranges, Model1Config())
+        if s.anchor_index == 2 and s.direction == "bearish"
+    )
+    assert causal.status == DetectionStatus.PENDING
+    assert causal.retest_index == 5
+
+
 def test_pair_mode_types_excluding_alignment_keeps_model1_rows_but_blanks_aligned(tmp_path):
     """`alignment` is its own --types token (design 4.6/REQ-23's 6th
     encoding) distinct from `model1` — excluding it drops the HTF-tagged

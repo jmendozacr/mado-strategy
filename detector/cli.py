@@ -13,6 +13,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from alignment.htf_ltf import AlignedSignal, tag_alignment
+from causal.generate import generate_causal_aligned_signals
 from composite.mss import MSSEvent, detect_mss_events
 from core.candle import OHLCSeries
 from core.config import BacktestConfig, DetectorConfig, KillZoneConfig
@@ -244,11 +245,31 @@ def _detect_all(
         else:
             htf_key_levels, daily_key_levels = fvg_key_levels + order_block_key_levels, None
 
-        aligned_signals = tag_alignment(
-            htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
-            ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
+        # odd/tasks/model1-causal-retry-chain.md T3: `purge_engulf` signals
+        # (the ones the no-lookahead bug actually affects — competing LTF
+        # CRT ranges producing an unstable `origin_index`/duplicate anchor)
+        # are now generated and aligned by the causal pipeline instead of
+        # legacy `detect_model1_signals`/`tag_alignment`. `fvg_fill` signals
+        # have no causal equivalent yet (`causal/generate.py`'s own scope
+        # note) and are unaffected by that bug (it's specific to competing
+        # CRT ranges), so they still go through the unchanged legacy path,
+        # tagged separately and merged in — no signal or alignment tag that
+        # cli.py reported before this migration is dropped.
+        causal_tags = generate_causal_aligned_signals(
+            ltf_series, htf_series, crt_config=config.crt_range, model1_config=config.model1,
             htf_key_levels=htf_key_levels, daily_series=daily_series, daily_key_levels=daily_key_levels,
         )
+        fvg_fill_signals = [s for s in model1_signals if s.confirmation_type == "fvg_fill"]
+        fvg_fill_tags = (
+            tag_alignment(
+                htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
+                ltf_signals=fvg_fill_signals, htf_ranges=htf_crt_ranges,
+                htf_key_levels=htf_key_levels, daily_series=daily_series, daily_key_levels=daily_key_levels,
+            )
+            if fvg_fill_signals else []
+        )
+        model1_signals = [tag.ltf_signal for tag in causal_tags] + fvg_fill_signals
+        aligned_signals = causal_tags + fvg_fill_tags
 
     return _Detections(
         swings=ltf_swings,
@@ -354,13 +375,26 @@ def _filter_to_confluent(detections: _Detections) -> _Detections:
     later --types model1 (which nulls aligned_signals in _filter_by_types,
     falling back to model1_signals in the CSV/chart writers) cannot leak an
     unfiltered row the gate already withheld — the two lists cannot
-    disagree, mirroring REQ-42's join guarantee."""
+    disagree, mirroring REQ-42's join guarantee.
+
+    `keep()` originally exempted every non-`"aligned"` tag outright
+    (`aligned != "aligned"`), which was correct under legacy `tag_alignment`
+    semantics: its only non-`"aligned"` values were `"unaligned"` (no HTF
+    window at all — nothing to evaluate a Key Level against) and
+    `"insufficient_htf_data"` (not yet knowable). The causal pipeline's H-A
+    rule (`causal/htf.py`, keyed by a signal's own `retest_index` timestamp)
+    can tag a signal `"unaligned"` for a DIFFERENT reason — it evaluated and
+    found no closed HTF range as of that event, which is functionally the
+    same "no key level backs this" case REQ-56.2 already gates on for
+    `"aligned"` signals. Only `"insufficient_htf_data"` still means
+    genuinely not-yet-knowable and stays exempt.
+    """
     if detections.aligned_signals is None:
         return detections
 
     def keep(tagged: AlignedSignal) -> bool:
         return (
-            tagged.aligned != "aligned"
+            tagged.aligned == "insufficient_htf_data"
             or tagged.ltf_signal.confirmation_type == "fvg_fill"
             or tagged.key_level is not None
         )
