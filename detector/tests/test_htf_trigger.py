@@ -5,7 +5,7 @@ credited Key Level touch on that same candle (S1, S2).
 
 from datetime import datetime, timedelta
 
-from causal.htf_trigger import find_9am_turtle_soup_triggers
+from causal.htf_trigger import MODEL_9AM, find_turtle_soup_triggers
 from core.candle import Candle
 from core.key_level import KeyLevel
 
@@ -29,7 +29,7 @@ def test_bearish_trigger_on_same_candle_wick_beyond_and_close_back():
         _candle(8, 1.1000, 1.1020, 1.0980, 1.1010),  # 08:00 UTC -- the "previous" candle
         _candle(12, 1.1010, 1.1035, 1.1000, 1.1005),  # 12:00 UTC -- sweeps high, closes back inside
     )
-    triggers = find_9am_turtle_soup_triggers(candles, [_ZONE])
+    triggers = find_turtle_soup_triggers(candles, [_ZONE], MODEL_9AM)
     assert len(triggers) == 1
     assert triggers[0].candle_index == 1
     assert triggers[0].direction == "bearish"
@@ -43,7 +43,7 @@ def test_bullish_trigger_on_same_candle_wick_beyond_and_close_back():
         _candle(8, 1.1000, 1.1020, 1.0980, 1.1010),
         _candle(12, 1.1005, 1.1015, 1.0960, 1.0990),  # sweeps low (1.0960 < 1.0980, inside zone), closes back inside (1.0990 >= 1.0980)
     )
-    triggers = find_9am_turtle_soup_triggers(candles, [zone])
+    triggers = find_turtle_soup_triggers(candles, [zone], MODEL_9AM)
     assert len(triggers) == 1
     assert triggers[0].candle_index == 1
     assert triggers[0].direction == "bullish"
@@ -58,7 +58,7 @@ def test_no_credited_key_level_means_no_trigger():
         _candle(8, 1.1000, 1.1020, 1.0980, 1.1010),
         _candle(12, 1.1010, 1.1035, 1.1000, 1.1005),
     )
-    assert find_9am_turtle_soup_triggers(candles, []) == []
+    assert find_turtle_soup_triggers(candles, [], MODEL_9AM) == []
 
 
 def test_key_level_registered_but_not_touched_means_no_trigger():
@@ -69,7 +69,7 @@ def test_key_level_registered_but_not_touched_means_no_trigger():
         _candle(8, 1.1000, 1.1020, 1.0980, 1.1010),
         _candle(12, 1.1010, 1.1035, 1.1000, 1.1005),
     )
-    assert find_9am_turtle_soup_triggers(candles, [far_zone]) == []
+    assert find_turtle_soup_triggers(candles, [far_zone], MODEL_9AM) == []
 
 
 def test_continuation_close_beyond_range_does_not_trigger():
@@ -80,7 +80,7 @@ def test_continuation_close_beyond_range_does_not_trigger():
         _candle(8, 1.1000, 1.1020, 1.0980, 1.1010),
         _candle(12, 1.1010, 1.1035, 1.1005, 1.1030),
     )
-    assert find_9am_turtle_soup_triggers(candles, [_ZONE]) == []
+    assert find_turtle_soup_triggers(candles, [_ZONE], MODEL_9AM) == []
 
 
 def test_no_wick_breach_does_not_trigger():
@@ -88,7 +88,7 @@ def test_no_wick_breach_does_not_trigger():
         _candle(8, 1.1000, 1.1020, 1.0980, 1.1010),
         _candle(12, 1.1005, 1.1015, 1.0990, 1.1000),  # stays fully inside the previous candle's range
     )
-    assert find_9am_turtle_soup_triggers(candles, [_ZONE]) == []
+    assert find_turtle_soup_triggers(candles, [_ZONE], MODEL_9AM) == []
 
 
 def test_wrong_utc_hour_is_never_considered():
@@ -99,7 +99,7 @@ def test_wrong_utc_hour_is_never_considered():
         _candle(12, 1.1000, 1.1020, 1.0980, 1.1010),
         _candle(16, 1.1010, 1.1035, 1.1000, 1.1005),
     )
-    assert find_9am_turtle_soup_triggers(candles, [_ZONE]) == []
+    assert find_turtle_soup_triggers(candles, [_ZONE], MODEL_9AM) == []
 
 
 def test_outside_bar_can_trigger_both_directions():
@@ -114,7 +114,7 @@ def test_outside_bar_can_trigger_both_directions():
         _candle(8, 1.1000, 1.1020, 1.0980, 1.1010),
         _candle(12, 1.1000, 1.1035, 1.0960, 1.1000),  # sweeps both sides, closes back inside both
     )
-    triggers = find_9am_turtle_soup_triggers(candles, [bearish_zone, bullish_zone])
+    triggers = find_turtle_soup_triggers(candles, [bearish_zone, bullish_zone], MODEL_9AM)
     directions = {t.direction for t in triggers}
     assert directions == {"bearish", "bullish"}
 
@@ -127,6 +127,6 @@ def test_multiple_days_each_checked_independently():
         _candle(8, 1.0990, 1.1000, 1.0960, 1.0980, day=day2),
         _candle(12, 1.0975, 1.0995, 1.0965, 1.0985, day=day2),  # day 2: stays fully inside, no trigger
     )
-    triggers = find_9am_turtle_soup_triggers(candles, [_ZONE])
+    triggers = find_turtle_soup_triggers(candles, [_ZONE], MODEL_9AM)
     assert len(triggers) == 1
     assert triggers[0].candle_index == 1

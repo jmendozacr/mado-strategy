@@ -5,7 +5,7 @@ then to LTF candle indices.
 
 from datetime import datetime, timedelta
 
-from causal.htf_trigger import confirmation_window_utc, ltf_window_indices
+from causal.htf_trigger import MODEL_9AM, confirmation_window_utc, ltf_window_indices
 from core.candle import Candle
 
 
@@ -16,7 +16,7 @@ def _htf_candle(ts):
 def test_window_in_edt_is_1300_to_1430_utc():
     """July -- EDT (UTC-4): 09:00 NY = 13:00 UTC, 10:30 NY = 14:30 UTC."""
     trigger = _htf_candle(datetime(2026, 7, 6, 12, 0))  # the 12:00 UTC trigger candle itself
-    start, end = confirmation_window_utc(trigger)
+    start, end = confirmation_window_utc(trigger, MODEL_9AM)
     assert start == datetime(2026, 7, 6, 13, 0)
     assert end == datetime(2026, 7, 6, 14, 30)
 
@@ -24,7 +24,7 @@ def test_window_in_edt_is_1300_to_1430_utc():
 def test_window_in_est_is_1400_to_1530_utc():
     """January -- EST (UTC-5): 09:00 NY = 14:00 UTC, 10:30 NY = 15:30 UTC."""
     trigger = _htf_candle(datetime(2026, 1, 6, 12, 0))
-    start, end = confirmation_window_utc(trigger)
+    start, end = confirmation_window_utc(trigger, MODEL_9AM)
     assert start == datetime(2026, 1, 6, 14, 0)
     assert end == datetime(2026, 1, 6, 15, 30)
 

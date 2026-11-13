@@ -1,11 +1,12 @@
 """HTF-first Turtle Soup + Key Level trigger (odd/tasks/htf-turtle-soup-trigger.md
-S1-S6): scoped to the 9:00 NY model only. The broker's H4 series is a fixed-UTC
-grid (00/04/08/12/16/20 UTC) that never literally opens a candle at 09:00 NY
-(13:00 UTC in EDT, 14:00 UTC in EST) -- both fall inside the 12:00 UTC
-candle's own window, so that candle (and its array-adjacent predecessor, the
-08:00 UTC candle) stands in for "the 9am model's HTF candle" and "the
-previous HTF candle" (S6), rather than building a new NY-anchored synthetic
-4H aggregation.
+S1-S10): one per feeder-candle model (1AM, 5AM, 9AM/NY -- S7-S9). The broker's
+H4 series is a fixed-UTC grid (00/04/08/12/16/20 UTC) that never literally
+opens a candle at any of these models' own NY-local hour -- verified for
+each model (not assumed): 9PM/1AM/5AM/9AM NY all fall inside the 00:00/04:00/
+08:00/12:00 UTC candles respectively, in BOTH DST states, so each model's
+"trigger candle" and "previous candle" are simply array-adjacent
+(`htf_candles[i-1]`, `htf_candles[i]`) on the existing grid, rather than
+building a new NY-anchored synthetic 4H aggregation.
 
 A genuine same-candle Turtle Soup (wick beyond the previous candle's high/low,
 close back inside it) is NOT expressible via `primitives.crt_range`/`_resolve`
@@ -36,11 +37,34 @@ from core.results import DetectionStatus
 from entries.model1 import Direction, Model1Signal, _track_anchor
 from primitives.crt_range import CRTRange, first_breach_index
 
-_TRIGGER_UTC_HOUR = 12  # the H4 candle whose [12:00, 16:00) UTC window contains 09:00-10:30 NY in both DST states
 _UTC = ZoneInfo("UTC")
 _NY = ZoneInfo("America/New_York")
-_WINDOW_START_HOUR_NY = 9  # S4: the 9:00/NY model only
-_WINDOW_DURATION = timedelta(hours=1, minutes=30)  # S4: 1.5h, verified against charter-11's own windows
+
+
+@dataclass(frozen=True)
+class FeederModel:
+    """One feeder-candle model's own trigger hour and confirmation window
+    (S7-S9) -- both verified per-model against the charters and the actual
+    UTC grid, never assumed to generalize from one model to another."""
+
+    name: str
+    trigger_utc_hour: int
+    window_start_hour_ny: int
+    window_duration: timedelta
+
+
+MODEL_1AM = FeederModel(
+    "1am", trigger_utc_hour=4,
+    window_start_hour_ny=2, window_duration=timedelta(hours=2),  # S8: charter-8's own beginner-safe 02:00-04:00 window
+)
+MODEL_5AM = FeederModel(
+    "5am", trigger_utc_hour=8,
+    window_start_hour_ny=6, window_duration=timedelta(hours=2, minutes=30),  # S9: charter-10's 06:00-07:00 + 07:00-08:30
+)
+MODEL_9AM = FeederModel(
+    "9am", trigger_utc_hour=12,
+    window_start_hour_ny=9, window_duration=timedelta(hours=1, minutes=30),  # S4: charter-11's 09:00-10:00 + 09:30-10:30
+)
 
 
 @dataclass(frozen=True)
@@ -51,11 +75,11 @@ class HTFTrigger:
     key_level_reaction: Literal["reject_close_inside", "continuation"]
 
 
-def find_9am_turtle_soup_triggers(
-    htf_candles: tuple[Candle, ...], key_levels: list[KeyLevel]
+def find_turtle_soup_triggers(
+    htf_candles: tuple[Candle, ...], key_levels: list[KeyLevel], model: FeederModel
 ) -> list[HTFTrigger]:
-    """One entry per qualifying 12:00 UTC candle: a same-candle Turtle Soup of
-    the immediately preceding (08:00 UTC) candle, AND a credited Key Level
+    """One entry per qualifying `model.trigger_utc_hour` candle: a same-candle
+    Turtle Soup of the immediately preceding candle, AND a credited Key Level
     touch on that same candle (S1, S2). Both directions are checked
     independently (an outside-bar candle that sweeps both sides can produce
     two triggers, mirroring this project's existing outside-bar handling in
@@ -67,7 +91,7 @@ def find_9am_turtle_soup_triggers(
     triggers: list[HTFTrigger] = []
     for i in range(1, len(htf_candles)):
         candle = htf_candles[i]
-        if candle.timestamp.hour != _TRIGGER_UTC_HOUR or candle.timestamp.minute != 0:
+        if candle.timestamp.hour != model.trigger_utc_hour or candle.timestamp.minute != 0:
             continue
         prev = htf_candles[i - 1]
 
@@ -91,14 +115,24 @@ def find_9am_turtle_soup_triggers(
     return triggers
 
 
-def confirmation_window_utc(trigger_candle: Candle) -> tuple[datetime, datetime]:
-    """S4: 09:00-10:30 NY-local, DST-aware, on the trigger candle's own NY
-    calendar day -- returned as naive UTC wall-clock timestamps (the same
-    convention `Candle.timestamp` already uses throughout this codebase).
+def confirmation_window_utc(trigger_candle: Candle, model: FeederModel) -> tuple[datetime, datetime]:
+    """`model`'s own confirmation window, DST-aware, on the trigger candle's
+    own NY calendar day -- returned as naive UTC wall-clock timestamps (the
+    same convention `Candle.timestamp` already uses throughout this codebase).
+
+    The NY calendar day is read from the candle's MIDPOINT, not its opening
+    timestamp -- verified necessary, not a defensive guess: the 1AM model's
+    trigger candle opens at 04:00 UTC, which in EST (UTC-5) is 23:00 NY on
+    the PREVIOUS calendar day, even though the candle's own span still
+    covers the actual 01:00 NY moment on the day this trigger conceptually
+    belongs to. The 9AM/5AM models never cross this boundary (their candles
+    open comfortably after local midnight in both DST states), but the fix
+    is general rather than special-cased per model.
     """
-    ny_day = trigger_candle.timestamp.replace(tzinfo=_UTC).astimezone(_NY).date()
-    window_start_ny = datetime(ny_day.year, ny_day.month, ny_day.day, _WINDOW_START_HOUR_NY, tzinfo=_NY)
-    window_end_ny = window_start_ny + _WINDOW_DURATION
+    midpoint = trigger_candle.timestamp + timedelta(hours=2)
+    ny_day = midpoint.replace(tzinfo=_UTC).astimezone(_NY).date()
+    window_start_ny = datetime(ny_day.year, ny_day.month, ny_day.day, model.window_start_hour_ny, tzinfo=_NY)
+    window_end_ny = window_start_ny + model.window_duration
     return (
         window_start_ny.astimezone(_UTC).replace(tzinfo=None),
         window_end_ny.astimezone(_UTC).replace(tzinfo=None),
