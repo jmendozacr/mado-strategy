@@ -120,3 +120,30 @@ def test_config_fingerprint_deterministic():
     _, fp1 = reconstruct_and_fingerprint(config_dict)
     _, fp2 = reconstruct_and_fingerprint(config_dict)
     assert fp1 == fp2
+
+
+def test_config_fingerprint_is_sensitive_to_min_stop_distance_price():
+    """REQ-NEW (odd/tasks/realistic-cost-prop-firm-validation.md T8): two
+    configs differing ONLY in the new min_stop_distance_price must get
+    DIFFERENT fingerprints -- it is an economically-relevant backtest
+    parameter, and a fingerprint that ignored it would let two materially
+    different runs collide under one identity."""
+    from runner.config_fingerprint import reconstruct_and_fingerprint
+
+    base_backtest = {
+        "sl_buffer_atr_multiple": 0.3,
+        "min_risk_reward": 2.0,
+        "trading_cost_price": 0.0,
+        "kill_zone_gated": True,
+        "max_fill_wait": 20,
+        "partial_fraction": 0.5,
+    }
+    shared = {
+        "swing": {}, "fvg": {"min_size_atr": 0.1}, "crt_range": {"max_lookback": 20},
+        "mss": {"decisive_close_ratio": 0.25}, "ict_order_block": {},
+        "model1": {"body_ratio_tiebreak": 0.6, "respect_rule_tolerance": 0, "max_retest_lookback": 20},
+        "kill_zone": {"ny_start_hour": 7, "ny_end_hour": 11},
+    }
+    _, fp_default = reconstruct_and_fingerprint({**shared, "backtest": {**base_backtest, "min_stop_distance_price": 0.0006}})
+    _, fp_disabled = reconstruct_and_fingerprint({**shared, "backtest": {**base_backtest, "min_stop_distance_price": 0.0}})
+    assert fp_default != fp_disabled

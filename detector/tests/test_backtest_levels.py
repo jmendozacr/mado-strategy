@@ -8,7 +8,7 @@ from core.candle import Candle
 from core.config import BacktestConfig
 from primitives.swing import SwingPoint
 
-from backtest.levels import entry_price, net_r_multiple, partial_price, stop_loss
+from backtest.levels import enforce_min_stop_distance, entry_price, net_r_multiple, partial_price, stop_loss
 
 
 def _candle(open, high, low, close):
@@ -184,6 +184,36 @@ def test_zero_range_anchor_entry_equals_protected_extreme_but_risk_still_holds()
 
     assert entry == anchor.low  # the zero-range exception (anchor.high == anchor.low here)
     assert abs((entry - stop) - expected_buffer) < 1e-9
+
+
+def test_enforce_min_stop_distance_widens_a_too_tight_bullish_stop():
+    """REQ-NEW (odd/tasks/realistic-cost-prop-firm-validation.md T8): a
+    4-pip structural stop (entry 1.1000, stop 1.0996) is narrower than a
+    6-pip (0.0006) floor -> widened outward (away from entry, i.e. lower
+    for a bullish trade) to exactly the floor distance."""
+    widened = enforce_min_stop_distance(entry=1.1000, stop=1.0996, direction="bullish", min_stop_distance_price=0.0006)
+    assert abs(widened - 1.0994) < 1e-9
+
+
+def test_enforce_min_stop_distance_widens_a_too_tight_bearish_stop():
+    """Same idea, bearish: the floor widens OUTWARD, i.e. higher."""
+    widened = enforce_min_stop_distance(entry=1.1000, stop=1.1004, direction="bearish", min_stop_distance_price=0.0006)
+    assert abs(widened - 1.1006) < 1e-9
+
+
+def test_enforce_min_stop_distance_never_tightens_an_already_wider_stop():
+    """A 16-pip structural stop is already wider than a 6-pip floor ->
+    returned byte-identical, never pulled in closer to entry."""
+    stop = enforce_min_stop_distance(entry=1.1000, stop=1.0984, direction="bullish", min_stop_distance_price=0.0006)
+    assert stop == 1.0984
+
+
+def test_enforce_min_stop_distance_at_zero_floor_is_a_no_op():
+    """REQ-NEW edge (default neutrality, mirrors REQ-48.2's own pattern for
+    trading_cost_price): min_stop_distance_price=0.0 never widens anything,
+    regardless of how tight the structural stop is."""
+    stop = enforce_min_stop_distance(entry=1.1000, stop=1.0999, direction="bullish", min_stop_distance_price=0.0)
+    assert stop == 1.0999
 
 
 def test_net_r_multiple_nets_out_trading_cost_once_at_closure():

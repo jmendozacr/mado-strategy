@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from alignment.htf_ltf import AlignedSignal
 from backtest.candidate import Candidate
+from backtest.levels import enforce_min_stop_distance as _enforce_min_stop_distance
 from backtest.levels import entry_price as _entry_price
 from backtest.levels import partial_price as _partial_price
 from backtest.levels import risk_reward as _risk_reward
@@ -50,6 +51,7 @@ def _build_candidate(
         anchor, signal.direction, swings, indices, signal.anchor_index, signal.retest_index,
         ltf_series.candles, backtest_config,
     )
+    sl = _enforce_min_stop_distance(ep, sl, signal.direction, backtest_config.min_stop_distance_price)
     tp = _take_profit(tagged.htf_context, signal.direction)
     return Candidate(
         signal_id=signal.signal_id,

@@ -127,6 +127,32 @@ def test_stage6_population_is_consumed_unchanged_by_fill_and_evaluation(monkeypa
     ) == (0, 0, 0, 0, 0, 0, 0, 0, 0)
 
 
+def test_build_stage6_population_applies_min_stop_distance_floor():
+    """REQ-NEW (odd/tasks/realistic-cost-prop-firm-validation.md T8): the
+    fixture's own structural stop is entry(1.1000) - buffer-adjusted
+    protected_extreme = 1.0984 (16 pips) -- narrower than a 20-pip
+    (0.0020) floor, so build_stage6_population's resulting Candidate must
+    widen it to exactly entry - 0.0020 = 1.0980, through the real
+    pipeline (not a unit-level call to enforce_min_stop_distance)."""
+    config = replace(DetectorConfig(), backtest=replace(DetectorConfig().backtest, min_stop_distance_price=0.0020))
+
+    population = build_stage6_population([_aligned_signal()], _series(), config)
+
+    assert len(population.candidates) == 1
+    assert abs(population.candidates[0].stop_loss - 1.0980) < 1e-9
+
+
+def test_build_stage6_population_default_floor_is_inert_on_an_already_wider_stop():
+    """Regression-safety companion to the test above: at the new default
+    min_stop_distance_price=0.0006 (6 pips), this SAME fixture's 16-pip
+    structural stop is already wider -- the floor must not move it, i.e.
+    the pre-existing 1.0984 value (REQ-31) stays byte-identical."""
+    population = build_stage6_population([_aligned_signal()], _series(), DetectorConfig())
+
+    assert len(population.candidates) == 1
+    assert abs(population.candidates[0].stop_loss - 1.0984) < 1e-9
+
+
 def test_stage6_population_preserves_duplicate_and_rr_exclusion_counts():
     series = _series()
     duplicate = _aligned_signal()

@@ -424,7 +424,7 @@ def test_min_rr_override_changes_rr_floor_exclusion(tmp_path):
 
 
 def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
-    """REQ-51.2: omitting all 6 override flags produces output byte-identical
+    """REQ-51.2: omitting all 7 override flags produces output byte-identical
     to setting every field explicitly to its BacktestConfig default."""
     implicit_exit, implicit_dir = _run_backtest(tmp_path / "implicit", extra_args=["--types", "model1"])
     explicit_exit, explicit_dir = _run_backtest(
@@ -432,6 +432,7 @@ def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
         extra_args=[
             "--types", "model1",
             "--sl-buffer-atr-multiple", "0.3", "--min-rr", "2.0", "--trading-cost", "0.0",
+            "--min-stop-distance", "0.0006",
             "--kill-zone-gated", "--max-fill-wait", "20", "--partial-fraction", "0.5",
         ],
     )
@@ -472,6 +473,38 @@ def test_invalid_trading_cost_exits_1_naming_flag_and_constraint(tmp_path):
 
     assert exit_code == 1
     assert not (output_dir / "trades.csv").exists()
+
+
+def test_invalid_min_stop_distance_exits_1_naming_flag_and_constraint(tmp_path):
+    """REQ-NEW (mirrors REQ-51.3): a negative --min-stop-distance is rejected the same way."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--min-stop-distance", "-0.0001"])
+
+    assert exit_code == 1
+    assert not (output_dir / "trades.csv").exists()
+
+
+def test_min_stop_distance_override_widens_a_too_tight_fixture_stop(tmp_path):
+    """REQ-NEW: this fixture's own structural stop (entry 1.10, stop
+    1.104625 -- ~46.25 pips) is already wider than the new 6-pip default
+    (confirmed inert by every other test in this file), so a 0.0048
+    (48-pip) override is used here instead -- just past the structural
+    distance, so it demonstrably widens the stop, but still comfortably
+    inside the fixture's own R:R floor (reward 0.01 / risk 0.0048 ~= 2.08
+    >= the 2.0 default) so the trade still opens at all."""
+    default_exit, default_dir = _run_backtest(tmp_path / "default", extra_args=["--types", "model1"])
+    override_exit, override_dir = _run_backtest(
+        tmp_path / "override", extra_args=["--types", "model1", "--min-stop-distance", "0.0048"]
+    )
+
+    assert default_exit == 0 and override_exit == 0
+    default_trade = _read_csv_rows(default_dir / "trades.csv")[1]  # [0] is the header row
+    override_trade = _read_csv_rows(override_dir / "trades.csv")[1]
+    # header order: signal_id, anchor_timestamp, entry_timestamp, direction, entry_price, stop_loss, ...
+    default_entry, default_stop = float(default_trade[4]), float(default_trade[5])
+    override_entry, override_stop = float(override_trade[4]), float(override_trade[5])
+    assert override_entry == default_entry  # the floor only moves the stop, never the entry
+    assert abs(abs(override_entry - override_stop) - 0.0048) < 1e-9
+    assert override_stop != default_stop
 
 
 def test_partial_fraction_zero_cli_reproduces_pre_change_output(tmp_path):

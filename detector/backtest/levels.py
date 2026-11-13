@@ -87,6 +87,28 @@ def stop_loss(
     return level - buffer if direction == "bullish" else level + buffer
 
 
+def enforce_min_stop_distance(
+    entry: float, stop: float, direction: Direction, min_stop_distance_price: float
+) -> float:
+    """REQ-NEW (odd/tasks/realistic-cost-prop-firm-validation.md T8): widens
+    `stop` outward from `entry`, if needed, so `|entry - stop|` is at least
+    `min_stop_distance_price` -- never tightens an already-wider structural
+    stop. A real-data sweep across the 1AM/5AM/9AM HTF-first population
+    found a fixed 6-pip (0.0006 on EURUSDm) floor beat every ATR-relative
+    alternative tested (0.5x-1.5x ATR(14)) on win rate, total R, and avg R
+    simultaneously -- the tightest-stop trades were genuinely noisier, not
+    merely harder to execute. Kept as a flat PRICE-UNIT value (operator-
+    tunable per instrument via `BacktestConfig.min_stop_distance_price`),
+    not hardcoded pips, consistent with `stop_loss`'s own ATR-relative
+    buffer being scale-aware rather than a bare price-unit constant. At
+    `min_stop_distance_price=0.0` this is a no-op, byte-identical to the
+    pre-existing `stop_loss` output."""
+    distance = abs(entry - stop)
+    if distance >= min_stop_distance_price:
+        return stop
+    return entry - min_stop_distance_price if direction == "bullish" else entry + min_stop_distance_price
+
+
 def take_profit(htf_context: CRTRange, direction: Direction) -> float:
     """REQ-32/44: the HTF CRT range's opposite extreme, sourced from
     `AlignedSignal.htf_context` — never recomputed from the LTF series."""

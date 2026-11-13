@@ -79,6 +79,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-rr", default=None, help="Override BacktestConfig.min_risk_reward")
     parser.add_argument("--trading-cost", default=None, help="Override BacktestConfig.trading_cost_price (raw price units, per trade)")
     parser.add_argument(
+        "--min-stop-distance", default=None,
+        help="Override BacktestConfig.min_stop_distance_price (raw price units, floors |entry - stop|)",
+    )
+    parser.add_argument(
         "--kill-zone-gated", nargs="?", const="true", default=None,
         help="Override BacktestConfig.kill_zone_gated -- true/false (e.g. --kill-zone-gated false); "
         "omitting the value means true",
@@ -490,6 +494,14 @@ def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
     if trading_cost < 0:
         raise ValueError(f"invalid --trading-cost value: {args.trading_cost} (expected a non-negative number)")
 
+    min_stop_distance = _parse_float(
+        args.min_stop_distance, defaults.min_stop_distance_price, "--min-stop-distance"
+    )
+    if min_stop_distance < 0:
+        raise ValueError(
+            f"invalid --min-stop-distance value: {args.min_stop_distance} (expected a non-negative number)"
+        )
+
     kill_zone_gated = _parse_kill_zone_gated(args.kill_zone_gated, defaults.kill_zone_gated)
 
     max_fill_wait = _parse_int(args.max_fill_wait, defaults.max_fill_wait, "--max-fill-wait")
@@ -502,6 +514,7 @@ def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
 
     return BacktestConfig(
         sl_buffer_atr_multiple=sl_buffer_atr_multiple, min_risk_reward=min_rr, trading_cost_price=trading_cost,
+        min_stop_distance_price=min_stop_distance,
         kill_zone_gated=kill_zone_gated, max_fill_wait=max_fill_wait, partial_fraction=partial_fraction,
     )
 
