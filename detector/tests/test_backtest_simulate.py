@@ -148,6 +148,44 @@ def test_two_leg_trade_blends_partial_and_remainder_r_multiple():
     assert trade.outcome == "win"
 
 
+def test_two_leg_trade_charges_trading_cost_exactly_once_not_twice():
+    """REQ-48/68/69 regression: a round-trip's trading cost is paid once on
+    the whole position regardless of how many fills close it (two half-size
+    exits sum to one full-size exit) -- so blending two already-cost-netted
+    legs by position fraction must not re-weight each leg's own cost share
+    by that same fraction again. Same series/signal/htf_context as
+    `test_two_leg_trade_blends_partial_and_remainder_r_multiple`, but with a
+    non-zero `trading_cost_price` -- at the default `partial_fraction=0.5`
+    the pre-fix formula charges only `0.5^2 + 0.5^2 = 0.5` of the configured
+    cost, i.e. exactly half."""
+    series = (
+        _base_bullish_series()
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — touches partial_price (1.1050) only
+        .candle(open=1.1020, high=1.1040, low=1.1015, close=1.1030)  # 8 — filler, no touch of SL/TP
+        .candle(open=1.1050, high=1.1105, low=1.1045, close=1.1095)  # 9 — touches take_profit (1.1100)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+    config = DetectorConfig(backtest=BacktestConfig(trading_cost_price=0.0004))
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0984
+    risk = entry - stop
+    gross_r_leg1 = (1.1050 - entry) / risk  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
+    gross_r_leg2 = (1.1100 - entry) / risk
+    expected_blended = 0.5 * gross_r_leg1 + 0.5 * gross_r_leg2 - config.backtest.trading_cost_price / risk
+
+    assert abs(trade.r_multiple - expected_blended) < 1e-9
+    assert abs(trade.r_multiple - 4.4375) < 1e-9  # hand-computed: see REQ-48/68/69 docstring above
+
+
 def test_two_leg_trade_leg2_uses_unmoved_original_stop():
     """REQ-68.2 (edge, two-leg win-then-loss): the partial fires at index 7
     same as the win-win scenario, but the remainder then reverses and hits

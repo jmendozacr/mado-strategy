@@ -244,7 +244,22 @@ def _resolve_trade(
         candidate.entry_price, candidate.stop_loss, candidate.take_profit, candidate.direction, cost_leg2,
     )
 
-    blended_r = partial_fraction * partial_r_multiple + (1 - partial_fraction) * leg2_r_multiple
+    # REQ-48/69 fix: a round trip's trading cost is paid once on the whole
+    # position regardless of how many fills close it (two half-size exits
+    # sum to one full-size exit's commission), but `partial_r_multiple`/
+    # `leg2_r_multiple` already each had their OWN cost share (cost_leg1/
+    # cost_leg2, summing to trading_cost_price) netted in — weighting those
+    # by partial_fraction/(1-partial_fraction) again double-counts the cost
+    # (down to only `partial_fraction**2 + (1-partial_fraction)**2` of it).
+    # Back out each leg's own cost share to get its gross move, blend the
+    # gross legs by position fraction, then deduct the full configured cost
+    # exactly once.
+    risk = abs(candidate.entry_price - candidate.stop_loss)
+    gross_r_leg1 = partial_r_multiple + cost_leg1 / risk
+    gross_r_leg2 = leg2_r_multiple + cost_leg2 / risk
+    blended_r = (
+        partial_fraction * gross_r_leg1 + (1 - partial_fraction) * gross_r_leg2 - trading_cost_price / risk
+    )
     return Trade(
         signal_id=candidate.signal_id, anchor_index=candidate.anchor_index, direction=candidate.direction,
         entry_index=fill_index, entry_price=candidate.entry_price, stop_loss=candidate.stop_loss,
