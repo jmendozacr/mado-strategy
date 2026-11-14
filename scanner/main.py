@@ -70,6 +70,15 @@ RELEVANT_CURRENCIES = {
 # Flip to False to go back to alert-only, same behavior as before this task.
 AUTO_EXECUTE = True
 RISK_PCT = 1.0  # matches this session's own $10k/1%-risk USD-ledger convention
+# Fixed, non-compounding -- NEVER the live/current account balance. Every
+# rolling-window/FTMO result this session validated risk as 1% of a FIXED
+# initial balance (research.eurusd_recipe_validation.sizing's own docstring:
+# "non-compounding, because the limits this is measured against are
+# themselves static from the initial balance" -- mirrors FTMO's own static-
+# from-initial-capital rule). Sizing off the live balance instead would be
+# compounding position sizing, a materially different, never-backtested
+# scheme.
+INITIAL_BALANCE = 10000.0
 MAX_FILL_WAIT_CANDLES = 20  # M15 candles -- BacktestConfig's own default (S4/S5)
 # ForexFactory's free feed rate-limits aggressive polling (observed 429s
 # when fetched every 2-minute poll) -- the calendar barely changes within
@@ -141,9 +150,9 @@ def _execute_alert(alert: dict, symbol: str) -> None:
     function, so one symbol's execution problem can never stop the poll
     loop or suppress the Telegram alert that already went out."""
     specs = mt5_feed.symbol_trade_specs(symbol)
-    balance = mt5_feed.account_balance()
     lot = calculate_lot_size(
-        balance=balance, risk_pct=RISK_PCT, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"], **specs,
+        balance=INITIAL_BALANCE, risk_pct=RISK_PCT, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"],
+        **specs,
     )
     if lot is None:
         print(f"execution skipped for {alert['stable_id']}: target lot size below the symbol's volume_min", flush=True)

@@ -147,7 +147,6 @@ def test_auto_execute_true_places_a_pending_order_with_the_calculated_lot(monkey
     _patched_for_execution(monkeypatch, m15, [(_FakeAlignedSignal("sig-1", DetectionStatus.CONFIRMED), "1am")])
     monkeypatch.setattr(main, "AUTO_EXECUTE", True)
 
-    monkeypatch.setattr(main.mt5_feed, "account_balance", lambda: 10000.0)
     monkeypatch.setattr(main.mt5_feed, "symbol_trade_specs", lambda symbol: {
         "tick_value": 1.0, "tick_size": 0.00001, "volume_min": 0.01, "volume_max": 100.0, "volume_step": 0.01,
     })
@@ -167,20 +166,22 @@ def test_auto_execute_true_places_a_pending_order_with_the_calculated_lot(monkey
     args, kwargs = order_calls[0]
     assert args[0] == "EURUSDm"  # symbol
     # entry=1.1005, stop=1.0990 (the fixture Candidate) -> stop_distance=0.0015 ->
-    # 150 ticks * $1/tick = $150/lot; risk_amount = $10000*1% = $100;
+    # 150 ticks * $1/tick = $150/lot; risk_amount = main.INITIAL_BALANCE (10000) * 1% = $100;
     # raw_lots = 100/150 = 0.6666... -> floored to the 0.01 step = 0.66.
     assert kwargs["volume"] == 0.66
 
 
 def test_lot_below_minimum_skips_the_order_without_crashing(monkeypatch):
+    """Risk is always INITIAL_BALANCE*RISK_PCT now (fixed, non-compounding
+    -- never the live account balance), so "below minimum" has to be
+    triggered via the symbol's own specs here, not via a tiny balance."""
     m15, DetectionStatus = _m15_series()
     _patched_for_execution(monkeypatch, m15, [(_FakeAlignedSignal("sig-1", DetectionStatus.CONFIRMED), "1am")])
     monkeypatch.setattr(main, "AUTO_EXECUTE", True)
 
-    monkeypatch.setattr(main.mt5_feed, "account_balance", lambda: 1.0)  # tiny balance -> lot below volume_min
     monkeypatch.setattr(main.mt5_feed, "symbol_trade_specs", lambda symbol: {
-        "tick_value": 1.0, "tick_size": 0.00001, "volume_min": 0.01, "volume_max": 100.0, "volume_step": 0.01,
-    })
+        "tick_value": 1.0, "tick_size": 0.00001, "volume_min": 1.0, "volume_max": 100.0, "volume_step": 0.01,
+    })  # volume_min raised to 1.0 lot -- the real target (0.66) rounds below it
     monkeypatch.setattr(main.mt5_feed, "current_price", lambda symbol, direction: 1.1010)
 
     order_calls = []
@@ -196,7 +197,6 @@ def test_order_send_exception_is_logged_not_raised(monkeypatch):
     _patched_for_execution(monkeypatch, m15, [(_FakeAlignedSignal("sig-1", DetectionStatus.CONFIRMED), "1am")])
     monkeypatch.setattr(main, "AUTO_EXECUTE", True)
 
-    monkeypatch.setattr(main.mt5_feed, "account_balance", lambda: 10000.0)
     monkeypatch.setattr(main.mt5_feed, "symbol_trade_specs", lambda symbol: {
         "tick_value": 1.0, "tick_size": 0.00001, "volume_min": 0.01, "volume_max": 100.0, "volume_step": 0.01,
     })

@@ -66,13 +66,6 @@ def fetch_series(symbol: str, timeframe: str, count: int) -> OHLCSeries:
     return OHLCSeries(candles=candles, instrument=symbol, timeframe=_OHLCSERIES_TIMEFRAME_LABEL[timeframe])
 
 
-def account_balance() -> float:
-    info = mt5.account_info()
-    if info is None:
-        raise MT5ConnectionError(f"account_info() failed: {mt5.last_error()}")
-    return float(info.balance)
-
-
 def symbol_trade_specs(symbol: str) -> dict:
     """execution.calculate_lot_size's real-world inputs, straight from the
     broker -- never hand-derived (REQ, odd/tasks/scanner-auto-execution.md
