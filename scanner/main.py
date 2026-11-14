@@ -28,6 +28,7 @@ import mt5_feed  # noqa: E402
 import news_calendar  # noqa: E402
 import state  # noqa: E402
 import telegram_notify  # noqa: E402
+from execution import calculate_lot_size, pending_order_type  # noqa: E402
 from rules import filter_new_alerts  # noqa: E402
 
 # Replaced the old single-pair EURUSD recipe with the validated 1AM+9AM
@@ -62,6 +63,14 @@ BACKTEST_CONFIG = {
 RELEVANT_CURRENCIES = {
     "EURUSDm": ("EUR", "USD"), "USDCADm": ("USD", "CAD"), "AUDUSDm": ("AUD", "USD"),
 }
+
+# odd/tasks/scanner-auto-execution.md S1/S2/S7: real MT5 pending orders,
+# not just Telegram alerts -- user's explicit decision, default True, since
+# Sunday's activation is on a $10,000 DEMO account (no real-money risk).
+# Flip to False to go back to alert-only, same behavior as before this task.
+AUTO_EXECUTE = True
+RISK_PCT = 1.0  # matches this session's own $10k/1%-risk USD-ledger convention
+MAX_FILL_WAIT_CANDLES = 20  # M15 candles -- BacktestConfig's own default (S4/S5)
 # ForexFactory's free feed rate-limits aggressive polling (observed 429s
 # when fetched every 2-minute poll) -- the calendar barely changes within
 # an hour, so cache it instead of refetching every run_once().
@@ -124,6 +133,34 @@ def _format_alert(alert, signal_number_today: int, near_news: bool) -> str:
     return "\n".join(lines)
 
 
+def _execute_alert(alert: dict, symbol: str) -> None:
+    """odd/tasks/scanner-auto-execution.md S3/S4/S5/S6: sizes and places a
+    real pending order for one new alert. Never called for a silent-seed
+    poll (S5's own safety line -- backfilled history is never a live
+    trade). Logs and returns on any skip/failure; never raises past this
+    function, so one symbol's execution problem can never stop the poll
+    loop or suppress the Telegram alert that already went out."""
+    specs = mt5_feed.symbol_trade_specs(symbol)
+    balance = mt5_feed.account_balance()
+    lot = calculate_lot_size(
+        balance=balance, risk_pct=RISK_PCT, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"], **specs,
+    )
+    if lot is None:
+        print(f"execution skipped for {alert['stable_id']}: target lot size below the symbol's volume_min", flush=True)
+        return
+
+    price = mt5_feed.current_price(symbol, alert["direction"])
+    order_type = pending_order_type(alert["direction"], entry_price=alert["entry_price"], current_price=price)
+    result = mt5_feed.send_pending_order(
+        symbol, order_type, volume=lot, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"],
+        take_profit=alert["take_profit"], max_fill_wait_candles=MAX_FILL_WAIT_CANDLES,
+    )
+    if mt5_feed.order_succeeded(result):
+        print(f"order placed for {alert['stable_id']}: {order_type} {lot} lots", flush=True)
+    else:
+        print(f"order REJECTED for {alert['stable_id']}: retcode={getattr(result, 'retcode', None)}", file=sys.stderr, flush=True)
+
+
 def run_once(current_state: dict, *, silent: bool = False) -> dict:
     """`silent=True` (REQ: first-ever run only) marks every currently-
     qualifying candidate as already-alerted WITHOUT sending Telegram
@@ -167,6 +204,11 @@ def run_once(current_state: dict, *, silent: bool = False) -> dict:
             telegram_notify.send_message(_format_alert(alert, signal_number, near_news))
             current_state = state.record_alert(current_state, alert["stable_id"], symbol, signal_day)
             print(f"alerted {alert['stable_id']}{' [near news]' if near_news else ''}", flush=True)
+            if AUTO_EXECUTE:
+                try:
+                    _execute_alert(alert, symbol)
+                except Exception as error:  # noqa: BLE001 -- S6: one order failure must never stop the poll
+                    print(f"execution error for {alert['stable_id']}: {error}", file=sys.stderr, flush=True)
         if silent:
             print(f"seeded {len(alerts)} pre-existing candidates for {symbol} (no messages sent)", flush=True)
     return current_state

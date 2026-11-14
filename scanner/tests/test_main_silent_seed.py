@@ -103,6 +103,7 @@ def test_non_silent_run_sends_telegram_with_model_and_key_level_in_the_message(m
         "candidates": [_fake_candidate("sig-1")],
     }))
     monkeypatch.setattr(main, "SYMBOLS", ("EURUSDm",))
+    monkeypatch.setattr(main, "AUTO_EXECUTE", False)
 
     empty_state = {"alerted_ids": [], "daily_counts": {}}
     main.run_once(empty_state, silent=False)
@@ -111,3 +112,100 @@ def test_non_silent_run_sends_telegram_with_model_and_key_level_in_the_message(m
     assert "1AM" in sent_messages[0]
     assert "reject_close_inside" in sent_messages[0]
     assert "fvg" in sent_messages[0]
+
+
+def _patched_for_execution(monkeypatch, m15, results):
+    monkeypatch.setattr(main.telegram_notify, "send_message", lambda text: None)
+    monkeypatch.setattr(main.mt5_feed, "fetch_series", lambda symbol, tf, count: m15)
+    monkeypatch.setattr(main.news_calendar, "fetch_this_week_events", lambda: [])
+    monkeypatch.setattr(main.news_calendar, "is_near_high_impact_news", lambda *a, **k: False)
+    monkeypatch.setattr(main, "_build_key_levels", lambda *a, **k: [])
+    monkeypatch.setattr(main, "find_1am_9am_aligned_signals", lambda *a, **k: results)
+    monkeypatch.setattr(main, "build_stage6_population", lambda *a, **k: type("P", (), {
+        "candidates": [_fake_candidate("sig-1")],
+    }))
+    monkeypatch.setattr(main, "SYMBOLS", ("EURUSDm",))
+
+
+def test_silent_seed_never_places_an_order_even_if_auto_execute_is_on(monkeypatch):
+    """S5/T3: silent=True is backfill seeding, never live trading -- a
+    pre-existing historical candidate must never become a real order just
+    because AUTO_EXECUTE happens to be on."""
+    m15, DetectionStatus = _m15_series()
+    _patched_for_execution(monkeypatch, m15, [(_FakeAlignedSignal("sig-1", DetectionStatus.CONFIRMED), "1am")])
+    monkeypatch.setattr(main, "AUTO_EXECUTE", True)
+
+    order_calls = []
+    monkeypatch.setattr(main.mt5_feed, "send_pending_order", lambda *a, **k: order_calls.append((a, k)))
+
+    main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=True)
+    assert order_calls == []
+
+
+def test_auto_execute_true_places_a_pending_order_with_the_calculated_lot(monkeypatch):
+    m15, DetectionStatus = _m15_series()
+    _patched_for_execution(monkeypatch, m15, [(_FakeAlignedSignal("sig-1", DetectionStatus.CONFIRMED), "1am")])
+    monkeypatch.setattr(main, "AUTO_EXECUTE", True)
+
+    monkeypatch.setattr(main.mt5_feed, "account_balance", lambda: 10000.0)
+    monkeypatch.setattr(main.mt5_feed, "symbol_trade_specs", lambda symbol: {
+        "tick_value": 1.0, "tick_size": 0.00001, "volume_min": 0.01, "volume_max": 100.0, "volume_step": 0.01,
+    })
+    monkeypatch.setattr(main.mt5_feed, "current_price", lambda symbol, direction: 1.1010)
+
+    order_calls = []
+
+    class _FakeResult:
+        retcode = 10009  # TRADE_RETCODE_DONE
+
+    monkeypatch.setattr(main.mt5_feed, "send_pending_order", lambda *a, **k: (order_calls.append((a, k)), _FakeResult())[1])
+    monkeypatch.setattr(main.mt5_feed, "order_succeeded", lambda result: result.retcode == 10009)
+
+    main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=False)
+
+    assert len(order_calls) == 1
+    args, kwargs = order_calls[0]
+    assert args[0] == "EURUSDm"  # symbol
+    # entry=1.1005, stop=1.0990 (the fixture Candidate) -> stop_distance=0.0015 ->
+    # 150 ticks * $1/tick = $150/lot; risk_amount = $10000*1% = $100;
+    # raw_lots = 100/150 = 0.6666... -> floored to the 0.01 step = 0.66.
+    assert kwargs["volume"] == 0.66
+
+
+def test_lot_below_minimum_skips_the_order_without_crashing(monkeypatch):
+    m15, DetectionStatus = _m15_series()
+    _patched_for_execution(monkeypatch, m15, [(_FakeAlignedSignal("sig-1", DetectionStatus.CONFIRMED), "1am")])
+    monkeypatch.setattr(main, "AUTO_EXECUTE", True)
+
+    monkeypatch.setattr(main.mt5_feed, "account_balance", lambda: 1.0)  # tiny balance -> lot below volume_min
+    monkeypatch.setattr(main.mt5_feed, "symbol_trade_specs", lambda symbol: {
+        "tick_value": 1.0, "tick_size": 0.00001, "volume_min": 0.01, "volume_max": 100.0, "volume_step": 0.01,
+    })
+    monkeypatch.setattr(main.mt5_feed, "current_price", lambda symbol, direction: 1.1010)
+
+    order_calls = []
+    monkeypatch.setattr(main.mt5_feed, "send_pending_order", lambda *a, **k: order_calls.append((a, k)))
+
+    main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=False)
+    assert order_calls == []
+
+
+def test_order_send_exception_is_logged_not_raised(monkeypatch):
+    """S6: one symbol's execution failure must never crash the poll."""
+    m15, DetectionStatus = _m15_series()
+    _patched_for_execution(monkeypatch, m15, [(_FakeAlignedSignal("sig-1", DetectionStatus.CONFIRMED), "1am")])
+    monkeypatch.setattr(main, "AUTO_EXECUTE", True)
+
+    monkeypatch.setattr(main.mt5_feed, "account_balance", lambda: 10000.0)
+    monkeypatch.setattr(main.mt5_feed, "symbol_trade_specs", lambda symbol: {
+        "tick_value": 1.0, "tick_size": 0.00001, "volume_min": 0.01, "volume_max": 100.0, "volume_step": 0.01,
+    })
+    monkeypatch.setattr(main.mt5_feed, "current_price", lambda symbol, direction: 1.1010)
+
+    def _boom(*a, **k):
+        raise main.mt5_feed.MT5ConnectionError("terminal disconnected")
+    monkeypatch.setattr(main.mt5_feed, "send_pending_order", _boom)
+
+    # Must not raise.
+    result_state = main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=False)
+    assert len(result_state["alerted_ids"]) == 1  # the alert itself still went through
