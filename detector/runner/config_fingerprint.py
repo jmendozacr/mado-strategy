@@ -51,6 +51,7 @@ def reconstruct_and_fingerprint(config_dict: dict) -> tuple[DetectorConfig, str]
             },
             "backtest": {
                 "sl_buffer_atr_multiple": repr(config.backtest.sl_buffer_atr_multiple),
+                "min_stop_distance_price": repr(config.backtest.min_stop_distance_price),
                 "min_risk_reward": repr(config.backtest.min_risk_reward),
                 "trading_cost_price": repr(config.backtest.trading_cost_price),
                 "kill_zone_gated": config.backtest.kill_zone_gated,

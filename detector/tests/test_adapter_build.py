@@ -112,7 +112,7 @@ def test_group_k_same_economic_outcome_across_all_four_policies():
     # only relation/policy_id vary
     assert {o.policy_id for o in observations} == set(FROZEN_POLICY_IDS)
     assert first.outcome_state is OutcomeState.CLOSED
-    assert first.realized_r == pytest.approx(2.2758620689655182)
+    assert first.realized_r == pytest.approx(1.6216216216216535)
 
 
 def test_relations_are_not_all_identical_real_mapped_values():

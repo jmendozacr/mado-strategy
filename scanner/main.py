@@ -1,8 +1,14 @@
-"""Polling entrypoint: pulls fresh MT5 data, runs the real detection
-pipeline (cli._detect_all, backtest.population.build_stage6_population --
-never reimplemented here), filters new reject_close_inside signals inside
-the London+Lunch+NY session (rules.filter_new_alerts), and sends one
-Telegram message per new signal.
+"""Polling entrypoint: pulls fresh MT5 data, runs the 1AM+9AM HTF-first
+detection pipeline (causal.htf_trigger.find_1am_9am_aligned_signals,
+backtest.population.build_stage6_population -- never reimplemented here),
+filters NEW signals (rules.filter_new_alerts -- dedup only, no session or
+reaction filter, odd/tasks/scanner-1am-9am-diversified.md S4/S5), and
+sends one Telegram message per new signal, across EURUSD/USDCAD/AUDUSD.
+
+Replaces the old EURUSD-only NY-kill-zone recipe entirely (user: "Reemplaza
+todo por lo nuevo") -- see odd/tasks/scanner-1am-9am-diversified.md for the
+full spec and the Engram diversification-arc memories for how each
+instrument's own config (below) was validated.
 """
 import sys
 import time
@@ -10,27 +16,70 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\detector")
 
-from cli import _detect_all  # noqa: E402
-from core.config import DetectorConfig  # noqa: E402
+from alignment.htf_ltf import _reindex_daily_key_levels  # noqa: E402
+from causal.htf_trigger import find_1am_9am_aligned_signals  # noqa: E402
+from composite.ict_order_block import detect_order_blocks, to_key_levels as ob_to_key_levels  # noqa: E402
+from core.config import BacktestConfig, DetectorConfig  # noqa: E402
+from core.key_level import KeyLevel  # noqa: E402
+from primitives.fvg import detect_fvgs, to_key_levels as fvg_to_key_levels  # noqa: E402
 from backtest.population import build_stage6_population  # noqa: E402
 
 import mt5_feed  # noqa: E402
 import news_calendar  # noqa: E402
 import state  # noqa: E402
 import telegram_notify  # noqa: E402
+from execution import calculate_lot_size, pending_order_type  # noqa: E402
 from rules import filter_new_alerts  # noqa: E402
 
-# Single pair only (decided after the prop-firm sizing analysis: GBPUSDm's
-# own drawdown/stagnation profile standalone was too weak to run as its
-# own account -- see odd/tasks/telegram-key-level-scanner.md's Log).
-SYMBOLS = ("EURUSDm",)
+# Replaced the old single-pair EURUSD recipe with the validated 1AM+9AM
+# diversified account (odd/tasks/scanner-1am-9am-diversified.md S1/S2).
+# MODEL_5AM was tested this session and explicitly declined by the user.
+SYMBOLS = ("EURUSDm", "USDCADm", "AUDUSDm")
 POLL_SECONDS = 120
 LOOKBACK = {"D1": 200, "H4": 500, "M15": 2000}
+
+# Per-symbol BacktestConfig, each already validated this session (R:R=2.0
+# and kill_zone_gated=False for all three -- each model's own confirmation
+# window already bounds which candles can ever produce a signal, so no
+# separate kill-zone cut is needed on top). min_stop_distance_price/
+# trading_cost_price differ per instrument -- a flat EURUSD-pip-scale
+# constant does NOT transfer to USDCAD/AUDUSD, confirmed by sweep this
+# session, never assumed.
+BACKTEST_CONFIG = {
+    "EURUSDm": BacktestConfig(
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
+    ),
+    "USDCADm": BacktestConfig(
+        min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0,
+    ),
+    "AUDUSDm": BacktestConfig(
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0,
+    ),
+}
 # Currencies whose high-impact news can affect each pair -- used only to
 # ANNOTATE alerts (never to suppress them). FTMO's real 2-minute execution
 # restriction applies only on Standard funded accounts, never during the
 # Challenge/Verification evaluation (confirmed against ftmo.com/en/faq/can-i-trade-news/).
-RELEVANT_CURRENCIES = {"EURUSDm": ("EUR", "USD"), "GBPUSDm": ("GBP", "USD")}
+RELEVANT_CURRENCIES = {
+    "EURUSDm": ("EUR", "USD"), "USDCADm": ("USD", "CAD"), "AUDUSDm": ("AUD", "USD"),
+}
+
+# odd/tasks/scanner-auto-execution.md S1/S2/S7: real MT5 pending orders,
+# not just Telegram alerts -- user's explicit decision, default True, since
+# Sunday's activation is on a $10,000 DEMO account (no real-money risk).
+# Flip to False to go back to alert-only, same behavior as before this task.
+AUTO_EXECUTE = True
+RISK_PCT = 1.0  # matches this session's own $10k/1%-risk USD-ledger convention
+# Fixed, non-compounding -- NEVER the live/current account balance. Every
+# rolling-window/FTMO result this session validated risk as 1% of a FIXED
+# initial balance (research.eurusd_recipe_validation.sizing's own docstring:
+# "non-compounding, because the limits this is measured against are
+# themselves static from the initial balance" -- mirrors FTMO's own static-
+# from-initial-capital rule). Sizing off the live balance instead would be
+# compounding position sizing, a materially different, never-backtested
+# scheme.
+INITIAL_BALANCE = 10000.0
+MAX_FILL_WAIT_CANDLES = 20  # M15 candles -- BacktestConfig's own default (S4/S5)
 # ForexFactory's free feed rate-limits aggressive polling (observed 429s
 # when fetched every 2-minute poll) -- the calendar barely changes within
 # an hour, so cache it instead of refetching every run_once().
@@ -51,7 +100,23 @@ def _cached_news_events() -> list[dict]:
     return _news_cache["events"]
 
 
+def _build_key_levels(htf_series, daily_series, fvg_config) -> list[KeyLevel]:
+    """HTF FVGs + Daily-tier Order Blocks reindexed to HTF-index-space --
+    the exact construction this session verified reproduces the backtested
+    1AM+9AM population (mirrors causal.generate.generate_causal_aligned_
+    signals' own division of labor: this module builds the raw KeyLevels,
+    causal.htf_trigger only ever consumes an already-built list)."""
+    htf_fvg_levels = fvg_to_key_levels(detect_fvgs(htf_series, fvg_config))
+    daily_ob_levels = ob_to_key_levels(detect_order_blocks(daily_series))
+    htf_timestamps = [c.timestamp for c in htf_series.candles]
+    reindexed_daily = _reindex_daily_key_levels(
+        daily_ob_levels, daily_series.candles, htf_series.candles, htf_timestamps
+    )
+    return htf_fvg_levels + reindexed_daily
+
+
 _DIRECTION_MARKER = {"bullish": "\U0001F7E2", "bearish": "\U0001F534"}  # green/red circle
+_MODEL_LABEL = {"1am": "1AM", "9am": "9AM"}
 
 
 def _format_alert(alert, signal_number_today: int, near_news: bool) -> str:
@@ -59,9 +124,12 @@ def _format_alert(alert, signal_number_today: int, near_news: bool) -> str:
     needed since every interpolated field is numeric or an ISO timestamp,
     never free text that could contain &lt;/&gt;/&amp;."""
     marker = _DIRECTION_MARKER[alert["direction"]]
+    model_label = _MODEL_LABEL.get(alert["model"], alert["model"])
+    reaction_label = alert["key_level_reaction"] or "unknown"
+    key_level_label = alert["key_level_kind"] or "unknown"
     lines = [
         f"{marker} <b>{alert['symbol']} — {alert['direction'].upper()}</b>",
-        f"reject_close_inside · señal #{signal_number_today} hoy",
+        f"{model_label} · {reaction_label} · {key_level_label} · señal #{signal_number_today} hoy",
         "",
         f"<b>Entry:</b>  {alert['entry_price']:.5f}",
         f"<b>Stop:</b>   {alert['stop_loss']:.5f}",
@@ -74,13 +142,40 @@ def _format_alert(alert, signal_number_today: int, near_news: bool) -> str:
     return "\n".join(lines)
 
 
+def _execute_alert(alert: dict, symbol: str) -> None:
+    """odd/tasks/scanner-auto-execution.md S3/S4/S5/S6: sizes and places a
+    real pending order for one new alert. Never called for a silent-seed
+    poll (S5's own safety line -- backfilled history is never a live
+    trade). Logs and returns on any skip/failure; never raises past this
+    function, so one symbol's execution problem can never stop the poll
+    loop or suppress the Telegram alert that already went out."""
+    specs = mt5_feed.symbol_trade_specs(symbol)
+    lot = calculate_lot_size(
+        balance=INITIAL_BALANCE, risk_pct=RISK_PCT, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"],
+        **specs,
+    )
+    if lot is None:
+        print(f"execution skipped for {alert['stable_id']}: target lot size below the symbol's volume_min", flush=True)
+        return
+
+    price = mt5_feed.current_price(symbol, alert["direction"])
+    order_type = pending_order_type(alert["direction"], entry_price=alert["entry_price"], current_price=price)
+    result = mt5_feed.send_pending_order(
+        symbol, order_type, volume=lot, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"],
+        take_profit=alert["take_profit"], max_fill_wait_candles=MAX_FILL_WAIT_CANDLES,
+    )
+    if mt5_feed.order_succeeded(result):
+        print(f"order placed for {alert['stable_id']}: {order_type} {lot} lots", flush=True)
+    else:
+        print(f"order REJECTED for {alert['stable_id']}: retcode={getattr(result, 'retcode', None)}", file=sys.stderr, flush=True)
+
+
 def run_once(current_state: dict, *, silent: bool = False) -> dict:
     """`silent=True` (REQ: first-ever run only) marks every currently-
     qualifying candidate as already-alerted WITHOUT sending Telegram
     messages -- backfill history inside the lookback window must never be
     blasted as if it were new. Only candidates that appear in a LATER
     poll, after this seeding, are genuinely new and get alerted."""
-    config = DetectorConfig()
     news_events = _cached_news_events()
 
     for symbol in SYMBOLS:
@@ -88,15 +183,25 @@ def run_once(current_state: dict, *, silent: bool = False) -> dict:
         h4 = mt5_feed.fetch_series(symbol, "H4", LOOKBACK["H4"])
         d1 = mt5_feed.fetch_series(symbol, "D1", LOOKBACK["D1"])
 
-        result = _detect_all(m15, h4, d1, config)
-        aligned = result.aligned_signals or []
-        reaction_by_id = {s.ltf_signal.signal_id: s.key_level_reaction for s in aligned if s.key_level is not None}
-        population = build_stage6_population(aligned, m15, config)
+        config = DetectorConfig(backtest=BACKTEST_CONFIG[symbol])
+        key_levels = _build_key_levels(h4, d1, config.fvg)
+        results = find_1am_9am_aligned_signals(h4.candles, m15, key_levels, config.crt_range, config.model1)
+
+        aligned_signals = [aligned for aligned, _model in results]
+        reaction_by_id = {aligned.ltf_signal.signal_id: aligned.key_level_reaction for aligned, _model in results}
+        model_by_id = {aligned.ltf_signal.signal_id: model for aligned, model in results}
+        kind_by_id = {
+            aligned.ltf_signal.signal_id: (aligned.key_level.kind if aligned.key_level else None)
+            for aligned, _model in results
+        }
+        population = build_stage6_population(aligned_signals, m15, config)
 
         alerts = filter_new_alerts(
             symbol, population.candidates, reaction_by_id, m15, set(current_state["alerted_ids"])
         )
         for alert in alerts:
+            alert["model"] = model_by_id.get(alert["signal_id"])
+            alert["key_level_kind"] = kind_by_id.get(alert["signal_id"])
             signal_day = str(alert["anchor_ts"].date())
             if silent:
                 current_state = state.record_alert(current_state, alert["stable_id"], symbol, signal_day)
@@ -108,6 +213,11 @@ def run_once(current_state: dict, *, silent: bool = False) -> dict:
             telegram_notify.send_message(_format_alert(alert, signal_number, near_news))
             current_state = state.record_alert(current_state, alert["stable_id"], symbol, signal_day)
             print(f"alerted {alert['stable_id']}{' [near news]' if near_news else ''}", flush=True)
+            if AUTO_EXECUTE:
+                try:
+                    _execute_alert(alert, symbol)
+                except Exception as error:  # noqa: BLE001 -- S6: one order failure must never stop the poll
+                    print(f"execution error for {alert['stable_id']}: {error}", file=sys.stderr, flush=True)
         if silent:
             print(f"seeded {len(alerts)} pre-existing candidates for {symbol} (no messages sent)", flush=True)
     return current_state

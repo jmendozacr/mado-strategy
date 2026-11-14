@@ -17,10 +17,20 @@ Direction = Literal["bullish", "bearish"]
 
 def entry_price(anchor: Candle, direction: Direction, entry_type: Literal["wick", "body"]) -> float:
     """REQ-47: backtest-local entry price, independent of
-    `Model1Signal.entry_price`/`detections.csv` (ADR-05)."""
+    `Model1Signal.entry_price`/`detections.csv` (ADR-05). Wick entry is the
+    anchor's own wick extreme (`anchor.high` bullish / `anchor.low`
+    bearish) -- corrected 2026-11-10b: the original "retest-side body
+    boundary" (max/min of open,close) was itself a misreading of ADR-05's
+    rejected "entry at the wick extreme" alternative, which evaluated the
+    SWEPT-side wick tip (the same point as `protected_extreme`, the stop's
+    own anchor -- a real collapse risk), not this OPPOSITE-side one. Two
+    real executed Model-1 trades (a GBPUSD buy and a EURUSD sell, both
+    2026-11-10) confirmed entry sits at the full wick tip, never a body
+    edge -- the sell's anchor had long wicks on both sides, cleanly ruling
+    the body-edge formula out."""
     if entry_type == "body":
         return anchor.open
-    return max(anchor.open, anchor.close) if direction == "bullish" else min(anchor.open, anchor.close)
+    return anchor.high if direction == "bullish" else anchor.low
 
 
 def stop_loss(
@@ -75,6 +85,28 @@ def stop_loss(
 
     buffer = config.sl_buffer_atr_multiple * atr(candles, anchor_index)
     return level - buffer if direction == "bullish" else level + buffer
+
+
+def enforce_min_stop_distance(
+    entry: float, stop: float, direction: Direction, min_stop_distance_price: float
+) -> float:
+    """REQ-NEW (odd/tasks/realistic-cost-prop-firm-validation.md T8): widens
+    `stop` outward from `entry`, if needed, so `|entry - stop|` is at least
+    `min_stop_distance_price` -- never tightens an already-wider structural
+    stop. A real-data sweep across the 1AM/5AM/9AM HTF-first population
+    found a fixed 6-pip (0.0006 on EURUSDm) floor beat every ATR-relative
+    alternative tested (0.5x-1.5x ATR(14)) on win rate, total R, and avg R
+    simultaneously -- the tightest-stop trades were genuinely noisier, not
+    merely harder to execute. Kept as a flat PRICE-UNIT value (operator-
+    tunable per instrument via `BacktestConfig.min_stop_distance_price`),
+    not hardcoded pips, consistent with `stop_loss`'s own ATR-relative
+    buffer being scale-aware rather than a bare price-unit constant. At
+    `min_stop_distance_price=0.0` this is a no-op, byte-identical to the
+    pre-existing `stop_loss` output."""
+    distance = abs(entry - stop)
+    if distance >= min_stop_distance_price:
+        return stop
+    return entry - min_stop_distance_price if direction == "bullish" else entry + min_stop_distance_price
 
 
 def take_profit(htf_context: CRTRange, direction: Direction) -> float:

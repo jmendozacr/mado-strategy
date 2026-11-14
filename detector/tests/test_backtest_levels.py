@@ -8,7 +8,7 @@ from core.candle import Candle
 from core.config import BacktestConfig
 from primitives.swing import SwingPoint
 
-from backtest.levels import entry_price, net_r_multiple, partial_price, stop_loss
+from backtest.levels import enforce_min_stop_distance, entry_price, net_r_multiple, partial_price, stop_loss
 
 
 def _candle(open, high, low, close):
@@ -74,15 +74,19 @@ def test_entry_price_for_body_type_is_anchor_open():
     assert entry_price(anchor, "bullish", "body") == 1.0998
 
 
-def test_entry_price_for_wick_type_is_the_retest_side_body_boundary():
-    """REQ-47.2 (happy, wick): bullish wick entry is the retest-side body
-    boundary (max(open, close)), NEVER protected_extreme (the anchor's
-    low)."""
+def test_entry_price_for_wick_type_is_the_anchor_wick_extreme():
+    """REQ-47.2 (happy, wick): bullish wick entry is the anchor's own wick
+    extreme (anchor.high), NEVER protected_extreme (the anchor's low) and
+    NEVER a body-edge compromise (max(open, close)) -- corrected
+    2026-11-10b after a real executed sell (EURUSD) filled exactly at its
+    anchor's full wick extreme on an anchor with long wicks on both sides,
+    where the body-edge formula this test used to pin would have given a
+    visibly different (and wrong) number."""
     anchor = _candle(open=1.0998, high=1.1005, low=1.0990, close=1.1002)
 
     price = entry_price(anchor, "bullish", "wick")
 
-    assert price == 1.1002
+    assert price == 1.1005
     assert price != anchor.low  # never protected_extreme
 
 
@@ -152,28 +156,64 @@ def test_wick_entry_and_purge_extreme_stop_yield_the_real_risk_distance():
         candles=candles, config=BacktestConfig(sl_buffer_atr_multiple=0.3),
     )
 
-    assert entry == 1.1002
+    assert entry == 1.1005
     assert abs(stop - 1.09855) < 1e-9  # 1.0990 - 0.3 * 0.0015
-    assert abs((entry - stop) - 0.00165) < 1e-9
+    assert abs((entry - stop) - 0.00195) < 1e-9
 
 
-def test_doji_anchor_entry_equals_protected_extreme_but_risk_still_holds():
-    """REQ-47.4 (edge, doji carve-out): a doji anchor (open==close==low)
-    permits entry_price == protected_extreme -- the one documented
-    exception to REQ-47.3's non-degeneracy -- but risk >= the ATR-relative
-    buffer still holds because the buffer is applied unconditionally."""
-    anchor = _candle(open=1.0990, high=1.1005, low=1.0990, close=1.0990)
-    candles = _uniform_atr_candles(anchor, 2)  # ATR(14) at index 1 == 0.0015
+def test_zero_range_anchor_entry_equals_protected_extreme_but_risk_still_holds():
+    """REQ-47.4 (edge, zero-range carve-out -- corrected 2026-11-10b): since
+    entry_price now returns the anchor's own wick extreme (not a body-edge
+    compromise), an ordinary doji (open==close) no longer collides with
+    protected_extreme -- the two sit on OPPOSITE sides of the candle
+    (anchor.high vs anchor.low) and only coincide when the candle is
+    truly zero-range (open==high==low==close). Even then, ATR's true_range
+    still measures the GAP from the previous candle's close (core/atr.py),
+    so the stop-loss buffer stays real and positive -- never silently
+    zeroed out by this one degenerate candle alone."""
+    previous = _candle(open=1.0940, high=1.0960, low=1.0930, close=1.0950)  # true_range = 0.0030
+    anchor = _candle(open=1.0990, high=1.0990, low=1.0990, close=1.0990)  # zero-range; gap vs previous.close = 0.0040
+    candles = (previous, anchor)  # ATR(14) at index 1 == (0.0030 + 0.0040) / 2 == 0.0035
     config = BacktestConfig(sl_buffer_atr_multiple=0.3)
-    expected_buffer = config.sl_buffer_atr_multiple * 0.0015
+    expected_buffer = config.sl_buffer_atr_multiple * 0.0035
 
     entry = entry_price(anchor, "bullish", "wick")
     stop = stop_loss(
         anchor, "bullish", swings=[], indices=[], anchor_index=1, retest_index=3, candles=candles, config=config
     )
 
-    assert entry == anchor.low  # the documented doji exception
-    assert entry - stop >= expected_buffer - 1e-9  # float64 tolerance on an exact-equality boundary
+    assert entry == anchor.low  # the zero-range exception (anchor.high == anchor.low here)
+    assert abs((entry - stop) - expected_buffer) < 1e-9
+
+
+def test_enforce_min_stop_distance_widens_a_too_tight_bullish_stop():
+    """REQ-NEW (odd/tasks/realistic-cost-prop-firm-validation.md T8): a
+    4-pip structural stop (entry 1.1000, stop 1.0996) is narrower than a
+    6-pip (0.0006) floor -> widened outward (away from entry, i.e. lower
+    for a bullish trade) to exactly the floor distance."""
+    widened = enforce_min_stop_distance(entry=1.1000, stop=1.0996, direction="bullish", min_stop_distance_price=0.0006)
+    assert abs(widened - 1.0994) < 1e-9
+
+
+def test_enforce_min_stop_distance_widens_a_too_tight_bearish_stop():
+    """Same idea, bearish: the floor widens OUTWARD, i.e. higher."""
+    widened = enforce_min_stop_distance(entry=1.1000, stop=1.1004, direction="bearish", min_stop_distance_price=0.0006)
+    assert abs(widened - 1.1006) < 1e-9
+
+
+def test_enforce_min_stop_distance_never_tightens_an_already_wider_stop():
+    """A 16-pip structural stop is already wider than a 6-pip floor ->
+    returned byte-identical, never pulled in closer to entry."""
+    stop = enforce_min_stop_distance(entry=1.1000, stop=1.0984, direction="bullish", min_stop_distance_price=0.0006)
+    assert stop == 1.0984
+
+
+def test_enforce_min_stop_distance_at_zero_floor_is_a_no_op():
+    """REQ-NEW edge (default neutrality, mirrors REQ-48.2's own pattern for
+    trading_cost_price): min_stop_distance_price=0.0 never widens anything,
+    regardless of how tight the structural stop is."""
+    stop = enforce_min_stop_distance(entry=1.1000, stop=1.0999, direction="bullish", min_stop_distance_price=0.0)
+    assert stop == 1.0999
 
 
 def test_net_r_multiple_nets_out_trading_cost_once_at_closure():

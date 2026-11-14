@@ -53,6 +53,9 @@ class BacktestConfig:
     sl_buffer_atr_multiple: float = 0.3  # ATR(14)-relative offset, never a raw price constant (REQ-31) --
     # 0.3 reproduces ~the same absolute buffer as the former 0.0002 on EURUSDm/GBPUSDm-scale M15 series
     # (mean ATR(14) ~0.00067/~0.00088) while scaling correctly for a high-absolute-price instrument like DXYm
+    min_stop_distance_price: float = 0.0006  # REQ-NEW: 6-pip EURUSDm floor -- beat every ATR-relative
+    # alternative tested on the 1AM/5AM/9AM HTF-first population (odd/tasks/realistic-cost-prop-firm-validation.md
+    # T8); operator-tunable per instrument like sl_buffer_atr_multiple, not hardcoded pips
     min_risk_reward: float = 2.0  # REQ-35
     trading_cost_price: float = 0.0  # total per-trade cost, price units (REQ-48)
     kill_zone_gated: bool = True  # REQ-36

@@ -30,21 +30,37 @@ _LTF_CANDLES = [
     (1.0965, 1.1010, 1.0790, 1.0910),  # 4 — expansion -> CONFIRMED; low also reaches take_profit (1.0800)
 ]
 
-# Daily HTF pair (design §8.2, redesigned): candles 0-2 form a bearish FVG
-# (zone [1.1030, 1.1040], origin_index=2 — the third candle, per REQ-54.1);
-# candle 3 is the CRT range (H=1.1028, L=1.0900 -> bearish take_profit,
-# clearing the R:R floor against the LTF entry ~1.1010/SL 1.1037); candle 4
-# (2026-07-06, the LTF anchor's own calendar day) purges the range, its
-# high (1.1035) landing INSIDE the unexpired FVG zone -> credited Key Level
-# (REQ-55.1). candle 5 exists so candle 4 is never the "last HTF candle"
-# (avoids insufficient_htf_data).
+# Daily HTF pair (design §8.2; re-timed for odd/tasks/model1-causal-retry-chain.md
+# T3 — causal correctness, not just chronological order): candles 0-1 form a
+# bearish FVG (zone [1.1030, 1.1040], origin_index=2 — the third candle, per
+# REQ-54.1, with candle2 doing double duty as BOTH the FVG's completing
+# candle and the CRT range's own start candle, so the whole purge+resolve
+# cycle finishes before the LTF anchor's calendar day); candle 2 is also the
+# CRT range (H=1.1030, L=1.0900 -> bearish take_profit, clearing the R:R
+# floor against the LTF entry ~1.1010/SL 1.1037); candle 3 purges the range
+# (high 1.1035 > 1.1030, landing INSIDE the FVG zone) without yet resolving
+# it; candle 4 resolves it via false_break (close 1.0925 <= the range's own
+# midpoint 1.0965).
+#
+# This matters causally (not just for legacy's window-matching): the
+# causal pipeline's H-A rule (`causal/htf.py::select_htf_context`) only
+# credits a Key Level from an HTF range whose OWN resolution is knowable by
+# the LTF signal's retest timestamp (2026-07-06, intraday) -- a range that
+# only resolves on 2026-07-06 itself (Daily candles close at midnight) is
+# NOT yet closed as of an intraday retest that same day. The original
+# design had candle 4 (2026-07-06, the LTF anchor's OWN day) as the purge
+# candle and candle 5 (2026-07-07) as the resolving candle -- correct under
+# legacy's anchor-timestamp window match, but one day too late for H-A,
+# which then fell back to a different, non-crediting competing range and
+# produced zero candidates system-wide (9 failing tests). Purge+resolve now
+# complete by 2026-07-05, a full day before the LTF anchor/retest.
 _HTF_DAILY = [
-    ("2026.07.02", 1.1060, 1.1065, 1.1040, 1.1045),  # 0 — FVG top = low 1.1040
-    ("2026.07.03", 1.1042, 1.1044, 1.1034, 1.1036),  # 1 — middle candle
-    ("2026.07.04", 1.1028, 1.1030, 1.1020, 1.1022),  # 2 — FVG bottom = high 1.1030 -> zone [1.1030, 1.1040]
-    ("2026.07.05", 1.1020, 1.1028, 1.0900, 1.0910),  # 3 — CRT range: H=1.1028 L=1.0900 (= take_profit)
-    ("2026.07.06", 1.0915, 1.1035, 1.0905, 1.0920),  # 4 — purge (high 1.1035 > 1.1028, inside FVG zone)
-    ("2026.07.07", 1.0920, 1.0930, 1.0910, 1.0925),  # 5 — trailing
+    ("2026.07.01", 1.1060, 1.1065, 1.1040, 1.1045),  # 0 — FVG top = low 1.1040
+    ("2026.07.02", 1.1042, 1.1044, 1.1034, 1.1036),  # 1 — middle candle
+    ("2026.07.03", 1.1028, 1.1030, 1.0900, 1.0910),  # 2 — FVG bottom = high 1.1030 -> zone [1.1030, 1.1040];
+    #       ALSO the CRT range's own start candle: H=1.1030 L=1.0900 (= take_profit)
+    ("2026.07.04", 1.0915, 1.1035, 1.0905, 1.0920),  # 3 — purge (high 1.1035 > 1.1030, inside FVG zone); poke only
+    ("2026.07.05", 1.0920, 1.0930, 1.0910, 1.0925),  # 4 — resolves via false_break (close 1.0925 <= midpoint 1.0965)
 ]
 
 
@@ -111,7 +127,12 @@ def test_mixed_htf_fixture_has_no_stray_fvg_near_purge_b():
         for i, (date_str, o, h, l, c) in enumerate(_HTF_DAILY_MIXED)
     )
     series = OHLCSeries(candles=candles, instrument="EURUSD", timeframe="D")
-    purge_b_high = candles[7].high
+    # odd/tasks/model1-causal-retry-chain.md T3: `_HTF_DAILY` shrank from 6
+    # to 5 candles (causal timing fix above), shifting purge B's index in
+    # `_HTF_DAILY_MIXED` from 7 to 6 -- derived from `_HTF_DAILY`'s own
+    # length instead of a hardcoded literal, so this never silently drifts
+    # again if `_HTF_DAILY` changes size.
+    purge_b_high = candles[len(_HTF_DAILY) + 1].high
 
     fvgs = detect_fvgs(series)
 
@@ -346,8 +367,8 @@ def test_default_run_discloses_kill_zone_gate_enabled_and_frictionless_cost(tmp_
     summary = (output_dir / "metrics_summary.txt").read_text()
     assert "kill-zone gate: enabled (evaluating anchor_index against the NY kill zone)" in summary
     assert "trading cost: 0.0 (frictionless)" in summary
-    assert "average R: 2.276 over 1 closed trades" in summary
-    assert "total R: 2.276 over 1 closed trades" in summary
+    assert "average R: 1.622 over 1 closed trades" in summary
+    assert "total R: 1.622 over 1 closed trades" in summary
     assert "note: average R and total R assume unlimited capital, no cap on concurrently open positions" in summary
     assert "same-candle SL+TP resolutions: 0" in summary
 
@@ -403,7 +424,7 @@ def test_min_rr_override_changes_rr_floor_exclusion(tmp_path):
 
 
 def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
-    """REQ-51.2: omitting all 6 override flags produces output byte-identical
+    """REQ-51.2: omitting all 7 override flags produces output byte-identical
     to setting every field explicitly to its BacktestConfig default."""
     implicit_exit, implicit_dir = _run_backtest(tmp_path / "implicit", extra_args=["--types", "model1"])
     explicit_exit, explicit_dir = _run_backtest(
@@ -411,6 +432,7 @@ def test_no_override_flags_matches_explicit_defaults_byte_for_byte(tmp_path):
         extra_args=[
             "--types", "model1",
             "--sl-buffer-atr-multiple", "0.3", "--min-rr", "2.0", "--trading-cost", "0.0",
+            "--min-stop-distance", "0.0006",
             "--kill-zone-gated", "--max-fill-wait", "20", "--partial-fraction", "0.5",
         ],
     )
@@ -451,6 +473,38 @@ def test_invalid_trading_cost_exits_1_naming_flag_and_constraint(tmp_path):
 
     assert exit_code == 1
     assert not (output_dir / "trades.csv").exists()
+
+
+def test_invalid_min_stop_distance_exits_1_naming_flag_and_constraint(tmp_path):
+    """REQ-NEW (mirrors REQ-51.3): a negative --min-stop-distance is rejected the same way."""
+    exit_code, output_dir = _run_backtest(tmp_path, extra_args=["--min-stop-distance", "-0.0001"])
+
+    assert exit_code == 1
+    assert not (output_dir / "trades.csv").exists()
+
+
+def test_min_stop_distance_override_widens_a_too_tight_fixture_stop(tmp_path):
+    """REQ-NEW: this fixture's own structural stop (entry 1.10, stop
+    1.104625 -- ~46.25 pips) is already wider than the new 6-pip default
+    (confirmed inert by every other test in this file), so a 0.0048
+    (48-pip) override is used here instead -- just past the structural
+    distance, so it demonstrably widens the stop, but still comfortably
+    inside the fixture's own R:R floor (reward 0.01 / risk 0.0048 ~= 2.08
+    >= the 2.0 default) so the trade still opens at all."""
+    default_exit, default_dir = _run_backtest(tmp_path / "default", extra_args=["--types", "model1"])
+    override_exit, override_dir = _run_backtest(
+        tmp_path / "override", extra_args=["--types", "model1", "--min-stop-distance", "0.0048"]
+    )
+
+    assert default_exit == 0 and override_exit == 0
+    default_trade = _read_csv_rows(default_dir / "trades.csv")[1]  # [0] is the header row
+    override_trade = _read_csv_rows(override_dir / "trades.csv")[1]
+    # header order: signal_id, anchor_timestamp, entry_timestamp, direction, entry_price, stop_loss, ...
+    default_entry, default_stop = float(default_trade[4]), float(default_trade[5])
+    override_entry, override_stop = float(override_trade[4]), float(override_trade[5])
+    assert override_entry == default_entry  # the floor only moves the stop, never the entry
+    assert abs(abs(override_entry - override_stop) - 0.0048) < 1e-9
+    assert override_stop != default_stop
 
 
 def test_partial_fraction_zero_cli_reproduces_pre_change_output(tmp_path):

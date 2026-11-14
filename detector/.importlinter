@@ -1,5 +1,6 @@
 [importlinter]
 root_packages =
+    experimental
     core
     ingestion
     primitives
@@ -24,7 +25,13 @@ type = layers
 # the same evidence layers, and neither imports the other. Stacking them
 # would silently permit a coupling nobody has argued for; a future consumer
 # that genuinely needs one from the other should have to change this line.
+#
+# `experimental` sits at the TOP on purpose: a diagnostic may consume any
+# production layer, and no production layer may ever consume a diagnostic.
+# Declaring it here rather than leaving it unscanned (as `research` is) means
+# that direction is enforced instead of merely intended.
 layers =
+    experimental
     viz : ingestion
     evaluation
     backtest

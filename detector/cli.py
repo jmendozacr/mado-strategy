@@ -13,6 +13,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from alignment.htf_ltf import AlignedSignal, tag_alignment
+from causal.generate import generate_causal_aligned_signals
 from composite.mss import MSSEvent, detect_mss_events
 from core.candle import OHLCSeries
 from core.config import BacktestConfig, DetectorConfig, KillZoneConfig
@@ -24,8 +25,8 @@ from ingestion.loader import LoadError, load_mt5_csv
 from ingestion.pairing import load_pair
 from primitives.crt_range import CRTRange, detect_crt_ranges
 from primitives.fvg import FVG, detect_fvgs, to_key_levels
-from primitives.ict_order_block import detect_ict_order_blocks
-from primitives.ict_order_block import to_key_levels as ict_order_block_to_key_levels
+from composite.ict_order_block import detect_order_blocks as detect_ict_order_blocks
+from composite.ict_order_block import to_key_levels as ict_order_block_to_key_levels
 from primitives.swing import SwingPoint, detect_swings
 from viz.chart import render_chart
 from viz.table import write_detections_csv
@@ -77,6 +78,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--min-rr", default=None, help="Override BacktestConfig.min_risk_reward")
     parser.add_argument("--trading-cost", default=None, help="Override BacktestConfig.trading_cost_price (raw price units, per trade)")
+    parser.add_argument(
+        "--min-stop-distance", default=None,
+        help="Override BacktestConfig.min_stop_distance_price (raw price units, floors |entry - stop|)",
+    )
     parser.add_argument(
         "--kill-zone-gated", nargs="?", const="true", default=None,
         help="Override BacktestConfig.kill_zone_gated -- true/false (e.g. --kill-zone-gated false); "
@@ -226,8 +231,15 @@ def _detect_all(
         # §4a's correction note for why gating it on daily_series being
         # present is a bug (it silently drops V2's existing ICTOrderBlock
         # contribution when Daily is omitted).
+        #
+        # V4 (odd/tasks/detector-order-block-redefinition.md S8): the
+        # detector itself is now `composite.ict_order_block` (MSS ->
+        # displacement -> backward-scan chain), not the archived 2-candle
+        # engulfment rule — it takes no ICTOrderBlockConfig, self-computing
+        # swings/MSS for this series since nothing else in `_detect_all`
+        # already holds them.
         htf_order_blocks = detect_ict_order_blocks(
-            daily_series if daily_series is not None else htf_series, config.ict_order_block
+            daily_series if daily_series is not None else htf_series
         )
         order_block_key_levels = ict_order_block_to_key_levels(htf_order_blocks)
         fvg_key_levels = to_key_levels(detect_fvgs(htf_series, config.fvg))
@@ -237,11 +249,31 @@ def _detect_all(
         else:
             htf_key_levels, daily_key_levels = fvg_key_levels + order_block_key_levels, None
 
-        aligned_signals = tag_alignment(
-            htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
-            ltf_signals=model1_signals, htf_ranges=htf_crt_ranges,
+        # odd/tasks/model1-causal-retry-chain.md T3: `purge_engulf` signals
+        # (the ones the no-lookahead bug actually affects — competing LTF
+        # CRT ranges producing an unstable `origin_index`/duplicate anchor)
+        # are now generated and aligned by the causal pipeline instead of
+        # legacy `detect_model1_signals`/`tag_alignment`. `fvg_fill` signals
+        # have no causal equivalent yet (`causal/generate.py`'s own scope
+        # note) and are unaffected by that bug (it's specific to competing
+        # CRT ranges), so they still go through the unchanged legacy path,
+        # tagged separately and merged in — no signal or alignment tag that
+        # cli.py reported before this migration is dropped.
+        causal_tags = generate_causal_aligned_signals(
+            ltf_series, htf_series, crt_config=config.crt_range, model1_config=config.model1,
             htf_key_levels=htf_key_levels, daily_series=daily_series, daily_key_levels=daily_key_levels,
         )
+        fvg_fill_signals = [s for s in model1_signals if s.confirmation_type == "fvg_fill"]
+        fvg_fill_tags = (
+            tag_alignment(
+                htf_series, ltf_series, config.crt_range, config.fvg, config.model1,
+                ltf_signals=fvg_fill_signals, htf_ranges=htf_crt_ranges,
+                htf_key_levels=htf_key_levels, daily_series=daily_series, daily_key_levels=daily_key_levels,
+            )
+            if fvg_fill_signals else []
+        )
+        model1_signals = [tag.ltf_signal for tag in causal_tags] + fvg_fill_signals
+        aligned_signals = causal_tags + fvg_fill_tags
 
     return _Detections(
         swings=ltf_swings,
@@ -347,13 +379,26 @@ def _filter_to_confluent(detections: _Detections) -> _Detections:
     later --types model1 (which nulls aligned_signals in _filter_by_types,
     falling back to model1_signals in the CSV/chart writers) cannot leak an
     unfiltered row the gate already withheld — the two lists cannot
-    disagree, mirroring REQ-42's join guarantee."""
+    disagree, mirroring REQ-42's join guarantee.
+
+    `keep()` originally exempted every non-`"aligned"` tag outright
+    (`aligned != "aligned"`), which was correct under legacy `tag_alignment`
+    semantics: its only non-`"aligned"` values were `"unaligned"` (no HTF
+    window at all — nothing to evaluate a Key Level against) and
+    `"insufficient_htf_data"` (not yet knowable). The causal pipeline's H-A
+    rule (`causal/htf.py`, keyed by a signal's own `retest_index` timestamp)
+    can tag a signal `"unaligned"` for a DIFFERENT reason — it evaluated and
+    found no closed HTF range as of that event, which is functionally the
+    same "no key level backs this" case REQ-56.2 already gates on for
+    `"aligned"` signals. Only `"insufficient_htf_data"` still means
+    genuinely not-yet-knowable and stays exempt.
+    """
     if detections.aligned_signals is None:
         return detections
 
     def keep(tagged: AlignedSignal) -> bool:
         return (
-            tagged.aligned != "aligned"
+            tagged.aligned == "insufficient_htf_data"
             or tagged.ltf_signal.confirmation_type == "fvg_fill"
             or tagged.key_level is not None
         )
@@ -449,6 +494,14 @@ def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
     if trading_cost < 0:
         raise ValueError(f"invalid --trading-cost value: {args.trading_cost} (expected a non-negative number)")
 
+    min_stop_distance = _parse_float(
+        args.min_stop_distance, defaults.min_stop_distance_price, "--min-stop-distance"
+    )
+    if min_stop_distance < 0:
+        raise ValueError(
+            f"invalid --min-stop-distance value: {args.min_stop_distance} (expected a non-negative number)"
+        )
+
     kill_zone_gated = _parse_kill_zone_gated(args.kill_zone_gated, defaults.kill_zone_gated)
 
     max_fill_wait = _parse_int(args.max_fill_wait, defaults.max_fill_wait, "--max-fill-wait")
@@ -461,6 +514,7 @@ def _parse_backtest_config(args: argparse.Namespace) -> BacktestConfig:
 
     return BacktestConfig(
         sl_buffer_atr_multiple=sl_buffer_atr_multiple, min_risk_reward=min_rr, trading_cost_price=trading_cost,
+        min_stop_distance_price=min_stop_distance,
         kill_zone_gated=kill_zone_gated, max_fill_wait=max_fill_wait, partial_fraction=partial_fraction,
     )
 

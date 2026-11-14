@@ -148,6 +148,44 @@ def test_two_leg_trade_blends_partial_and_remainder_r_multiple():
     assert trade.outcome == "win"
 
 
+def test_two_leg_trade_charges_trading_cost_exactly_once_not_twice():
+    """REQ-48/68/69 regression: a round-trip's trading cost is paid once on
+    the whole position regardless of how many fills close it (two half-size
+    exits sum to one full-size exit) -- so blending two already-cost-netted
+    legs by position fraction must not re-weight each leg's own cost share
+    by that same fraction again. Same series/signal/htf_context as
+    `test_two_leg_trade_blends_partial_and_remainder_r_multiple`, but with a
+    non-zero `trading_cost_price` -- at the default `partial_fraction=0.5`
+    the pre-fix formula charges only `0.5^2 + 0.5^2 = 0.5` of the configured
+    cost, i.e. exactly half."""
+    series = (
+        _base_bullish_series()
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 6 — no touch
+        .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — touches partial_price (1.1050) only
+        .candle(open=1.1020, high=1.1040, low=1.1015, close=1.1030)  # 8 — filler, no touch of SL/TP
+        .candle(open=1.1050, high=1.1105, low=1.1045, close=1.1095)  # 9 — touches take_profit (1.1100)
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+    config = DetectorConfig(backtest=BacktestConfig(trading_cost_price=0.0004))
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0984
+    risk = entry - stop
+    gross_r_leg1 = (1.1050 - entry) / risk  # partial_price = (entry + take_profit) / 2 (REQ-68 V2)
+    gross_r_leg2 = (1.1100 - entry) / risk
+    expected_blended = 0.5 * gross_r_leg1 + 0.5 * gross_r_leg2 - config.backtest.trading_cost_price / risk
+
+    assert abs(trade.r_multiple - expected_blended) < 1e-9
+    assert abs(trade.r_multiple - 4.4375) < 1e-9  # hand-computed: see REQ-48/68/69 docstring above
+
+
 def test_two_leg_trade_leg2_uses_unmoved_original_stop():
     """REQ-68.2 (edge, two-leg win-then-loss): the partial fires at index 7
     same as the win-win scenario, but the remainder then reverses and hits
@@ -415,7 +453,7 @@ def test_wick_entry_resolves_at_retest_index_itself():
     special-cased."""
     series = (
         CandleSeriesBuilder()
-        .candle(open=1.0998, high=1.1005, low=1.0990, close=1.1002)  # 0 — anchor; wick entry = max(open,close) = 1.1002
+        .candle(open=1.0998, high=1.1005, low=1.0990, close=1.1002)  # 0 — anchor; wick entry = anchor.high = 1.1005
         .candle(open=1.1000, high=1.1004, low=1.0999, close=1.1001)  # 1 — filler
         .candle(open=1.1001, high=1.1006, low=1.1000, close=1.1003)  # 2 — retest candle, low<=1.1002 -> touches immediately
         .candle(open=1.1002, high=1.1010, low=1.0998, close=1.1005)  # 3 — after
@@ -427,7 +465,7 @@ def test_wick_entry_resolves_at_retest_index_itself():
 
     assert report.trades_opened == 1
     assert trades[0].entry_index == 2
-    assert trades[0].entry_price == 1.1002
+    assert trades[0].entry_price == 1.1005
 
 
 def test_entry_never_touched_within_max_fill_wait_window_is_excluded():
@@ -660,12 +698,13 @@ def test_three_duplicate_candidates_collapse_to_one_lowest_origin_index_survives
 def test_differing_entry_type_at_same_anchor_and_price_both_survive():
     """REQ-46.2: entry_type is part of the dedup identity key -- a wick and
     a body candidate at the same anchor survive as distinct candidates, even
-    when their computed entry_price VALUES coincide (anchor close<=open
-    collapses wick entry (max(open,close)) onto body entry (open), leaving
-    entry_type as the only field able to separate the two)."""
+    when their computed entry_price VALUES coincide (anchor.open == anchor.high,
+    no upper wick at all, collapses wick entry (anchor.high) onto body entry
+    (anchor.open), leaving entry_type as the only field able to separate the
+    two)."""
     series = (
         CandleSeriesBuilder()
-        .candle(open=1.1005, high=1.1010, low=1.0990, close=1.1000)  # 0 — anchor; close<=open -> body entry==wick entry==1.1005
+        .candle(open=1.1005, high=1.1005, low=1.0990, close=1.1000)  # 0 — anchor; open==high -> body entry==wick entry==1.1005
         .candle(open=1.1005, high=1.1010, low=1.1000, close=1.1005)  # 1 — filler
         .candle(open=1.1002, high=1.1008, low=1.1001, close=1.1004)  # 2 — retest; low<=1.1005 -> fills immediately
         .build()

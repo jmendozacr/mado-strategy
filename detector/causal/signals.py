@@ -10,6 +10,7 @@ decision (YAGNI), not an omission.
 
 from core.candle import OHLCSeries
 from core.config import Model1Config
+from core.results import DetectionStatus
 from entries.model1 import Model1Signal, _purge_signals, _track_anchor
 from primitives.crt_range import CRTRange
 
@@ -28,7 +29,8 @@ def r_strict_admissible(source_range: CRTRange, retest_index: int | None) -> boo
 
 
 def causal_purge_engulf_signals(
-    ltf_series: OHLCSeries, ltf_ranges: list[CRTRange], config: Model1Config = Model1Config()
+    ltf_series: OHLCSeries, ltf_ranges: list[CRTRange], config: Model1Config = Model1Config(),
+    htf_series: OHLCSeries | None = None, htf_ranges: list[CRTRange] | None = None,
 ) -> list[Model1Signal]:
     """REQ-CAUSAL-02/07/11: the causally-stable `purge_engulf` signal set
     produced from an already-causal LTF range set (`causal.ranges.
@@ -47,6 +49,21 @@ def causal_purge_engulf_signals(
     only real-world producers all resolved too late relative to the
     event), which is how this closes B1/B2 without needing to touch
     `_dedup` itself.
+
+    `htf_series`/`htf_ranges` (odd/tasks/model1-causal-retry-chain.md
+    T4/T5, optional and paired — `None` preserves this function's exact
+    original behavior for every existing caller/test): once a group's
+    winner is picked by the R-strict dedup above (unchanged), if that
+    winner's single-anchor result INVALIDATED before confirming, retry
+    with `causal.retry_chain` instead of settling it as final — the chain
+    is applied only AFTER dedup, to the already-selected winning `(range,
+    signal)` pair, never by re-running dedup against the chain's eventual
+    anchor/retest_index. R-strict's own competition semantics are
+    therefore unchanged by this parameter. The chain's own HTF stop-check
+    uses `htf_ranges` fresh at every invalidation (via H-A, same as
+    `causal.generate`'s own HTF-context selection) — it is NOT the LTF
+    `winning_range` passed alongside it, which only supplies the LTF
+    anchor's own purge target.
     """
     candles = ltf_series.candles
     raw: list[tuple[CRTRange, Model1Signal]] = [
@@ -65,7 +82,17 @@ def causal_purge_engulf_signals(
         admissible = [pair for pair in pairs if r_strict_admissible(pair[0], retest_index)]
         if not admissible:
             continue
-        _, winning_signal = min(admissible, key=lambda pair: pair[0].start_index)
+        winning_range, winning_signal = min(admissible, key=lambda pair: pair[0].start_index)
+        if htf_series is not None and winning_signal.status == DetectionStatus.INVALIDATED:
+            from causal.retry_chain import chained_purge_engulf_signal  # local: avoids a signals<->retry_chain import cycle
+
+            chained = chained_purge_engulf_signal(
+                candles, winning_signal.anchor_index, winning_signal.direction, winning_range,
+                config, winning_range.start_index, htf_series, htf_ranges or [],
+            )
+            if chained is not None:
+                causal_signals.append(chained)
+            continue
         causal_signals.append(_causally_settle(candles, winning_signal, config))
     return causal_signals
 
