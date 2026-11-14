@@ -29,13 +29,13 @@ from datetime import datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from alignment.htf_ltf import _key_level_credit_map, _purge_reaction
-from core.candle import Candle
-from core.config import Model1Config
+from alignment.htf_ltf import AlignedSignal, _key_level_credit_map, _purge_reaction
+from core.candle import Candle, OHLCSeries
+from core.config import CRTRangeConfig, Model1Config
 from core.key_level import KeyLevel
 from core.results import DetectionStatus
 from entries.model1 import Direction, Model1Signal, _track_anchor
-from primitives.crt_range import CRTRange, first_breach_index
+from primitives.crt_range import CRTRange, detect_crt_ranges, first_breach_index
 
 _UTC = ZoneInfo("UTC")
 _NY = ZoneInfo("America/New_York")
@@ -209,3 +209,57 @@ def confirm_in_ltf_window(
         if result is None or result.status != DetectionStatus.INVALIDATED:
             return result
         current_anchor = result.confirmation_index
+
+
+def find_1am_9am_aligned_signals(
+    htf_candles: tuple[Candle, ...],
+    ltf_series: OHLCSeries,
+    key_levels: list[KeyLevel],
+    crt_config: CRTRangeConfig,
+    model1_config: Model1Config,
+    models: tuple[FeederModel, ...] = (MODEL_1AM, MODEL_9AM),
+) -> list[tuple[AlignedSignal, str]]:
+    """odd/tasks/scanner-1am-9am-diversified.md T1: the production home for
+    the exact composition this session's scratchpad analysis reconstructed
+    ad hoc for the backtest -- `find_turtle_soup_triggers` ->
+    `confirmation_window_utc`/`ltf_window_indices` -> `confirm_in_ltf_window`
+    -> a hand-built `CRTRange` (the same 2-candle range `find_turtle_soup_
+    triggers` itself resolved against) wrapped into an `AlignedSignal`, one
+    per confirmed trigger. `key_levels` is supplied by the caller (mirrors
+    `causal.generate.generate_causal_aligned_signals`'s own division of
+    labor: THIS module never builds FVG/Order-Block key levels itself).
+
+    `models` defaults to 1AM+9AM, not all three feeder models -- 5AM was
+    tested this session and explicitly declined by the user ("No, no me
+    convence"), so it is never silently included by a bare default.
+
+    Returns `(AlignedSignal, model.name)` pairs, not bare `AlignedSignal`s:
+    a caller (the live scanner, in particular) needs to know which feeder
+    model produced each signal -- `AlignedSignal` itself carries no model
+    field, and inventing one there would widen a type every other caller
+    of `AlignedSignal` depends on, for a need only this entry point has.
+    """
+    ltf_ranges = detect_crt_ranges(ltf_series, crt_config)
+    results: list[tuple[AlignedSignal, str]] = []
+    for model in models:
+        for trig in find_turtle_soup_triggers(htf_candles, key_levels, model):
+            trigger_candle = htf_candles[trig.candle_index]
+            window_start, window_end = confirmation_window_utc(trigger_candle, model)
+            window = ltf_window_indices(ltf_series.candles, window_start, window_end)
+            if window is None:
+                continue
+            signal = confirm_in_ltf_window(ltf_series.candles, ltf_ranges, window, trig.direction, model1_config)
+            if signal is None:
+                continue
+            prev_candle = htf_candles[trig.candle_index - 1]
+            htf_context = CRTRange(
+                model="2-candle", high=prev_candle.high, low=prev_candle.low,
+                start_index=trig.candle_index - 1, end_index=trig.candle_index,
+                resolution="false_break", resolved_at_index=trig.candle_index,
+            )
+            aligned = AlignedSignal(
+                ltf_signal=signal, htf_context=htf_context, aligned="aligned",
+                key_level=trig.key_level, key_level_reaction=trig.key_level_reaction,
+            )
+            results.append((aligned, model.name))
+    return results

@@ -13,6 +13,7 @@ def _bullish_alert():
         "signal_id": "x", "symbol": "EURUSDm", "direction": "bullish",
         "entry_price": 1.1, "stop_loss": 1.09, "take_profit": 1.12,
         "anchor_ts": datetime(2026, 10, 19, 12, 30, 0),
+        "model": "9am", "key_level_reaction": "reject_close_inside", "key_level_kind": "fvg",
     }
 
 
