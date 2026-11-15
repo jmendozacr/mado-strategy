@@ -3,7 +3,9 @@ from datetime import datetime, timedelta
 from core.candle import Candle, OHLCSeries
 
 from backtest.simulate import Trade
-from research.diversified_1am_9am_rolling import combined_rolling_window, monthly_breakdown, to_closed_trades
+from research.diversified_1am_9am_rolling import (
+    combined_rolling_window, monthly_breakdown, to_closed_trades, yearly_breakdown,
+)
 
 _START = datetime(2026, 1, 1, 15, 0)  # 15:00 UTC -> safely mid-day NY-local, same calendar day
 
@@ -99,3 +101,42 @@ def test_monthly_breakdown_groups_across_symbols_by_close_month():
         {"year": 2026, "month": 1, "trades": 1, "win_rate": 1.0, "total_r": 2.0, "dollar_pnl": 200.0},
         {"year": 2026, "month": 2, "trades": 1, "win_rate": 0.0, "total_r": -1.0, "dollar_pnl": -100.0},
     ]
+
+
+def test_yearly_breakdown_computes_within_year_max_drawdown_across_symbols():
+    """Three trades, same year, two different symbols, in chronological
+    order: +2R (day 1) -1-3R (day 2) +1R (day 3). Equity path from 0:
+    2 -> -1 -> 0. The deepest fall below the year's own start (0) is -1R
+    -- NOT a peak-to-trough measure from the +2 high (which would be 3R)."""
+    series_1 = _series(5)  # day 1 (_START)
+    series_2 = OHLCSeries(
+        candles=tuple(
+            Candle(timestamp=_START + timedelta(days=1) + timedelta(minutes=15 * i), open=1.0, high=1.0, low=1.0, close=1.0)
+            for i in range(5)
+        ),
+        instrument="Y", timeframe="15M",
+    )
+    series_3 = OHLCSeries(
+        candles=tuple(
+            Candle(timestamp=_START + timedelta(days=2) + timedelta(minutes=15 * i), open=1.0, high=1.0, low=1.0, close=1.0)
+            for i in range(5)
+        ),
+        instrument="X", timeframe="15M",
+    )
+    trades_a = [_trade("a1", 0, 1, "win", 2.0)]
+    trades_b = [_trade("b1", 0, 1, "loss", -3.0)]
+    trades_c = [_trade("a2", 0, 1, "win", 1.0)]
+
+    rows = yearly_breakdown(
+        {"A_day1": (trades_a, series_1), "B_day2": (trades_b, series_2), "A_day3": (trades_c, series_3)},
+        risk_per_trade_pct=1.0, initial_balance=10000.0,
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["year"] == 2026
+    assert row["trades"] == 3
+    assert abs(row["win_rate"] - 2 / 3) < 1e-9
+    assert row["total_r"] == 0.0
+    assert row["max_drawdown_r"] == 1.0
+    assert row["max_drawdown_dollar"] == 100.0

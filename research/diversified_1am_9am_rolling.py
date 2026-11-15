@@ -27,7 +27,7 @@ from research.eurusd_recipe_validation.daily_risk import apply_daily_loss_stop
 from research.eurusd_recipe_validation.sizing import RollingWindowResult, DrawdownBasis, simulate_rolling_windows
 from research.eurusd_recipe_validation.trades import ClosedTrade, ordered, session_day
 
-__all__ = ["to_closed_trades", "combined_rolling_window", "monthly_breakdown", "main"]
+__all__ = ["to_closed_trades", "combined_rolling_window", "monthly_breakdown", "yearly_breakdown", "main"]
 
 
 def to_closed_trades(trades: list[Trade], series: OHLCSeries) -> list[ClosedTrade]:
@@ -120,6 +120,54 @@ def monthly_breakdown(
             "win_rate": wins / len(closed) if closed else 0.0,
             "total_r": total_r,
             "dollar_pnl": total_r * risk_per_trade_pct / 100 * initial_balance,
+        })
+    return rows
+
+
+def yearly_breakdown(
+    trades_by_symbol: dict[str, tuple[list[Trade], OHLCSeries]],
+    *,
+    risk_per_trade_pct: float,
+    initial_balance: float,
+) -> list[dict]:
+    """One row per calendar year, each year's own trades walked as an
+    INDEPENDENT equity curve starting at 0 -- matching this project's
+    existing per-year reporting convention (`monthly_breakdown`'s own
+    year totals). `max_drawdown_r`/`max_drawdown_dollar` use the
+    `initial_balance_floor` basis -- `sizing.py`'s own user-confirmed
+    default: how far the year's cumulative R ever fell below where that
+    year started, never a trailing peak-to-trough measure."""
+    merged: list[ClosedTrade] = []
+    for trades, series in trades_by_symbol.values():
+        merged += to_closed_trades(trades, series)
+
+    by_year: dict[int, list[ClosedTrade]] = {}
+    for trade in merged:
+        if trade.exit_time is None or trade.r_multiple is None:
+            continue
+        day = session_day(trade.exit_time)
+        by_year.setdefault(day.year, []).append(trade)
+
+    rows = []
+    for year in sorted(by_year):
+        year_trades = sorted(
+            (t for t in by_year[year] if t.outcome in ("win", "loss")),
+            key=lambda t: t.exit_time,
+        )
+        wins = sum(1 for t in year_trades if t.outcome == "win")
+        equity_r = 0.0
+        max_drawdown_r = 0.0
+        for trade in year_trades:
+            equity_r += trade.r_multiple
+            max_drawdown_r = max(max_drawdown_r, -equity_r)
+        rows.append({
+            "year": year,
+            "trades": len(year_trades),
+            "win_rate": wins / len(year_trades) if year_trades else 0.0,
+            "total_r": equity_r,
+            "dollar_pnl": equity_r * risk_per_trade_pct / 100 * initial_balance,
+            "max_drawdown_r": max_drawdown_r,
+            "max_drawdown_dollar": max_drawdown_r * risk_per_trade_pct / 100 * initial_balance,
         })
     return rows
 
