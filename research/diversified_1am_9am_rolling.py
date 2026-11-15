@@ -25,9 +25,9 @@ from core.candle import OHLCSeries
 
 from research.eurusd_recipe_validation.daily_risk import apply_daily_loss_stop
 from research.eurusd_recipe_validation.sizing import RollingWindowResult, DrawdownBasis, simulate_rolling_windows
-from research.eurusd_recipe_validation.trades import ClosedTrade, ordered
+from research.eurusd_recipe_validation.trades import ClosedTrade, ordered, session_day
 
-__all__ = ["to_closed_trades", "combined_rolling_window", "main"]
+__all__ = ["to_closed_trades", "combined_rolling_window", "monthly_breakdown", "main"]
 
 
 def to_closed_trades(trades: list[Trade], series: OHLCSeries) -> list[ClosedTrade]:
@@ -81,6 +81,47 @@ def combined_rolling_window(
         window_days=window_days,
         drawdown_basis=drawdown_basis,
     )
+
+
+def monthly_breakdown(
+    trades_by_symbol: dict[str, tuple[list[Trade], OHLCSeries]],
+    *,
+    risk_per_trade_pct: float,
+    initial_balance: float,
+) -> list[dict]:
+    """One row per calendar (year, month) across every symbol's merged,
+    RESOLVED trades, attributed by the NY-local session date the trade
+    CLOSED on -- the same convention `sizing.py` uses to attribute P&L.
+    `dollar_pnl` is non-compounding (`r_multiple * risk_per_trade_pct/100
+    * initial_balance`), matching this project's own established $10k/1%
+    USD-ledger convention (`mado-eurusd-scanner-recipe`,
+    `realistic-cost-prop-firm-validation`)."""
+    merged: list[ClosedTrade] = []
+    for trades, series in trades_by_symbol.values():
+        merged += to_closed_trades(trades, series)
+
+    by_month: dict[tuple[int, int], list[ClosedTrade]] = {}
+    for trade in merged:
+        if trade.exit_time is None or trade.r_multiple is None:
+            continue
+        day = session_day(trade.exit_time)
+        by_month.setdefault((day.year, day.month), []).append(trade)
+
+    rows = []
+    for (year, month) in sorted(by_month):
+        month_trades = by_month[(year, month)]
+        closed = [t for t in month_trades if t.outcome in ("win", "loss")]
+        wins = sum(1 for t in closed if t.outcome == "win")
+        total_r = sum(t.r_multiple for t in closed)
+        rows.append({
+            "year": year,
+            "month": month,
+            "trades": len(closed),
+            "win_rate": wins / len(closed) if closed else 0.0,
+            "total_r": total_r,
+            "dollar_pnl": total_r * risk_per_trade_pct / 100 * initial_balance,
+        })
+    return rows
 
 
 def main(argv: list[str] | None = None) -> int:

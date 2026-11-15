@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from core.candle import Candle, OHLCSeries
 
 from backtest.simulate import Trade
-from research.diversified_1am_9am_rolling import combined_rolling_window, to_closed_trades
+from research.diversified_1am_9am_rolling import combined_rolling_window, monthly_breakdown, to_closed_trades
 
-_START = datetime(2026, 1, 1)
+_START = datetime(2026, 1, 1, 15, 0)  # 15:00 UTC -> safely mid-day NY-local, same calendar day
 
 
 def _series(n: int) -> OHLCSeries:
@@ -73,3 +73,29 @@ def test_combined_rolling_window_merges_every_symbol_into_one_account():
     assert len(result.windows) > 0
     assert all(w.trades == 2 for w in result.windows)
     assert result.fail_dd_fraction == 0.0
+
+
+def test_monthly_breakdown_groups_across_symbols_by_close_month():
+    """A January win and a February loss, from DIFFERENT symbols, must
+    land in two separate rows -- proves both the cross-symbol merge and
+    the month grouping, not just one of them."""
+    series_jan = _series(5)  # _START = 2026-01-01 15:00 UTC
+    series_feb = OHLCSeries(
+        candles=tuple(
+            Candle(timestamp=datetime(2026, 2, 10, 15, 0) + timedelta(minutes=15 * i), open=1.0, high=1.0, low=1.0, close=1.0)
+            for i in range(5)
+        ),
+        instrument="Y", timeframe="15M",
+    )
+    trades_jan = [_trade("a1", 0, 1, "win", 2.0)]
+    trades_feb = [_trade("b1", 0, 1, "loss", -1.0)]
+
+    rows = monthly_breakdown(
+        {"A": (trades_jan, series_jan), "B": (trades_feb, series_feb)},
+        risk_per_trade_pct=1.0, initial_balance=10000.0,
+    )
+
+    assert rows == [
+        {"year": 2026, "month": 1, "trades": 1, "win_rate": 1.0, "total_r": 2.0, "dollar_pnl": 200.0},
+        {"year": 2026, "month": 2, "trades": 1, "win_rate": 0.0, "total_r": -1.0, "dollar_pnl": -100.0},
+    ]
