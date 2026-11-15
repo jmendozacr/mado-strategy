@@ -83,6 +83,21 @@ SYMBOL_CONFIG: dict[str, BacktestConfig] = {
     "AUDUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0,
     ),
+    # GBPUSD/USDJPY: calibrated this session (SL-floor swept 0/4/6/10 pips
+    # on the 2019-2026 window, 6 pips won on total R for both -- same
+    # pattern as EURUSD's own winning floor). trading_cost_price is an
+    # ESTIMATE from web research (FTMO Standard-account average spread,
+    # ~0.5 pip GBPUSD / ~1.0 pip USDJPY, padded with the same safety
+    # margin EURUSD's own verified cost implicitly carries over its own
+    # quoted average), NOT independently verified against FTMO's live
+    # platform -- unlike EURUSD/USDCAD/AUDUSD's costs. USDJPY's floor is
+    # scaled 100x (pip=0.01, not 0.0001) for the yen's price scale.
+    "GBPUSD": BacktestConfig(
+        min_risk_reward=2.0, trading_cost_price=0.00014, kill_zone_gated=False, min_stop_distance_price=0.0006,
+    ),
+    "USDJPY": BacktestConfig(
+        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.06,
+    ),
 }
 
 
