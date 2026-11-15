@@ -3,7 +3,8 @@ detection pipeline (causal.htf_trigger.find_1am_9am_aligned_signals,
 backtest.population.build_stage6_population -- never reimplemented here),
 filters NEW signals (rules.filter_new_alerts -- dedup only, no session or
 reaction filter, odd/tasks/scanner-1am-9am-diversified.md S4/S5), and
-sends one Telegram message per new signal, across EURUSD/USDCAD/AUDUSD.
+sends one Telegram message per new signal, across EURUSD/USDCAD/AUDUSD/
+GBPUSD/USDJPY.
 
 Replaces the old EURUSD-only NY-kill-zone recipe entirely (user: "Reemplaza
 todo por lo nuevo") -- see odd/tasks/scanner-1am-9am-diversified.md for the
@@ -32,19 +33,29 @@ from execution import calculate_lot_size, pending_order_type  # noqa: E402
 from rules import filter_new_alerts  # noqa: E402
 
 # Replaced the old single-pair EURUSD recipe with the validated 1AM+9AM
-# diversified account (odd/tasks/scanner-1am-9am-diversified.md S1/S2).
+# diversified account (odd/tasks/scanner-1am-9am-diversified.md S1/S2),
+# then extended to 5 pairs (user decision, 2026-11-15, after the full
+# 3-vs-4-vs-5-pair comparison: 5-pair wins on FTMO pass rate at the 1%
+# risk this account trades, shortest stagnation, highest total R --
+# Engram detector/1am-9am-diversified/final-5-pair-decision).
 # MODEL_5AM was tested this session and explicitly declined by the user.
-SYMBOLS = ("EURUSDm", "USDCADm", "AUDUSDm")
+SYMBOLS = ("EURUSDm", "USDCADm", "AUDUSDm", "GBPUSDm", "USDJPYm")
 POLL_SECONDS = 120
 LOOKBACK = {"D1": 200, "H4": 500, "M15": 2000}
 
-# Per-symbol BacktestConfig, each already validated this session (R:R=2.0
-# and kill_zone_gated=False for all three -- each model's own confirmation
-# window already bounds which candles can ever produce a signal, so no
-# separate kill-zone cut is needed on top). min_stop_distance_price/
-# trading_cost_price differ per instrument -- a flat EURUSD-pip-scale
-# constant does NOT transfer to USDCAD/AUDUSD, confirmed by sweep this
-# session, never assumed.
+# Per-symbol BacktestConfig. EURUSDm/USDCADm/AUDUSDm validated against
+# this broker's own real spread. GBPUSDm/USDJPYm's trading_cost_price is
+# a WEB-RESEARCH ESTIMATE (FTMO Standard average spread, padded like
+# EURUSDm's own margin), NOT independently verified against this broker's
+# live spread the way the other three were -- confirm against the real
+# MT5 terminal before trusting its P&L, especially USDJPYm (the weakest
+# of the five pairs in every backtest this session, 45.6% win rate).
+# min_stop_distance_price/trading_cost_price differ per instrument -- a
+# flat EURUSD-pip-scale constant does NOT transfer across pairs, confirmed
+# by sweep; USDJPYm's floor is scaled 100x for the yen's price scale
+# (pip=0.01, not 0.0001). R:R=2.0 and kill_zone_gated=False for all five --
+# each model's own confirmation window already bounds which candles can
+# ever produce a signal, so no separate kill-zone cut is needed on top.
 BACKTEST_CONFIG = {
     "EURUSDm": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
@@ -55,6 +66,12 @@ BACKTEST_CONFIG = {
     "AUDUSDm": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0,
     ),
+    "GBPUSDm": BacktestConfig(
+        min_risk_reward=2.0, trading_cost_price=0.00014, kill_zone_gated=False, min_stop_distance_price=0.0006,
+    ),
+    "USDJPYm": BacktestConfig(
+        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.06,
+    ),
 }
 # Currencies whose high-impact news can affect each pair -- used only to
 # ANNOTATE alerts (never to suppress them). FTMO's real 2-minute execution
@@ -62,6 +79,7 @@ BACKTEST_CONFIG = {
 # Challenge/Verification evaluation (confirmed against ftmo.com/en/faq/can-i-trade-news/).
 RELEVANT_CURRENCIES = {
     "EURUSDm": ("EUR", "USD"), "USDCADm": ("USD", "CAD"), "AUDUSDm": ("AUD", "USD"),
+    "GBPUSDm": ("GBP", "USD"), "USDJPYm": ("USD", "JPY"),
 }
 
 # odd/tasks/scanner-auto-execution.md S1/S2/S7: real MT5 pending orders,
