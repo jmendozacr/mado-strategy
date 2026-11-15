@@ -25,9 +25,10 @@ every one of them as "new" again, all at once. stable_id is derived from
 the signal's own anchor TIMESTAMP instead, which never shifts.
 """
 import sys
+from pathlib import Path
 from datetime import datetime, timedelta
 
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\detector")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "detector"))
 
 from core.candle import Candle, OHLCSeries  # noqa: E402
 from backtest.candidate import Candidate  # noqa: E402

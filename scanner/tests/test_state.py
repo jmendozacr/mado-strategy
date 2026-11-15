@@ -1,8 +1,9 @@
 """TDD tests for state.py's pure update logic (file IO is a thin wrapper,
 not separately unit-tested here)."""
 import sys
+from pathlib import Path
 
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\scanner")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from state import record_alert, already_alerted  # noqa: E402
 

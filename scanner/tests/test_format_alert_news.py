@@ -1,10 +1,11 @@
 """TDD test for _format_alert's news-proximity annotation (informational
 only, per FTMO's real rule -- never suppresses, see news_calendar.py)."""
 import sys
+from pathlib import Path
 from datetime import datetime
 
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\detector")
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\scanner")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "detector"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import main  # noqa: E402
 

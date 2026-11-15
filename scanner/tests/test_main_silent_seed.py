@@ -9,10 +9,11 @@ this test is about state/Telegram behavior, not detection correctness
 (that's covered by detector/tests/test_htf_trigger_aligned_signals.py).
 """
 import sys
+from pathlib import Path
 from datetime import datetime, timedelta
 
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\detector")
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\scanner")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "detector"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.candle import Candle, OHLCSeries  # noqa: E402
 

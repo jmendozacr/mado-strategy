@@ -1,7 +1,8 @@
 """TDD: send_message must request HTML parse_mode so <b> tags render."""
 import sys
+from pathlib import Path
 
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\scanner")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import telegram_notify  # noqa: E402
 

@@ -20,7 +20,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-include = ["mt5_feed.py", "telegram_notify.py", "rules.py", "state.py", "main.py"]
+include = ["mt5_feed.py", "telegram_notify.py", "rules.py", "state.py", "main.py", "execution.py", "news_calendar.py"]
 
 [tool.uv.sources]
 detector = { path = "../detector", editable = true }

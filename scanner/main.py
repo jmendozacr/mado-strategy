@@ -14,8 +14,9 @@ instrument's own config (below) was validated.
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\detector")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "detector"))
 
 from alignment.htf_ltf import _reindex_daily_key_levels  # noqa: E402
 from causal.htf_trigger import find_1am_9am_aligned_signals  # noqa: E402

@@ -1,9 +1,10 @@
 """TDD tests for news_calendar.py's pure matching logic (the HTTP fetch is
 a thin wrapper, not unit-tested here -- verified once with a real call)."""
 import sys
+from pathlib import Path
 from datetime import datetime
 
-sys.path.insert(0, r"D:\Josué\Documents\proyectos\mado-strategy\scanner")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from news_calendar import is_near_high_impact_news  # noqa: E402
 
