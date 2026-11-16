@@ -77,11 +77,18 @@ SYMBOL_CONFIG: dict[str, BacktestConfig] = {
     "EURUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
     ),
+    # USDCAD/AUDUSD: calibrated 2026-11-16 (SL-floor swept 0/4/6/10 pips on
+    # the 2022-2026 window) -- neither had a floor before, which let stops
+    # go as tight as 1.6 pips and let the fixed trading_cost_price eat up
+    # to 104% of the intended 1R (USDCAD) on the worst trades. 6 pips won
+    # for USDCAD (matches EURUSD/GBPUSD's own winning floor); AUDUSD's own
+    # sweep instead favored 4 pips -- kept as its own measured value
+    # rather than copying USDCAD's, per that sweep's own total_r numbers.
     "USDCAD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0,
+        min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0006,
     ),
     "AUDUSD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0,
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0004,
     ),
     # GBPUSD/USDJPY: calibrated this session (SL-floor swept 0/4/6/10 pips
     # on the 2019-2026 window, 6 pips won on total R for both -- same
@@ -95,10 +102,17 @@ SYMBOL_CONFIG: dict[str, BacktestConfig] = {
     "GBPUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00014, kill_zone_gated=False, min_stop_distance_price=0.0006,
     ),
+    # USDJPY's own floor re-checked in the same 2026-11-16 sweep (6/10/15/20
+    # pips): 10 pips beat the original 6-pip floor on total_r, so raised.
     "USDJPY": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.06,
+        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.10,
     ),
 }
+# PENDING (not yet applied): scanner/main.py's own BACKTEST_CONFIG is a
+# separate, hand-mirrored dict (not imported from here) and still has the
+# pre-2026-11-16 USDCAD/AUDUSD/USDJPY floors -- the live scanner has NOT
+# picked up this calibration yet. Apply the same three values there (and
+# anywhere else SYMBOL_CONFIG gets hand-copied) before relying on it live.
 
 
 def _build_parser() -> argparse.ArgumentParser:
