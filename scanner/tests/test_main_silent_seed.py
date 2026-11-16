@@ -80,7 +80,7 @@ def test_silent_run_never_sends_telegram_but_marks_state(monkeypatch):
     }))
     monkeypatch.setattr(main, "SYMBOLS", ("EURUSD",))
 
-    empty_state = {"alerted_ids": [], "daily_counts": {}}
+    empty_state = {"alerted_ids": [], "daily_counts": {}, "pending_partial": {}}
     result_state = main.run_once(empty_state, silent=True)
 
     assert sent_messages == []
@@ -106,7 +106,7 @@ def test_non_silent_run_sends_telegram_with_model_and_key_level_in_the_message(m
     monkeypatch.setattr(main, "SYMBOLS", ("EURUSD",))
     monkeypatch.setattr(main, "AUTO_EXECUTE", False)
 
-    empty_state = {"alerted_ids": [], "daily_counts": {}}
+    empty_state = {"alerted_ids": [], "daily_counts": {}, "pending_partial": {}}
     main.run_once(empty_state, silent=False)
 
     assert len(sent_messages) == 1
@@ -139,7 +139,7 @@ def test_silent_seed_never_places_an_order_even_if_auto_execute_is_on(monkeypatc
     order_calls = []
     monkeypatch.setattr(main.mt5_feed, "send_pending_order", lambda *a, **k: order_calls.append((a, k)))
 
-    main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=True)
+    main.run_once({"alerted_ids": [], "daily_counts": {}, "pending_partial": {}}, silent=True)
     assert order_calls == []
 
 
@@ -157,11 +157,12 @@ def test_auto_execute_true_places_a_pending_order_with_the_calculated_lot(monkey
 
     class _FakeResult:
         retcode = 10009  # TRADE_RETCODE_DONE
+        order = 777001
 
     monkeypatch.setattr(main.mt5_feed, "send_pending_order", lambda *a, **k: (order_calls.append((a, k)), _FakeResult())[1])
     monkeypatch.setattr(main.mt5_feed, "order_succeeded", lambda result: result.retcode == 10009)
 
-    main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=False)
+    result_state = main.run_once({"alerted_ids": [], "daily_counts": {}, "pending_partial": {}}, silent=False)
 
     assert len(order_calls) == 1
     args, kwargs = order_calls[0]
@@ -170,6 +171,14 @@ def test_auto_execute_true_places_a_pending_order_with_the_calculated_lot(monkey
     # 150 ticks * $1/tick = $150/lot; risk_amount = main.INITIAL_BALANCE (10000) * 1% = $100;
     # raw_lots = 100/150 = 0.6666... -> floored to the 0.01 step = 0.66.
     assert kwargs["volume"] == 0.66
+
+    # odd/tasks/scanner-breakeven-after-partial.md T4: the new order's own
+    # ticket must now be tracked for later partial/breakeven management.
+    tracked = result_state["pending_partial"]["777001"]
+    assert tracked["symbol"] == "EURUSD"
+    assert tracked["partial_price"] == 1.10275  # the fixture Candidate's own partial_price
+    assert tracked["entry_price"] == 1.1005
+    assert tracked["volume"] == 0.66
 
 
 def test_lot_below_minimum_skips_the_order_without_crashing(monkeypatch):
@@ -188,7 +197,7 @@ def test_lot_below_minimum_skips_the_order_without_crashing(monkeypatch):
     order_calls = []
     monkeypatch.setattr(main.mt5_feed, "send_pending_order", lambda *a, **k: order_calls.append((a, k)))
 
-    main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=False)
+    main.run_once({"alerted_ids": [], "daily_counts": {}, "pending_partial": {}}, silent=False)
     assert order_calls == []
 
 
@@ -208,5 +217,5 @@ def test_order_send_exception_is_logged_not_raised(monkeypatch):
     monkeypatch.setattr(main.mt5_feed, "send_pending_order", _boom)
 
     # Must not raise.
-    result_state = main.run_once({"alerted_ids": [], "daily_counts": {}}, silent=False)
+    result_state = main.run_once({"alerted_ids": [], "daily_counts": {}, "pending_partial": {}}, silent=False)
     assert len(result_state["alerted_ids"]) == 1  # the alert itself still went through

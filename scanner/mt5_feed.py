@@ -9,7 +9,7 @@ balance, symbol trade specs, and pending-order placement. All real
 decision logic (lot sizing, order type) lives in execution.py's pure
 functions instead -- this module only ever marshals MT5's own types.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import MetaTrader5 as mt5
 
@@ -93,6 +93,18 @@ def current_price(symbol: str, direction: str) -> float:
     return float(tick.ask if direction == "bullish" else tick.bid)
 
 
+def current_exit_price(symbol: str, direction: str) -> float:
+    """The real EXIT-side price for a position already open in
+    `direction` -- the OPPOSITE side from `current_price`'s own entry
+    convention: a bullish (buy) position closes/is valued at the bid, a
+    bearish (sell) one at the ask (odd/tasks/scanner-breakeven-after-
+    partial.md T4, matches `close_partial_position`'s own side choice)."""
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        raise MT5ConnectionError(f"symbol_info_tick({symbol}) failed: {mt5.last_error()}")
+    return float(tick.bid if direction == "bullish" else tick.ask)
+
+
 def send_pending_order(
     symbol: str, order_type: str, volume: float, entry_price: float, stop_loss: float, take_profit: float,
     max_fill_wait_candles: int, candle_minutes: int = 15,
@@ -105,7 +117,15 @@ def send_pending_order(
     convention as every other function here)."""
     if order_type not in _ORDER_TYPE:
         raise ValueError(f"unknown order_type: {order_type!r}, expected one of {sorted(_ORDER_TYPE)}")
-    expiration = datetime.now(timezone.utc) + timedelta(minutes=max_fill_wait_candles * candle_minutes)
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        raise MT5ConnectionError(f"symbol_info_tick({symbol}) failed: {mt5.last_error()}")
+    # Expiration must be computed off the BROKER's own server clock (tick.time),
+    # never the local machine's UTC -- confirmed by a real retcode=10022
+    # "Invalid expiration" when this used datetime.now(timezone.utc): this
+    # server runs ~2h ahead, so a locally-computed "future" timestamp was
+    # already in the past from the server's point of view.
+    expiration_epoch = int(tick.time) + max_fill_wait_candles * candle_minutes * 60
     request = {
         "action": mt5.TRADE_ACTION_PENDING,
         "symbol": symbol,
@@ -115,7 +135,7 @@ def send_pending_order(
         "sl": stop_loss,
         "tp": take_profit,
         "type_time": mt5.ORDER_TIME_SPECIFIED,
-        "expiration": int(expiration.timestamp()),
+        "expiration": expiration_epoch,
         "type_filling": mt5.ORDER_FILLING_RETURN,
     }
     result = mt5.order_send(request)
@@ -126,3 +146,78 @@ def send_pending_order(
 
 def order_succeeded(result) -> bool:
     return result.retcode == mt5.TRADE_RETCODE_DONE
+
+
+def get_pending_order(ticket: int):
+    """`None` once the order has either filled (became a position) or
+    been cancelled/expired -- the caller tells those two apart by
+    checking `get_open_position` too (filled: a position exists;
+    expired/cancelled: neither exists)."""
+    orders = mt5.orders_get(ticket=ticket)
+    if not orders:
+        return None
+    return orders[0]
+
+
+def get_open_position(ticket: int):
+    """odd/tasks/scanner-breakeven-after-partial.md T3: `None` when the
+    position isn't open yet (pending order not filled) or has already
+    closed -- both read the same to the caller, "nothing to manage yet/
+    anymore". MT5 fills a pending order's position under the SAME ticket
+    number as the order that opened it."""
+    positions = mt5.positions_get(ticket=ticket)
+    if not positions:
+        return None
+    return positions[0]
+
+
+def close_partial_position(ticket: int, symbol: str, direction: str, volume: float):
+    """Closes `volume` lots of the position at `ticket` -- a BUY position
+    (bullish) closes via a SELL deal at the bid, a SELL position via a BUY
+    deal at the ask (the OPPOSITE side from the one that opened it, same
+    convention `current_price` already encodes for entries, inverted
+    here for an exit). Never raises on a trade-side rejection, same
+    MT5ConnectionError-only-on-dead-connection convention as every other
+    function here."""
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        raise MT5ConnectionError(f"symbol_info_tick({symbol}) failed: {mt5.last_error()}")
+    if direction == "bullish":
+        order_type, price = mt5.ORDER_TYPE_SELL, tick.bid
+    else:
+        order_type, price = mt5.ORDER_TYPE_BUY, tick.ask
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": symbol,
+        "volume": volume,
+        "type": order_type,
+        "position": ticket,
+        "price": price,
+        # TRADE_ACTION_DEAL (immediate market execution) needs FOK/IOC, not
+        # RETURN -- confirmed by a real retcode=10030 "Unsupported filling
+        # mode" (RETURN is only valid for TRADE_ACTION_PENDING's own
+        # send_pending_order, which this is NOT).
+        "type_filling": mt5.ORDER_FILLING_IOC,
+    }
+    result = mt5.order_send(request)
+    if result is None:
+        raise MT5ConnectionError(f"order_send(close partial {ticket}) returned None: {mt5.last_error()}")
+    return result
+
+
+def modify_stop_loss(ticket: int, symbol: str, new_sl: float, take_profit: float):
+    """Moves the position's stop-loss to `new_sl` (breakeven, odd/tasks/
+    scanner-breakeven-after-partial.md T4) -- `take_profit` must be
+    resent alongside it or MT5 clears the existing take-profit instead of
+    leaving it unchanged."""
+    request = {
+        "action": mt5.TRADE_ACTION_SLTP,
+        "symbol": symbol,
+        "position": ticket,
+        "sl": new_sl,
+        "tp": take_profit,
+    }
+    result = mt5.order_send(request)
+    if result is None:
+        raise MT5ConnectionError(f"order_send(modify SL {ticket}) returned None: {mt5.last_error()}")
+    return result

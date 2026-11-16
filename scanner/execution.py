@@ -52,3 +52,33 @@ def pending_order_type(direction: str, *, entry_price: float, current_price: flo
     if direction == "bullish":
         return "BUY_LIMIT" if entry_price < current_price else "BUY_STOP"
     return "SELL_LIMIT" if entry_price > current_price else "SELL_STOP"
+
+
+def partial_close_volume(
+    *, volume: float, partial_fraction: float, volume_step: float, volume_min: float,
+) -> float | None:
+    """odd/tasks/scanner-breakeven-after-partial.md T1: the volume to
+    CLOSE for the partial leg -- `None` means "skip the partial, leave
+    the position whole" (too small to split cleanly). Same floor-never-
+    round-up convention as `calculate_lot_size`: the partial volume is
+    always floored to `volume_step`, never risking a larger partial than
+    configured. Both the partial AND the remainder must clear
+    `volume_min`, or MT5 itself would reject either leg's close/hold."""
+    raw_partial = volume * partial_fraction
+    partial = math.floor(round(raw_partial / volume_step, 9)) * volume_step
+    partial = round(partial, 8)
+    if partial < volume_min:
+        return None
+    remainder = round(volume - partial, 8)
+    if remainder < volume_min:
+        return None
+    return partial
+
+
+def partial_price_reached(direction: str, *, partial_price: float, current_price: float) -> bool:
+    """Same directional-comparison shape as `pending_order_type`: a
+    bullish trade's partial is reached going UP (current >= partial), a
+    bearish trade's going DOWN (current <= partial)."""
+    if direction == "bullish":
+        return current_price >= partial_price
+    return current_price <= partial_price

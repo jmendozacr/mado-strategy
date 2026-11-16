@@ -3,7 +3,7 @@ independent (symbol trade specs and account balance are plain numbers
 passed in, never fetched here) so they're fully testable without a live
 terminal -- odd/tasks/scanner-auto-execution.md S3/S4.
 """
-from execution import calculate_lot_size, pending_order_type
+from execution import calculate_lot_size, partial_close_volume, partial_price_reached, pending_order_type
 
 
 def test_basic_lot_size_matches_hand_computed_value():
@@ -73,3 +73,45 @@ def test_bearish_entry_above_current_price_is_sell_limit():
 
 def test_bearish_entry_below_current_price_is_sell_stop():
     assert pending_order_type("bearish", entry_price=1.0980, current_price=1.1000) == "SELL_STOP"
+
+
+def test_partial_close_volume_splits_evenly_at_50_percent():
+    assert partial_close_volume(
+        volume=0.5, partial_fraction=0.5, volume_step=0.01, volume_min=0.01,
+    ) == 0.25
+
+
+def test_partial_close_volume_floors_to_step_never_rounds_up():
+    """Same floor-never-round-up convention as calculate_lot_size -- an
+    uneven split must never close MORE than the configured fraction."""
+    assert partial_close_volume(
+        volume=0.07, partial_fraction=0.5, volume_step=0.01, volume_min=0.01,
+    ) == 0.03  # raw partial 0.035 -> floors to 0.03, remainder 0.04 stays >= volume_min
+
+
+def test_partial_close_volume_none_when_the_remainder_would_be_sub_minimum():
+    """A 0.01-lot position has no room to split -- closing ANY part of it
+    would leave a remainder below volume_min (or, floored, a zero-size
+    partial) -- skip the partial entirely rather than close the whole
+    position or leave an invalid remainder."""
+    assert partial_close_volume(
+        volume=0.01, partial_fraction=0.5, volume_step=0.01, volume_min=0.01,
+    ) is None
+
+
+def test_partial_close_volume_none_when_partial_itself_rounds_to_zero():
+    assert partial_close_volume(
+        volume=0.015, partial_fraction=0.3, volume_step=0.01, volume_min=0.01,
+    ) is None  # raw partial 0.0045 -> floors to 0.00
+
+
+def test_partial_price_reached_bullish_at_or_above_the_level():
+    assert partial_price_reached("bullish", partial_price=1.1050, current_price=1.1050) is True
+    assert partial_price_reached("bullish", partial_price=1.1050, current_price=1.1060) is True
+    assert partial_price_reached("bullish", partial_price=1.1050, current_price=1.1040) is False
+
+
+def test_partial_price_reached_bearish_at_or_below_the_level():
+    assert partial_price_reached("bearish", partial_price=1.0950, current_price=1.0950) is True
+    assert partial_price_reached("bearish", partial_price=1.0950, current_price=1.0940) is True
+    assert partial_price_reached("bearish", partial_price=1.0950, current_price=1.0960) is False

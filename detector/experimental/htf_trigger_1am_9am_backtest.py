@@ -75,7 +75,7 @@ def trade_stats(trades: list) -> dict[str, float | int]:
 # suffixed) symbol name this harness's own CLI uses.
 SYMBOL_CONFIG: dict[str, BacktestConfig] = {
     "EURUSD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006, breakeven_after_partial=True,
     ),
     # USDCAD/AUDUSD: calibrated 2026-11-16 (SL-floor swept 0/4/6/10 pips on
     # the 2022-2026 window) -- neither had a floor before, which let stops
@@ -85,10 +85,10 @@ SYMBOL_CONFIG: dict[str, BacktestConfig] = {
     # sweep instead favored 4 pips -- kept as its own measured value
     # rather than copying USDCAD's, per that sweep's own total_r numbers.
     "USDCAD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0006,
+        min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0006, breakeven_after_partial=True,
     ),
     "AUDUSD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0004,
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0004, breakeven_after_partial=True,
     ),
     # GBPUSD/USDJPY: calibrated this session (SL-floor swept 0/4/6/10 pips
     # on the 2019-2026 window, 6 pips won on total R for both -- same
@@ -100,12 +100,12 @@ SYMBOL_CONFIG: dict[str, BacktestConfig] = {
     # platform -- unlike EURUSD/USDCAD/AUDUSD's costs. USDJPY's floor is
     # scaled 100x (pip=0.01, not 0.0001) for the yen's price scale.
     "GBPUSD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.00014, kill_zone_gated=False, min_stop_distance_price=0.0006,
+        min_risk_reward=2.0, trading_cost_price=0.00014, kill_zone_gated=False, min_stop_distance_price=0.0006, breakeven_after_partial=True,
     ),
     # USDJPY's own floor re-checked in the same 2026-11-16 sweep (6/10/15/20
     # pips): 10 pips beat the original 6-pip floor on total_r, so raised.
     "USDJPY": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.10,
+        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.10, breakeven_after_partial=True,
     ),
 }
 # PENDING (not yet applied): scanner/main.py's own BACKTEST_CONFIG is a

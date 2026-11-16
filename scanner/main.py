@@ -30,7 +30,9 @@ import mt5_feed  # noqa: E402
 import news_calendar  # noqa: E402
 import state  # noqa: E402
 import telegram_notify  # noqa: E402
-from execution import calculate_lot_size, pending_order_type  # noqa: E402
+from execution import (  # noqa: E402
+    calculate_lot_size, partial_close_volume, partial_price_reached, pending_order_type,
+)
 from rules import filter_new_alerts  # noqa: E402
 
 # Replaced the old single-pair EURUSD recipe with the validated 1AM+9AM
@@ -57,21 +59,37 @@ LOOKBACK = {"D1": 200, "H4": 500, "M15": 2000}
 # (pip=0.01, not 0.0001). R:R=2.0 and kill_zone_gated=False for all five --
 # each model's own confirmation window already bounds which candles can
 # ever produce a signal, so no separate kill-zone cut is needed on top.
+# 2026-11-16 calibration: USDCAD/AUDUSD SL floors added (had none before --
+# let stops go as tight as 1.6 pips, cost ate up to 104% of 1R on the worst
+# trades), USDJPY's own floor raised 6->10 pips (same sweep re-check).
+# breakeven_after_partial=True adopted for all 5 pairs after the FTMO
+# rolling-window check: 100% pass rate / 53.6 avg days vs the prior
+# 99.2%/99.2 days, dominating win_rate+avg_r+total_r on every pair with no
+# exception (Engram: "Breakeven-after-partial dominates on all 5 pairs").
+# odd/tasks/scanner-breakeven-after-partial.md T4 still owns ACTUALLY
+# managing live positions this way -- this config change alone does
+# nothing live until that wiring lands (today's backtest-only flag has no
+# effect on send_pending_order's fire-and-forget orders).
 BACKTEST_CONFIG = {
     "EURUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
+        breakeven_after_partial=True,
     ),
     "USDCAD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0,
+        min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0006,
+        breakeven_after_partial=True,
     ),
     "AUDUSD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0,
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0004,
+        breakeven_after_partial=True,
     ),
     "GBPUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00014, kill_zone_gated=False, min_stop_distance_price=0.0006,
+        breakeven_after_partial=True,
     ),
     "USDJPY": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.06,
+        min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.10,
+        breakeven_after_partial=True,
     ),
 }
 # Currencies whose high-impact news can affect each pair -- used only to
@@ -99,6 +117,7 @@ RISK_PCT = 1.0  # matches this session's own $10k/1%-risk USD-ledger convention
 # scheme.
 INITIAL_BALANCE = 10000.0
 MAX_FILL_WAIT_CANDLES = 20  # M15 candles -- BacktestConfig's own default (S4/S5)
+PARTIAL_FRACTION = 0.5  # odd/tasks/scanner-breakeven-after-partial.md -- matches BacktestConfig's own default
 # ForexFactory's free feed rate-limits aggressive polling (observed 429s
 # when fetched every 2-minute poll) -- the calendar barely changes within
 # an hour, so cache it instead of refetching every run_once().
@@ -161,13 +180,19 @@ def _format_alert(alert, signal_number_today: int, near_news: bool) -> str:
     return "\n".join(lines)
 
 
-def _execute_alert(alert: dict, symbol: str) -> None:
+def _execute_alert(alert: dict, symbol: str) -> dict | None:
     """odd/tasks/scanner-auto-execution.md S3/S4/S5/S6: sizes and places a
     real pending order for one new alert. Never called for a silent-seed
     poll (S5's own safety line -- backfilled history is never a live
     trade). Logs and returns on any skip/failure; never raises past this
     function, so one symbol's execution problem can never stop the poll
-    loop or suppress the Telegram alert that already went out."""
+    loop or suppress the Telegram alert that already went out.
+
+    Returns the tracking dict for `state.record_pending_partial` on a
+    successfully PLACED order (odd/tasks/scanner-breakeven-after-
+    partial.md T4 -- new trades only, placed after this deploy), keyed
+    by the order's own ticket (== the position's own ticket once it
+    fills); `None` on any skip/rejection -- nothing to track."""
     specs = mt5_feed.symbol_trade_specs(symbol)
     lot = calculate_lot_size(
         balance=INITIAL_BALANCE, risk_pct=RISK_PCT, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"],
@@ -175,7 +200,7 @@ def _execute_alert(alert: dict, symbol: str) -> None:
     )
     if lot is None:
         print(f"execution skipped for {alert['stable_id']}: target lot size below the symbol's volume_min", flush=True)
-        return
+        return None
 
     price = mt5_feed.current_price(symbol, alert["direction"])
     order_type = pending_order_type(alert["direction"], entry_price=alert["entry_price"], current_price=price)
@@ -183,10 +208,73 @@ def _execute_alert(alert: dict, symbol: str) -> None:
         symbol, order_type, volume=lot, entry_price=alert["entry_price"], stop_loss=alert["stop_loss"],
         take_profit=alert["take_profit"], max_fill_wait_candles=MAX_FILL_WAIT_CANDLES,
     )
-    if mt5_feed.order_succeeded(result):
-        print(f"order placed for {alert['stable_id']}: {order_type} {lot} lots", flush=True)
-    else:
+    if not mt5_feed.order_succeeded(result):
         print(f"order REJECTED for {alert['stable_id']}: retcode={getattr(result, 'retcode', None)}", file=sys.stderr, flush=True)
+        return None
+
+    print(f"order placed for {alert['stable_id']}: {order_type} {lot} lots", flush=True)
+    return {
+        "ticket": str(result.order),
+        "symbol": symbol, "direction": alert["direction"], "entry_price": alert["entry_price"],
+        "stop_loss": alert["stop_loss"], "take_profit": alert["take_profit"],
+        "partial_price": alert["partial_price"], "volume": lot,
+    }
+
+
+def _check_pending_partials(current_state: dict) -> dict:
+    """odd/tasks/scanner-breakeven-after-partial.md T4: one pass over
+    every tracked ticket (new trades only, S2 -- currently-open positions
+    from before this deploy were never recorded here). Never raises past
+    this function, same one-ticket's-problem-must-never-stop-the-poll
+    convention as `_execute_alert`."""
+    new_state = current_state
+    for ticket, info in list(current_state["pending_partial"].items()):
+        try:
+            position = mt5_feed.get_open_position(int(ticket))
+            if position is None:
+                if mt5_feed.get_pending_order(int(ticket)) is None:
+                    # Neither a pending order nor an open position: expired,
+                    # cancelled, or closed before any partial fired -- stop
+                    # tracking it.
+                    new_state = state.clear_pending_partial(new_state, ticket)
+                continue  # still pending (not filled yet) -- keep waiting
+
+            current_price = mt5_feed.current_exit_price(info["symbol"], info["direction"])
+            if not partial_price_reached(
+                info["direction"], partial_price=info["partial_price"], current_price=current_price
+            ):
+                continue
+
+            specs = mt5_feed.symbol_trade_specs(info["symbol"])
+            partial_volume = partial_close_volume(
+                volume=position.volume, partial_fraction=PARTIAL_FRACTION,
+                volume_step=specs["volume_step"], volume_min=specs["volume_min"],
+            )
+            if partial_volume is None:
+                print(f"partial skipped for ticket {ticket}: position too small to split", flush=True)
+                new_state = state.clear_pending_partial(new_state, ticket)
+                continue
+
+            close_result = mt5_feed.close_partial_position(
+                int(ticket), info["symbol"], info["direction"], partial_volume
+            )
+            if not mt5_feed.order_succeeded(close_result):
+                print(f"partial close REJECTED for ticket {ticket}: retcode={getattr(close_result, 'retcode', None)}", file=sys.stderr, flush=True)
+                continue  # retry next poll rather than moving the SL on a partial that never closed
+
+            sltp_result = mt5_feed.modify_stop_loss(
+                int(ticket), info["symbol"], new_sl=info["entry_price"], take_profit=info["take_profit"]
+            )
+            if not mt5_feed.order_succeeded(sltp_result):
+                print(f"breakeven SL move REJECTED for ticket {ticket}: retcode={getattr(sltp_result, 'retcode', None)}", file=sys.stderr, flush=True)
+                # Partial already closed -- stop tracking regardless, a human
+                # can move the remaining SL by hand; retrying here could
+                # double-close the already-reduced position.
+            print(f"partial taken for ticket {ticket}: closed {partial_volume} lots, SL -> breakeven", flush=True)
+            new_state = state.clear_pending_partial(new_state, ticket)
+        except Exception as error:  # noqa: BLE001 -- one ticket's problem must never stop the poll
+            print(f"pending-partial check error for ticket {ticket}: {error}", file=sys.stderr, flush=True)
+    return new_state
 
 
 def run_once(current_state: dict, *, silent: bool = False) -> dict:
@@ -195,6 +283,8 @@ def run_once(current_state: dict, *, silent: bool = False) -> dict:
     messages -- backfill history inside the lookback window must never be
     blasted as if it were new. Only candidates that appear in a LATER
     poll, after this seeding, are genuinely new and get alerted."""
+    if AUTO_EXECUTE:
+        current_state = _check_pending_partials(current_state)
     news_events = _cached_news_events()
 
     for symbol in SYMBOLS:
@@ -234,7 +324,10 @@ def run_once(current_state: dict, *, silent: bool = False) -> dict:
             print(f"alerted {alert['stable_id']}{' [near news]' if near_news else ''}", flush=True)
             if AUTO_EXECUTE:
                 try:
-                    _execute_alert(alert, symbol)
+                    tracking = _execute_alert(alert, symbol)
+                    if tracking is not None:
+                        ticket = tracking.pop("ticket")
+                        current_state = state.record_pending_partial(current_state, ticket, tracking)
                 except Exception as error:  # noqa: BLE001 -- S6: one order failure must never stop the poll
                     print(f"execution error for {alert['stable_id']}: {error}", file=sys.stderr, flush=True)
         if silent:

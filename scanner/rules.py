@@ -50,6 +50,7 @@ def filter_new_alerts(symbol, candidates, reaction_by_signal_id, m15_series, alr
         alerts.append({
             "signal_id": c.signal_id, "stable_id": stable_id, "symbol": symbol, "direction": c.direction,
             "entry_price": c.entry_price, "stop_loss": c.stop_loss, "take_profit": c.take_profit,
+            "partial_price": c.partial_price,
             "anchor_ts": anchor_ts, "key_level_reaction": reaction_by_signal_id.get(c.signal_id),
         })
     alerts.sort(key=lambda a: a["anchor_ts"])
