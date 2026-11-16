@@ -31,7 +31,10 @@ from core.key_level import KeyLevel
 from entries.model1 import detect_model1_signals
 from primitives.crt_range import detect_crt_ranges
 from primitives.fvg import detect_fvgs, to_key_levels as fvg_to_key_levels
-from primitives.msnr_levels import detect_msnr_levels, to_key_levels as msnr_to_key_levels
+from primitives.msnr_levels import (
+    detect_msnr_levels, to_key_levels as msnr_to_key_levels,
+    to_key_levels_with_sbr_rbs as msnr_to_key_levels_sbr_rbs,
+)
 
 from experimental.order_block_redefinition_backtest import trade_stats
 
@@ -41,20 +44,32 @@ __all__ = [
 ]
 
 
-def daily_key_levels(daily_series: OHLCSeries, config: DetectorConfig, *, use_msnr: bool) -> list[KeyLevel]:
+def _msnr_key_levels(series: OHLCSeries, config: DetectorConfig, *, sbr_rbs: bool) -> list[KeyLevel]:
+    levels = detect_msnr_levels(series)
+    if sbr_rbs:
+        return msnr_to_key_levels_sbr_rbs(levels, series.candles, config.msnr)
+    return msnr_to_key_levels(levels, series.candles, config.msnr)
+
+
+def daily_key_levels(
+    daily_series: OHLCSeries, config: DetectorConfig, *, use_msnr: bool, sbr_rbs: bool = False,
+) -> list[KeyLevel]:
     if use_msnr:
-        return msnr_to_key_levels(detect_msnr_levels(daily_series), daily_series.candles, config.msnr)
+        return _msnr_key_levels(daily_series, config, sbr_rbs=sbr_rbs)
     return order_block_to_key_levels(detect_order_blocks(daily_series))
 
 
-def htf_key_levels(h4_series: OHLCSeries, config: DetectorConfig, *, use_msnr: bool) -> list[KeyLevel]:
+def htf_key_levels(
+    h4_series: OHLCSeries, config: DetectorConfig, *, use_msnr: bool, sbr_rbs: bool = False,
+) -> list[KeyLevel]:
     if use_msnr:
-        return msnr_to_key_levels(detect_msnr_levels(h4_series), h4_series.candles, config.msnr)
+        return _msnr_key_levels(h4_series, config, sbr_rbs=sbr_rbs)
     return fvg_to_key_levels(detect_fvgs(h4_series, config.fvg))
 
 
 def aligned_signals(
-    m15: OHLCSeries, h4: OHLCSeries, daily: OHLCSeries, config: DetectorConfig, *, use_msnr: bool,
+    m15: OHLCSeries, h4: OHLCSeries, daily: OHLCSeries, config: DetectorConfig, *,
+    use_msnr: bool, sbr_rbs: bool = False,
 ) -> list[AlignedSignal]:
     """The full tagged population, unfiltered by reaction type -- shared
     by `recipe_signals` and `credit_counts_by_kind`, so neither needs its
@@ -65,8 +80,8 @@ def aligned_signals(
         m15, config.crt_range, config.fvg, config.model1, crt_ranges=ltf_crt_ranges,
     )
     htf_crt_ranges = detect_crt_ranges(h4, config.crt_range)
-    htf_levels = htf_key_levels(h4, config, use_msnr=use_msnr)
-    daily_levels = daily_key_levels(daily, config, use_msnr=use_msnr)
+    htf_levels = htf_key_levels(h4, config, use_msnr=use_msnr, sbr_rbs=sbr_rbs)
+    daily_levels = daily_key_levels(daily, config, use_msnr=use_msnr, sbr_rbs=sbr_rbs)
 
     return tag_alignment(
         h4, m15, config.crt_range, config.fvg, config.model1,
@@ -76,12 +91,13 @@ def aligned_signals(
 
 
 def recipe_signals(
-    m15: OHLCSeries, h4: OHLCSeries, daily: OHLCSeries, config: DetectorConfig, *, use_msnr: bool,
+    m15: OHLCSeries, h4: OHLCSeries, daily: OHLCSeries, config: DetectorConfig, *,
+    use_msnr: bool, sbr_rbs: bool = False,
 ) -> list[AlignedSignal]:
     """Mirrors the live recipe's own `reject_close_inside` filter -- the
     exact population the live scanner recipe considers, except for the
     Key Level source under test."""
-    aligned = aligned_signals(m15, h4, daily, config, use_msnr=use_msnr)
+    aligned = aligned_signals(m15, h4, daily, config, use_msnr=use_msnr, sbr_rbs=sbr_rbs)
     return [
         signal for signal in aligned
         if signal.key_level is not None and signal.key_level_reaction == "reject_close_inside"
@@ -127,8 +143,13 @@ def main(argv: list[str] | None = None) -> int:
     config = DetectorConfig()
 
     print(f"symbol: {args.symbol}")
-    for label, use_msnr in (("FVG/OB (current)", False), ("MSNR only", True)):
-        aligned = aligned_signals(m15, h4, daily, config, use_msnr=use_msnr)
+    arms = (
+        ("FVG/OB (current)", False, False),
+        ("MSNR only", True, False),
+        ("MSNR + SBR/RBS", True, True),
+    )
+    for label, use_msnr, sbr_rbs in arms:
+        aligned = aligned_signals(m15, h4, daily, config, use_msnr=use_msnr, sbr_rbs=sbr_rbs)
         signals = [
             signal for signal in aligned
             if signal.key_level is not None and signal.key_level_reaction == "reject_close_inside"

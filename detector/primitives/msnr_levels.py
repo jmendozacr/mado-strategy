@@ -46,6 +46,41 @@ def to_key_levels(
     ]
 
 
+def to_key_levels_with_sbr_rbs(
+    levels: list[MSNRLevel], candles: tuple[Candle, ...], config: MSNRConfig = MSNRConfig(),
+) -> list[KeyLevel]:
+    """SBR (Support Becomes Resistance) / RBS (Resistance Becomes
+    Support): a level invalidates the moment a candle CLOSES through it
+    (never a wick) -- that close ends the current segment's validity
+    (`expiry_index`) and a new segment starts there, defending the SAME
+    price with the OPPOSITE role, open-ended until its own next break.
+    Chains for as long as the series keeps breaking it."""
+    key_levels = []
+    for level in levels:
+        for origin, expiry in _role_flip_segments(candles, level.index, level.price, level.kind):
+            buffer = config.zone_atr_multiple * atr(candles, origin)
+            key_levels.append(KeyLevel(
+                kind="msnr", top=level.price + buffer, bottom=level.price - buffer,
+                origin_index=origin, expiry_index=expiry,
+            ))
+    return key_levels
+
+
+def _role_flip_segments(
+    candles: tuple[Candle, ...], pivot_index: int, price: float, initial_kind: Literal["a_shape", "v_shape"],
+):
+    origin = pivot_index
+    kind = initial_kind
+    for i in range(pivot_index + 1, len(candles)):
+        close = candles[i].close
+        broken = (kind == "a_shape" and close > price) or (kind == "v_shape" and close < price)
+        if broken:
+            yield origin, i
+            origin = i
+            kind = "v_shape" if kind == "a_shape" else "a_shape"
+    yield origin, None
+
+
 def _formed_pivot(prev: Candle, cur: Candle) -> tuple[Literal["a_shape", "v_shape"], float] | None:
     prev_bullish = prev.close > prev.open
     prev_bearish = prev.close < prev.open
