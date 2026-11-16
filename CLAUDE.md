@@ -42,6 +42,7 @@ A CRT/ICT price-action pattern detector for MetaTrader 5-exported OHLC data, enc
 - **Test command**: `cd detector && uv run pytest`.
 - **Import-layering check**: `cd detector && uv run lint-imports` (enforces `.importlinter`'s ADR-01 layers contract).
 - **Run**: `uv run --project detector python -m detector.cli --csv PATH --symbol SYM --output-dir PATH` (from the repo root).
+- **⚠️ Known bug on this `cli.py` path**: for `purge_engulf` signals, `cli.py` always runs `causal.generate.generate_causal_aligned_signals`, which uses `causal/htf.py`'s `select_htf_context` ("the H-A rule"). On dense HTF history this starves ~78% of the true signal population (confirmed on two independent datasets/periods) while still returning a plausible-looking, silently-wrong result — no error, no warning. Before trusting any `cli.py` output for `purge_engulf` signals, cross-check the signal/trade count against a source that bypasses this path (e.g. `entries.model1.detect_model1_signals` + `alignment.htf_ltf.tag_alignment` directly, or `causal.htf_trigger.find_1am_9am_aligned_signals` for the 1AM/9AM recipe — neither imports `causal/htf.py`). Not yet root-caused or fixed; `fvg_fill` signals are unaffected (different, unchanged code path).
 - Strict TDD applies to this subproject's implementation work — see the change's slices at `openspec/changes/crt-pattern-detector-v1/slices.md`.
 
 ## Working in This Repo

@@ -259,6 +259,15 @@ def _detect_all(
         # CRT ranges), so they still go through the unchanged legacy path,
         # tagged separately and merged in — no signal or alignment tag that
         # cli.py reported before this migration is dropped.
+        #
+        # ⚠️ KNOWN BUG (unfixed, see CLAUDE.md): this call's own
+        # `causal/htf.py` `select_htf_context` ("H-A rule") starves ~78% of
+        # the true signal population on dense HTF history, silently — no
+        # error, a plausible-looking but wrong count. Confirmed on two
+        # independent datasets/periods. Cross-check against
+        # `entries.model1.detect_model1_signals` + `alignment.htf_ltf.
+        # tag_alignment` (or `causal.htf_trigger` for the 1AM/9AM recipe)
+        # before trusting this path's `purge_engulf` output.
         causal_tags = generate_causal_aligned_signals(
             ltf_series, htf_series, crt_config=config.crt_range, model1_config=config.model1,
             htf_key_levels=htf_key_levels, daily_series=daily_series, daily_key_levels=daily_key_levels,
