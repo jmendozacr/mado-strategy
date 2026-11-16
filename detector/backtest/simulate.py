@@ -88,6 +88,13 @@ def _sl_sides() -> tuple[SweepSide, SweepSide]:
     return _directional_sides(lambda pair: pair[0].stop_loss, lambda pair: pair[0].direction)
 
 
+def _breakeven_sides() -> tuple[SweepSide, SweepSide]:
+    """EXPERIMENTAL (`breakeven_after_partial`): same shape as `_sl_sides`
+    (an adverse-side touch), but keyed on `entry_price` -- leg 2's new
+    stop once the partial has fired."""
+    return _directional_sides(lambda pair: pair[0].entry_price, lambda pair: pair[0].direction)
+
+
 def _tp_sides() -> tuple[SweepSide, SweepSide]:
     return _directional_sides(
         lambda pair: pair[0].take_profit, lambda pair: pair[0].direction, invert_bullish=True
@@ -132,13 +139,24 @@ def _fill_pass(
 def _resolve_level_exit(
     sl_index: int | None, tp_index: int | None, candles: tuple,
     entry_price: float, stop_loss: float, take_profit: float, direction: Direction, cost: float,
+    risk_stop: float | None = None,
 ) -> tuple[int | None, float | None, float | None, bool, bool]:
     """REQ-33/34: given sl_index/tp_index already swept from some eligible
     point, resolve which wins (SL-wins-ties) and compute the exit —
     gap-through-the-chosen-level fill, net r_multiple. Returns
     (exit_index, exit_price, r_multiple, ambiguous_bar, gap_filled), all
     None/False when neither level is touched (open). Shared by
-    `_resolve_single_leg` and `_resolve_trade`'s leg-2 branch."""
+    `_resolve_single_leg` and `_resolve_trade`'s leg-2 branch.
+
+    `risk_stop` (EXPERIMENTAL, `breakeven_after_partial`) lets the EXIT
+    level (`stop_loss`, used for the gap/level check) differ from the
+    R-multiple RISK denominator: leg 2 exiting at breakeven passes
+    `stop_loss=entry_price` for the exit itself, but must still net
+    against the trade's ORIGINAL risk distance, never breakeven's own
+    zero distance -- defaults to `stop_loss` so every pre-existing call
+    site is byte-for-byte unaffected."""
+    if risk_stop is None:
+        risk_stop = stop_loss
     if sl_index is None and tp_index is None:
         return None, None, None, False, False
 
@@ -150,7 +168,7 @@ def _resolve_level_exit(
     exit_candle = candles[exit_index]
     gap_filled = _exit_gap_beyond(exit_candle.open, level, direction, chosen_is_stop=sl_wins)
     exit_price = exit_candle.open if gap_filled else level
-    r_multiple = _net_r_multiple(entry_price, exit_price, stop_loss, direction, cost)
+    r_multiple = _net_r_multiple(entry_price, exit_price, risk_stop, direction, cost)
     return exit_index, exit_price, r_multiple, ambiguous_bar, gap_filled
 
 
@@ -192,6 +210,7 @@ def _resolve_single_leg(
 def _resolve_trade(
     candidate: Candidate, fill_index: int, sl_index: int | None, tp_index: int | None,
     partial_index: int | None, candles: tuple, trading_cost_price: float, partial_fraction: float,
+    breakeven_index: int | None = None, breakeven_after_partial: bool = False,
 ) -> Trade:
     """REQ-68/69: extends REQ-33's pessimistic SL-wins-ties precedent to
     the partial level. `partial_fraction=0.0` (REQ-68.5) makes leg 1 never
@@ -203,7 +222,17 @@ def _resolve_trade(
     SAME, unmoved stop-loss/take-profit -- reusing `sl_index`/`tp_index`
     from the one sweep already run from `fill_index + 1` (ADR-02: same-
     side/monotonic geometry means neither can resolve strictly before the
-    partial) -- restricted to indices strictly after `partial_index`."""
+    partial) -- restricted to indices strictly after `partial_index`.
+
+    `breakeven_after_partial` (EXPERIMENTAL): once leg 1 fires, leg 2's
+    adverse level becomes `entry_price` (`breakeven_index`, swept
+    separately against `_breakeven_sides()`) instead of the original
+    `stop_loss`/`sl_index` -- strictly AFTER `partial_index` only (a
+    same-bar touch is read as the partial's own bar, not yet a breakeven
+    event, mirroring REQ-33's own pessimistic-tie-handling spirit). The
+    R-multiple risk denominator stays the ORIGINAL stop distance either
+    way (`_resolve_level_exit`'s `risk_stop`) -- breakeven's own zero
+    distance is never used as a denominator."""
     partial_fires = (
         partial_fraction > 0.0 and partial_index is not None and (sl_index is None or partial_index < sl_index)
     )
@@ -225,8 +254,13 @@ def _resolve_trade(
     # candle touching TP necessarily also touches the partial level, so the two can
     # resolve within the very same bar (price travels through both intrabar); `>=`
     # keeps that tie as leg 2's exit rather than losing it to "never resolves".
-    leg2_sl_index = sl_index
     leg2_tp_index = tp_index if tp_index is not None and tp_index >= partial_index else None
+    if breakeven_after_partial:
+        leg2_sl_index = breakeven_index if breakeven_index is not None and breakeven_index > partial_index else None
+        leg2_sl_price = candidate.entry_price
+    else:
+        leg2_sl_index = sl_index
+        leg2_sl_price = candidate.stop_loss
 
     if leg2_sl_index is None and leg2_tp_index is None:
         return Trade(
@@ -241,7 +275,8 @@ def _resolve_trade(
     cost_leg2 = trading_cost_price - cost_leg1
     leg2_exit_index, leg2_exit_price, leg2_r_multiple, ambiguous_bar, leg2_gap_filled = _resolve_level_exit(
         leg2_sl_index, leg2_tp_index, candles,
-        candidate.entry_price, candidate.stop_loss, candidate.take_profit, candidate.direction, cost_leg2,
+        candidate.entry_price, leg2_sl_price, candidate.take_profit, candidate.direction, cost_leg2,
+        risk_stop=candidate.stop_loss,
     )
 
     # REQ-48/69 fix: a round trip's trading cost is paid once on the whole
@@ -305,7 +340,8 @@ def _fill_candle_immediate_loss(
 
 
 def _resolve_exits(
-    filled: list[tuple[Candidate, int]], candles: tuple, trading_cost_price: float, partial_fraction: float
+    filled: list[tuple[Candidate, int]], candles: tuple, trading_cost_price: float, partial_fraction: float,
+    breakeven_after_partial: bool = False,
 ) -> list[Trade]:
     """Fill-candle SL exposure resolves before the post-fill sweep; only
     candidates it doesn't resolve enter that sweep."""
@@ -328,12 +364,21 @@ def _resolve_exits(
     partial_results = two_heap_sweep(
         candles, exit_order, eligible_at=lambda pair: pair[1] + 1, sides=_partial_sides(), default=None
     )
+    # Only swept when the flag is on -- zero extra cost/behavior change at
+    # the default (EXPERIMENTAL, breakeven_after_partial).
+    if breakeven_after_partial:
+        breakeven_results = two_heap_sweep(
+            candles, exit_order, eligible_at=lambda pair: pair[1] + 1, sides=_breakeven_sides(), default=None
+        )
+    else:
+        breakeven_results = [None] * len(exit_order)
     resolved = [
         _resolve_trade(
-            candidate, fill_index, sl_index, tp_index, partial_index, candles, trading_cost_price, partial_fraction
+            candidate, fill_index, sl_index, tp_index, partial_index, candles, trading_cost_price, partial_fraction,
+            breakeven_index=breakeven_index, breakeven_after_partial=breakeven_after_partial,
         )
-        for (candidate, fill_index), sl_index, tp_index, partial_index
-        in zip(exit_order, sl_results, tp_results, partial_results)
+        for (candidate, fill_index), sl_index, tp_index, partial_index, breakeven_index
+        in zip(exit_order, sl_results, tp_results, partial_results, breakeven_results)
     ]
     return immediate + resolved
 
@@ -356,7 +401,8 @@ def simulate(
     filled, excluded_never_filled = _fill_pass(population.candidates, candles, config.backtest.max_fill_wait)
 
     trades = _resolve_exits(
-        filled, candles, config.backtest.trading_cost_price, config.backtest.partial_fraction
+        filled, candles, config.backtest.trading_cost_price, config.backtest.partial_fraction,
+        breakeven_after_partial=config.backtest.breakeven_after_partial,
     )
     trades.sort(key=lambda t: (t.entry_index, t.signal_id))
 

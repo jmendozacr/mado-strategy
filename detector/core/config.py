@@ -71,6 +71,9 @@ class BacktestConfig:
     kill_zone_gated: bool = True  # REQ-36
     max_fill_wait: int = 20  # candles (REQ-50)
     partial_fraction: float = 0.5  # position-size fraction closing at the equilibrium level (REQ-68/51)
+    breakeven_after_partial: bool = False  # EXPERIMENTAL: once the partial leg fires, move leg 2's
+    # stop to entry price (breakeven) instead of letting it keep riding the original stop_loss --
+    # default False preserves the original REQ-68/69 behavior exactly
 
 
 @dataclass(frozen=True)

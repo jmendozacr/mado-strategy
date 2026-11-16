@@ -148,6 +148,124 @@ def test_two_leg_trade_blends_partial_and_remainder_r_multiple():
     assert trade.outcome == "win"
 
 
+def test_breakeven_after_partial_exits_leg2_at_entry_instead_of_original_stop():
+    """EXPERIMENTAL (user's own idea, 2026-11-16): once leg 1 fires at the
+    partial, `breakeven_after_partial=True` moves leg 2's stop to entry
+    price instead of letting it keep riding the ORIGINAL stop_loss. Price
+    retraces to breakeven (1.1000) at candle 8, well before ever reaching
+    the original stop (1.0984) at candle 9 -- leg 2 must exit at candle 8,
+    never see candle 9 at all. NOT built on `_base_bullish_series()`: that
+    fixture's own candle 5 dips to 1.0995, which would touch breakeven
+    (1.1000) immediately after fill, before the partial even fires at
+    candle 7 -- same anchor/retest/fill shape (entry=1.1000, stop=1.0984),
+    but candles 5-6 kept clear of 1.1000 on purpose."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor
+        .candle(open=1.1005, high=1.1010, low=1.1000, close=1.1005)  # 1 — filler (not swept, before fill_index+1)
+        .candle(open=1.1002, high=1.1008, low=1.1001, close=1.1004)  # 2 — retest, no touch
+        .candle(open=1.1003, high=1.1006, low=1.1001, close=1.1002)  # 3 — no touch
+        .candle(open=1.1020, high=1.1025, low=1.0995, close=1.1010)  # 4 — fills (low<=1.1000)
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 5 — low=1.1005 > 1.1000, no breakeven touch
+        .candle(open=1.1015, high=1.1020, low=1.1008, close=1.1012)  # 6 — low=1.1008 > 1.1000, no touch
+        .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — touches partial_price (1.1050), leg 1 fires
+        .candle(open=1.1030, high=1.1035, low=1.0995, close=1.1010)  # 8 — retraces to breakeven (1.1000)
+        .candle(open=1.1000, high=1.1005, low=1.0975, close=1.0990)  # 9 — original stop (1.0984) -- must never be reached
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+    config = DetectorConfig(backtest=BacktestConfig(breakeven_after_partial=True))
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
+
+    trade = trades[0]
+    entry, stop = 1.1000, 1.0984
+    r_leg1 = (1.1050 - entry) / (entry - stop)
+    r_leg2 = (1.1000 - entry) / (entry - stop)  # == 0.0: breakeven exit, risk denominator stays the ORIGINAL stop
+    expected_blended = 0.5 * r_leg1 + 0.5 * r_leg2
+
+    assert trade.partial_exit_index == 7
+    assert trade.exit_index == 8
+    assert trade.exit_price == 1.1000
+    assert abs(trade.r_multiple - expected_blended) < 1e-9
+    assert trade.outcome == "win"  # leg1's partial profit alone keeps the blend positive
+
+
+def test_breakeven_after_partial_default_off_still_rides_to_original_stop():
+    """Contrast case, same series as the test above: with the flag at its
+    default (False), leg 2 must ignore the breakeven touch at candle 8 and
+    keep riding to the ORIGINAL stop at candle 9 -- the pre-existing
+    REQ-68/69 behavior, unchanged."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.1005)  # 0 — anchor
+        .candle(open=1.1005, high=1.1010, low=1.1000, close=1.1005)  # 1 — filler
+        .candle(open=1.1002, high=1.1008, low=1.1001, close=1.1004)  # 2 — retest, no touch
+        .candle(open=1.1003, high=1.1006, low=1.1001, close=1.1002)  # 3 — no touch
+        .candle(open=1.1020, high=1.1025, low=1.0995, close=1.1010)  # 4 — fills (low<=1.1000)
+        .candle(open=1.1010, high=1.1020, low=1.1005, close=1.1015)  # 5 — low=1.1005 > 1.1000
+        .candle(open=1.1015, high=1.1020, low=1.1008, close=1.1012)  # 6 — low=1.1008 > 1.1000
+        .candle(open=1.1015, high=1.1055, low=1.1010, close=1.1050)  # 7 — leg 1 fires
+        .candle(open=1.1030, high=1.1035, low=1.0995, close=1.1010)  # 8 — breakeven touch, IGNORED by default
+        .candle(open=1.1000, high=1.1005, low=1.0975, close=1.0990)  # 9 — original stop touched here
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bullish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1100, low=1.0950, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, DetectorConfig())
+
+    trade = trades[0]
+    assert trade.partial_exit_index == 7
+    assert trade.exit_index == 9
+    assert trade.exit_price == 1.0984
+    # leg 1's own +3.125R partial alone outweighs leg 2's -1R at the original
+    # stop, blended at 0.5/0.5 -- still a net "win" despite leg 2 losing
+    assert trade.outcome == "win"
+
+
+def test_breakeven_after_partial_bearish_mirror():
+    """Bearish mirror of the breakeven behavior change, same project
+    convention as every other directional test in this file."""
+    series = (
+        CandleSeriesBuilder()
+        .candle(open=1.1000, high=1.1010, low=1.0990, close=1.0995)  # 0 — anchor, protected_extreme=high=1.1010
+        .candle(open=1.0995, high=1.1000, low=1.0990, close=1.0992)  # 1 — filler (not swept)
+        .candle(open=1.0998, high=1.0999, low=1.0992, close=1.0996)  # 2 — retest, no touch
+        .candle(open=1.0997, high=1.0999, low=1.0994, close=1.0998)  # 3 — no touch
+        .candle(open=1.0980, high=1.1005, low=1.0975, close=1.0990)  # 4 — fills (high>=1.1000)
+        .candle(open=1.0990, high=1.0995, low=1.0980, close=1.0985)  # 5 — high=1.0995 < 1.1000, no breakeven touch
+        .candle(open=1.0985, high=1.0992, low=1.0978, close=1.0982)  # 6 — high=1.0992 < 1.1000, no touch
+        .candle(open=1.0995, high=1.0990, low=1.0945, close=1.0950)  # 7 — touches partial_price (1.0950), leg 1 fires
+        .candle(open=1.0970, high=1.1005, low=1.0965, close=1.0998)  # 8 — retraces to breakeven (1.1000)
+        .candle(open=1.1000, high=1.1025, low=1.0995, close=1.1020)  # 9 — original stop would be touched here
+        .build()
+    )
+    signal = _signal(anchor_index=0, direction="bearish", entry_type="body", retest_index=2)
+    htf_context = CRTRange(
+        model="2-candle", high=1.1050, low=1.0900, start_index=0, end_index=1,
+        resolution="true_break", resolved_at_index=1,
+    )
+    config = DetectorConfig(backtest=BacktestConfig(breakeven_after_partial=True))
+
+    trades, _ = simulate([_aligned(signal, htf_context=htf_context)], series, config)
+
+    trade = trades[0]
+    assert trade.entry_price == 1.1000
+    assert trade.partial_exit_index == 7
+    assert abs(trade.partial_exit_price - 1.095) < 1e-9  # partial_price = (entry + take_profit)/2 = (1.1000+1.0900)/2
+    assert trade.exit_index == 8
+    assert trade.exit_price == 1.1000  # breakeven, never the original (deeper) stop
+    assert trade.outcome == "win"
+
+
 def test_two_leg_trade_charges_trading_cost_exactly_once_not_twice():
     """REQ-48/68/69 regression: a round-trip's trading cost is paid once on
     the whole position regardless of how many fills close it (two half-size
