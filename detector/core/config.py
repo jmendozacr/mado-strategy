@@ -12,6 +12,16 @@ class FVGConfig:
 
 
 @dataclass(frozen=True)
+class MSNRConfig:
+    # A-shape/V-shape levels are a single close PRICE, not a wick-to-wick
+    # zone -- a real wick would (almost) never land on an exact price, so
+    # KeyLevel needs a nonzero width. ATR-relative, never a raw price
+    # constant (REQ-31 precedent, BacktestConfig.sl_buffer_atr_multiple).
+    # 0.1 is a first-pass value, not yet tuned against real data.
+    zone_atr_multiple: float = 0.1
+
+
+@dataclass(frozen=True)
 class CRTRangeConfig:
     max_lookback: int = 20
 
@@ -67,6 +77,7 @@ class BacktestConfig:
 class DetectorConfig:
     swing: SwingConfig = field(default_factory=SwingConfig)
     fvg: FVGConfig = field(default_factory=FVGConfig)
+    msnr: MSNRConfig = field(default_factory=MSNRConfig)
     crt_range: CRTRangeConfig = field(default_factory=CRTRangeConfig)
     mss: MSSConfig = field(default_factory=MSSConfig)
     ict_order_block: ICTOrderBlockConfig = field(default_factory=ICTOrderBlockConfig)

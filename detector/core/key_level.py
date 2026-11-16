@@ -15,7 +15,7 @@ class KeyLevel:
     and the `to_key_levels` convention are otherwise identical to the
     other sources'."""
 
-    kind: Literal["fvg", "ict_order_block", "breaker_block"]
+    kind: Literal["fvg", "ict_order_block", "breaker_block", "msnr"]
     top: float
     bottom: float
     origin_index: int
