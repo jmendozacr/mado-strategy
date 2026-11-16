@@ -40,37 +40,37 @@ from rules import filter_new_alerts  # noqa: E402
 # risk this account trades, shortest stagnation, highest total R --
 # Engram detector/1am-9am-diversified/final-5-pair-decision).
 # MODEL_5AM was tested this session and explicitly declined by the user.
-SYMBOLS = ("EURUSDm", "USDCADm", "AUDUSDm", "GBPUSDm", "USDJPYm")
+SYMBOLS = ("EURUSD", "USDCAD", "AUDUSD", "GBPUSD", "USDJPY")
 POLL_SECONDS = 120
 LOOKBACK = {"D1": 200, "H4": 500, "M15": 2000}
 
-# Per-symbol BacktestConfig. EURUSDm/USDCADm/AUDUSDm validated against
-# this broker's own real spread. GBPUSDm/USDJPYm's trading_cost_price is
+# Per-symbol BacktestConfig. EURUSD/USDCAD/AUDUSD validated against
+# this broker's own real spread. GBPUSD/USDJPY's trading_cost_price is
 # a WEB-RESEARCH ESTIMATE (FTMO Standard average spread, padded like
-# EURUSDm's own margin), NOT independently verified against this broker's
+# EURUSD's own margin), NOT independently verified against this broker's
 # live spread the way the other three were -- confirm against the real
-# MT5 terminal before trusting its P&L, especially USDJPYm (the weakest
+# MT5 terminal before trusting its P&L, especially USDJPY (the weakest
 # of the five pairs in every backtest this session, 45.6% win rate).
 # min_stop_distance_price/trading_cost_price differ per instrument -- a
 # flat EURUSD-pip-scale constant does NOT transfer across pairs, confirmed
-# by sweep; USDJPYm's floor is scaled 100x for the yen's price scale
+# by sweep; USDJPY's floor is scaled 100x for the yen's price scale
 # (pip=0.01, not 0.0001). R:R=2.0 and kill_zone_gated=False for all five --
 # each model's own confirmation window already bounds which candles can
 # ever produce a signal, so no separate kill-zone cut is needed on top.
 BACKTEST_CONFIG = {
-    "EURUSDm": BacktestConfig(
+    "EURUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
     ),
-    "USDCADm": BacktestConfig(
+    "USDCAD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0,
     ),
-    "AUDUSDm": BacktestConfig(
+    "AUDUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0,
     ),
-    "GBPUSDm": BacktestConfig(
+    "GBPUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00014, kill_zone_gated=False, min_stop_distance_price=0.0006,
     ),
-    "USDJPYm": BacktestConfig(
+    "USDJPY": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.0275, kill_zone_gated=False, min_stop_distance_price=0.06,
     ),
 }
@@ -79,8 +79,8 @@ BACKTEST_CONFIG = {
 # restriction applies only on Standard funded accounts, never during the
 # Challenge/Verification evaluation (confirmed against ftmo.com/en/faq/can-i-trade-news/).
 RELEVANT_CURRENCIES = {
-    "EURUSDm": ("EUR", "USD"), "USDCADm": ("USD", "CAD"), "AUDUSDm": ("AUD", "USD"),
-    "GBPUSDm": ("GBP", "USD"), "USDJPYm": ("USD", "JPY"),
+    "EURUSD": ("EUR", "USD"), "USDCAD": ("USD", "CAD"), "AUDUSD": ("AUD", "USD"),
+    "GBPUSD": ("GBP", "USD"), "USDJPY": ("USD", "JPY"),
 }
 
 # odd/tasks/scanner-auto-execution.md S1/S2/S7: real MT5 pending orders,

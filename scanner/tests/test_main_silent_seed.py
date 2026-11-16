@@ -53,7 +53,7 @@ def _m15_series():
         )
         for i in range(5)
     )
-    return OHLCSeries(candles=candles, instrument="EURUSDm", timeframe="15M"), DetectionStatus
+    return OHLCSeries(candles=candles, instrument="EURUSD", timeframe="15M"), DetectionStatus
 
 
 def _fake_candidate(signal_id):
@@ -78,14 +78,14 @@ def test_silent_run_never_sends_telegram_but_marks_state(monkeypatch):
     monkeypatch.setattr(main, "build_stage6_population", lambda *a, **k: type("P", (), {
         "candidates": [_fake_candidate("sig-1")],
     }))
-    monkeypatch.setattr(main, "SYMBOLS", ("EURUSDm",))
+    monkeypatch.setattr(main, "SYMBOLS", ("EURUSD",))
 
     empty_state = {"alerted_ids": [], "daily_counts": {}}
     result_state = main.run_once(empty_state, silent=True)
 
     assert sent_messages == []
     assert len(result_state["alerted_ids"]) == 1
-    assert result_state["alerted_ids"][0].startswith("EURUSDm|")
+    assert result_state["alerted_ids"][0].startswith("EURUSD|")
 
 
 def test_non_silent_run_sends_telegram_with_model_and_key_level_in_the_message(monkeypatch):
@@ -103,7 +103,7 @@ def test_non_silent_run_sends_telegram_with_model_and_key_level_in_the_message(m
     monkeypatch.setattr(main, "build_stage6_population", lambda *a, **k: type("P", (), {
         "candidates": [_fake_candidate("sig-1")],
     }))
-    monkeypatch.setattr(main, "SYMBOLS", ("EURUSDm",))
+    monkeypatch.setattr(main, "SYMBOLS", ("EURUSD",))
     monkeypatch.setattr(main, "AUTO_EXECUTE", False)
 
     empty_state = {"alerted_ids": [], "daily_counts": {}}
@@ -125,7 +125,7 @@ def _patched_for_execution(monkeypatch, m15, results):
     monkeypatch.setattr(main, "build_stage6_population", lambda *a, **k: type("P", (), {
         "candidates": [_fake_candidate("sig-1")],
     }))
-    monkeypatch.setattr(main, "SYMBOLS", ("EURUSDm",))
+    monkeypatch.setattr(main, "SYMBOLS", ("EURUSD",))
 
 
 def test_silent_seed_never_places_an_order_even_if_auto_execute_is_on(monkeypatch):
@@ -165,7 +165,7 @@ def test_auto_execute_true_places_a_pending_order_with_the_calculated_lot(monkey
 
     assert len(order_calls) == 1
     args, kwargs = order_calls[0]
-    assert args[0] == "EURUSDm"  # symbol
+    assert args[0] == "EURUSD"  # symbol
     # entry=1.1005, stop=1.0990 (the fixture Candidate) -> stop_distance=0.0015 ->
     # 150 ticks * $1/tick = $150/lot; risk_amount = main.INITIAL_BALANCE (10000) * 1% = $100;
     # raw_lots = 100/150 = 0.6666... -> floored to the 0.01 step = 0.66.
