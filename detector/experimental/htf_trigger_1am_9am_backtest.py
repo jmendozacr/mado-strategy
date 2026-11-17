@@ -81,14 +81,17 @@ SYMBOL_CONFIG: dict[str, BacktestConfig] = {
     # the 2022-2026 window) -- neither had a floor before, which let stops
     # go as tight as 1.6 pips and let the fixed trading_cost_price eat up
     # to 104% of the intended 1R (USDCAD) on the worst trades. 6 pips won
-    # for USDCAD (matches EURUSD/GBPUSD's own winning floor); AUDUSD's own
-    # sweep instead favored 4 pips -- kept as its own measured value
-    # rather than copying USDCAD's, per that sweep's own total_r numbers.
+    # for USDCAD (matches EURUSD/GBPUSD's own winning floor). AUDUSD's own
+    # sweep favored 4 pips on total_r, but a per-trade cost/stop scan found
+    # 8.5% of its trades still sat near a 33% cost fraction at 4 pips --
+    # raised to 6 pips anyway (user's explicit call, same margin as every
+    # other pair) at a measured cost of ~5R/4.8% total_r (sweep: +104.65R
+    # at 4 pips vs +99.64R at 6).
     "USDCAD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.000167, kill_zone_gated=False, min_stop_distance_price=0.0006, breakeven_after_partial=True,
     ),
     "AUDUSD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0004, breakeven_after_partial=True,
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006, breakeven_after_partial=True,
     ),
     # GBPUSD/USDJPY: calibrated this session (SL-floor swept 0/4/6/10 pips
     # on the 2019-2026 window, 6 pips won on total R for both -- same

@@ -62,14 +62,19 @@ LOOKBACK = {"D1": 200, "H4": 500, "M15": 2000}
 # 2026-11-16 calibration: USDCAD/AUDUSD SL floors added (had none before --
 # let stops go as tight as 1.6 pips, cost ate up to 104% of 1R on the worst
 # trades), USDJPY's own floor raised 6->10 pips (same sweep re-check).
+# AUDUSD raised again from its own sweep-optimal 4 pips to 6 (user's
+# explicit call, same margin as every other pair): a per-trade cost/stop
+# scan found 8.5% of its trades still near a 33% cost fraction at 4 pips,
+# at a measured cost of ~5R/4.8% total_r (sweep: +104.65R at 4 pips vs
+# +99.64R at 6).
 # breakeven_after_partial=True adopted for all 5 pairs after the FTMO
 # rolling-window check: 100% pass rate / 53.6 avg days vs the prior
 # 99.2%/99.2 days, dominating win_rate+avg_r+total_r on every pair with no
 # exception (Engram: "Breakeven-after-partial dominates on all 5 pairs").
-# odd/tasks/scanner-breakeven-after-partial.md T4 still owns ACTUALLY
-# managing live positions this way -- this config change alone does
-# nothing live until that wiring lands (today's backtest-only flag has no
-# effect on send_pending_order's fire-and-forget orders).
+# LIVE since odd/tasks/scanner-breakeven-after-partial.md T4: _execute_alert
+# tracks each new order's partial_price, _check_pending_partials closes the
+# partial and moves the remainder's SL to breakeven once price reaches it --
+# this flag now DOES drive real position management, not just the backtest.
 BACKTEST_CONFIG = {
     "EURUSD": BacktestConfig(
         min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
@@ -80,7 +85,7 @@ BACKTEST_CONFIG = {
         breakeven_after_partial=True,
     ),
     "AUDUSD": BacktestConfig(
-        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0004,
+        min_risk_reward=2.0, trading_cost_price=0.00013, kill_zone_gated=False, min_stop_distance_price=0.0006,
         breakeven_after_partial=True,
     ),
     "GBPUSD": BacktestConfig(
