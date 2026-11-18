@@ -67,11 +67,22 @@ Only `CONFIRMED` signals are carried forward into C1/C2's candidate stream at al
 # confirmation, located by real timestamp) -- never confirmation_index
 # itself, and never retest_index.
 
-def fill_pass_c(candidates, candles, m15_timestamps, max_fill_wait, order_placed_ts_by_signal_id):
+def fill_pass_c(candidates, candles, m15_timestamps, max_fill_wait,
+                 order_placed_ts_by_signal_id, confirmation_index_by_signal_id):
     first_fillable = {
         sid: bisect.bisect_left(m15_timestamps, ts)
         for sid, ts in order_placed_ts_by_signal_id.items()
     }
+    # Round-3 guard: the timestamp-based lookup must never land ON the
+    # confirmation bar itself, regardless of what the timestamps say --
+    # first_fillable_ts >= model1_available_ts is the real invariant
+    # (equality is fine on a gapless grid), but the INDEX must still move
+    # forward by at least one bar every time.
+    for sid, idx in first_fillable.items():
+        assert idx > confirmation_index_by_signal_id[sid], (
+            f"{sid}: first_fillable_index {idx} must be strictly after confirmation_index "
+            f"{confirmation_index_by_signal_id[sid]}"
+        )
     eligible = [c for c in candidates if first_fillable.get(c.signal_id, len(candles)) < len(candles)]
     fill_order = sorted(eligible, key=lambda c: first_fillable[c.signal_id])
     fill_results = two_heap_sweep(
@@ -139,16 +150,36 @@ Per the review's point 6/7 ("mantener constante la fuente de Key Levels"), **bot
 
 def key_level_credited(purge_extremes: tuple[float, ...], purge_observed_at: datetime,
                         key_levels: list[KeyLevel], h4_broker: OHLCSeries) -> KeyLevel | None:
-    def available_at(idx: int) -> datetime:
+    def available_at(idx: int) -> datetime | None:
+        # _ceiling_htf_index (alignment/htf_ltf.py:228-237) can return
+        # len(htf_timestamps) as an explicit "not yet knowable within this
+        # series" sentinel -- indexing h4_broker.candles[idx] at that value
+        # raises IndexError. None here means "never available/never
+        # expires within the data we have", handled by the caller below.
+        if idx >= len(h4_broker.candles):
+            return None
         return h4_broker.candles[idx].timestamp + H4_DURATION   # bar-close contract, see §3
+
+    def credited(level: KeyLevel) -> bool:
+        origin_at = available_at(level.origin_index)
+        if origin_at is None or origin_at >= purge_observed_at:
+            return False   # not yet knowable, or knowable only at/after this purge -- never credits
+        if level.expiry_index is not None:
+            expiry_at = available_at(level.expiry_index)
+            if expiry_at is not None and purge_observed_at > expiry_at:
+                return False   # expired before this purge
+            # expiry_at is None (sentinel): the expiry condition was never
+            # found within the available series -- treat as not-yet-expired.
+        return True
+
     qualifying = [
         level for extreme in purge_extremes for level in key_levels
-        if available_at(level.origin_index) < purge_observed_at
-        and (level.expiry_index is None or purge_observed_at <= available_at(level.expiry_index))
-        and level.bottom <= extreme <= level.top
+        if credited(level) and level.bottom <= extreme <= level.top
     ]
     return max(qualifying, key=lambda lv: lv.origin_index) if qualifying else None
 ```
+
+**Round-3 fix**: `available_at` now returns `None` (never `IndexError`) for a sentinel/out-of-range index, and `credited()` treats `origin_at is None` as "not yet knowable -- never credits" (fail closed) while `expiry_at is None` is treated as "never found expiring within the data we have -- not yet expired" (fail open, matching `_key_level_credit_map`'s own `expiry_index is None` branch, which already treats a level with no registered expiry as perpetually valid).
 
 This reproduces `_key_level_credit_map`'s exact rule (origin strictly before the purge, not yet expired, extreme inside the zone, highest-origin-index tiebreak) — restated so the only quantity ever compared against another is a `datetime`, which is valid regardless of which series (broker-grid for C1, NY-feeder for C2) supplied `purge_observed_at`. `_purge_wick_extremes` is still reused unmodified to compute `purge_extremes` from the provisional candle.
 
@@ -241,9 +272,10 @@ Explicit invariant (tested, §6): for every signal, `feeder_ref_available_ts <= 
 4. `test_fill_pass_c_first_fillable_index_uses_real_timestamps_across_a_gap` (new, round 2) — construct an M15 series with a gap immediately after `confirmation_index` (next bar opens later than `+15min`); assert `first_fillable_index` resolves to the actual next bar via `bisect`, not a blind `confirmation_index + 1`.
 5. `test_key_level_credited_rejects_cross_grid_index_reuse` — construct a `KeyLevel` with `origin_index=5` on a 10-candle broker H4 series and a *different*, shorter NY-feeder series; assert `key_level_credited` only ever compares via `available_at(...)` timestamps, never raw indices.
 6. `test_key_level_credited_matches_fvg_and_order_block_origin_semantics` (new, round 2) — two cases, one FVG-sourced (`origin_index = fvg.end_index`) and one Order-Block-sourced (`origin_index = block.confirmation_index`, reindexed), both asserting the credit only fires at-or-after that candle's **close**, never its open — pins §2.1b/§2.1c's trace as a regression test, not just a one-time manual audit.
+6b. **`test_key_level_credited_handles_sentinel_origin_and_expiry_without_indexerror`** (new, round 3) — a `KeyLevel` with `origin_index == len(h4_broker.candles)` (the `_ceiling_htf_index` sentinel) must never credit and must never raise `IndexError`; a `KeyLevel` with `expiry_index == len(h4_broker.candles)` (expiry never found within the series) must still credit a purge that is otherwise valid, treated as not-yet-expired.
 7. `test_bar_available_at_is_open_plus_duration` — pins §3.2's contract for both M15 (15 min) and H4-feeder (4h) durations, including the two DST-transition days found in §4.2.
 8. `test_validate_complete_feeder_bucket_rejects_partial_and_misaligned` — table-driven: 16 consecutive bars (pass), 15 bars (fail), 16 bars with a duplicate/gap (fail), bars starting one step late (fail).
-9. `test_state_machine_timestamps_are_monotonic` — run C1 (cheap, synthetic) and assert the §5 invariant chain holds for every produced signal, including `first_fillable_ts > model1_available_ts` strictly (never equal, per the round-2 fix).
+9. `test_state_machine_timestamps_are_monotonic` — run C1 (cheap, synthetic) and assert the §5 invariant chain holds for every produced signal: **`first_fillable_ts >= model1_available_ts`** (not strict — a bar can legitimately open exactly when the previous bar closes, on a gapless grid) **and, separately, `first_fillable_index > confirmation_index` strictly** (the bar-index floor must always move forward by at least one bar, regardless of what the timestamps happen to read). Two sub-cases, both required: (a) consecutive M15 bars with no gap (`first_fillable_index == confirmation_index + 1`, `first_fillable_ts == model1_available_ts` exactly); (b) a data gap right after `confirmation_index` (`first_fillable_index` lands on whatever bar actually exists next, `first_fillable_ts > model1_available_ts` strictly, found via `bisect`, never assumed `+1`).
 10. `test_c1_c2_share_everything_except_candle_source` — a structural test: both call the same `detect_triggers(feeder_source, ...)` entry point; assert via introspection or a shared-code-path marker that no C1-only or C2-only branch exists outside the swapped `feeder_source` argument.
 11. Re-affirm from the existing suite: Arm A still reproduces the audited baseline exactly (already covered, unaffected by this revision).
 

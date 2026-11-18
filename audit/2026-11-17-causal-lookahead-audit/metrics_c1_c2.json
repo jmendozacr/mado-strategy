@@ -1,0 +1,80 @@
+{
+  "c1": {
+    "per_symbol": {
+      "EURUSD": {
+        "trades": 792,
+        "closed": 792,
+        "win_rate": 0.4078282828282828,
+        "avg_r": 0.14339624113864224,
+        "total_r": 113.56982298180465,
+        "expectancy_per_trade": 0.14339624113864224,
+        "max_drawdown_r": 41.36259266869857
+      },
+      "USDCAD": {
+        "trades": 812,
+        "closed": 810,
+        "win_rate": 0.43703703703703706,
+        "avg_r": 0.17266596845894244,
+        "total_r": 139.85943445174337,
+        "expectancy_per_trade": 0.17224068282234406,
+        "max_drawdown_r": 19.192893621446657
+      },
+      "AUDUSD": {
+        "trades": 899,
+        "closed": 898,
+        "win_rate": 0.3752783964365256,
+        "avg_r": 0.049279923421353074,
+        "total_r": 44.25337123237506,
+        "expectancy_per_trade": 0.04922510704379873,
+        "max_drawdown_r": 36.00100412665638
+      }
+    },
+    "combined": {
+      "trades": 2503,
+      "closed": 2500,
+      "win_rate": 0.4056,
+      "total_r": 297.68262866592306,
+      "avg_r": 0.11907305146636922,
+      "expectancy_per_trade": 0.11893033506429207
+    }
+  },
+  "c2": {
+    "per_symbol": {
+      "EURUSD": {
+        "trades": 440,
+        "closed": 440,
+        "win_rate": 0.375,
+        "avg_r": -0.045166401989401736,
+        "total_r": -19.873216875336762,
+        "expectancy_per_trade": -0.045166401989401736,
+        "max_drawdown_r": 52.0784214759425
+      },
+      "USDCAD": {
+        "trades": 519,
+        "closed": 518,
+        "win_rate": 0.4189189189189189,
+        "avg_r": 0.06826705106812599,
+        "total_r": 35.36233245328926,
+        "expectancy_per_trade": 0.06813551532425677,
+        "max_drawdown_r": 37.07818619719646
+      },
+      "AUDUSD": {
+        "trades": 585,
+        "closed": 584,
+        "win_rate": 0.3715753424657534,
+        "avg_r": 0.012326465492100334,
+        "total_r": 7.198655847386595,
+        "expectancy_per_trade": 0.012305394610917257,
+        "max_drawdown_r": 57.374987627404195
+      }
+    },
+    "combined": {
+      "trades": 1544,
+      "closed": 1542,
+      "win_rate": 0.38845654993514916,
+      "total_r": 22.687771425339093,
+      "avg_r": 0.014713211041075936,
+      "expectancy_per_trade": 0.014694152477551226
+    }
+  }
+}

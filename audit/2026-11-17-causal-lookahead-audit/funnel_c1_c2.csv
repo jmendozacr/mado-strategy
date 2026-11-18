@@ -1,0 +1,13 @@
+arm,candidates_built,filled,model,model1_confirmed,never_filled,pair,reference_incomplete_skipped,skipped_no_placement,swept_bearish_only,swept_both,swept_bullish_only,swept_neither,triggers_with_key_level,windows_considered,zero_signal_reason_categories
+c1,962,792,1am,1402,170,EURUSD,0,0,2382,1222,2074,450,6676,6128,"{'model1_pending_or_invalidated': 2248, 'no_model1_anchor_found': 2880, 'window_empty_before_search': 145, 'window_has_no_m15_data': 1}"
+c1,962,792,9am,787,170,EURUSD,0,0,2066,1246,2357,449,6704,6118,"{'no_model1_anchor_found': 3232, 'window_empty_before_search': 750, 'model1_pending_or_invalidated': 1935}"
+c2,531,440,1am,1385,91,EURUSD,2472,0,1965,2299,1703,155,8029,6122,"{'model1_pending_or_invalidated': 2410, 'window_empty_before_search': 879, 'no_model1_anchor_found': 3355}"
+c2,531,440,9am,289,91,EURUSD,2479,0,2257,800,2415,643,6080,6115,"{'window_empty_before_search': 1737, 'no_model1_anchor_found': 2903, 'model1_pending_or_invalidated': 1151}"
+c1,974,812,1am,1250,162,USDCAD,0,0,2173,941,2372,575,6227,6061,"{'no_model1_anchor_found': 2563, 'model1_pending_or_invalidated': 2299, 'window_empty_before_search': 114, 'window_has_no_m15_data': 1}"
+c1,974,812,9am,805,162,USDCAD,0,0,2142,1711,1972,224,7323,6049,"{'window_empty_before_search': 804, 'no_model1_anchor_found': 3537, 'model1_pending_or_invalidated': 2177}"
+c2,619,519,1am,1173,100,USDCAD,2449,0,1945,1864,2062,183,7504,6054,"{'no_model1_anchor_found': 3029, 'model1_pending_or_invalidated': 2371, 'window_empty_before_search': 931}"
+c2,619,519,9am,308,100,USDCAD,2457,0,2398,980,2149,519,6315,6046,"{'window_empty_before_search': 1778, 'no_model1_anchor_found': 3029, 'model1_pending_or_invalidated': 1200}"
+c1,1081,899,1am,1134,182,AUDUSD,0,0,2521,423,2092,1020,5249,6056,"{'model1_pending_or_invalidated': 1781, 'no_model1_anchor_found': 2223, 'window_empty_before_search': 111}"
+c1,1081,899,9am,783,182,AUDUSD,0,0,2143,1190,2172,537,6498,6042,"{'no_model1_anchor_found': 3085, 'window_empty_before_search': 833, 'model1_pending_or_invalidated': 1797}"
+c2,689,585,1am,1042,104,AUDUSD,2459,0,2474,895,2062,613,6111,6044,"{'model1_pending_or_invalidated': 1751, 'no_model1_anchor_found': 2538, 'window_empty_before_search': 780}"
+c2,689,585,9am,277,104,AUDUSD,2469,0,2270,843,2330,591,6092,6034,"{'no_model1_anchor_found': 2874, 'window_empty_before_search': 1795, 'model1_pending_or_invalidated': 1146}"
