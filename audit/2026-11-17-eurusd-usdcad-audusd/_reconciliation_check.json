@@ -1,0 +1,36 @@
+{
+  "generated_from_commit": "451a1bce9f0a9f82fbd38b6e9c7518331bdfdc33",
+  "per_symbol": {
+    "EURUSD": {
+      "trades": 665,
+      "closed": 665,
+      "win_rate": 0.6466165413533834,
+      "avg_r": 0.8221248637382552,
+      "total_r": 546.7130343859397
+    },
+    "USDCAD": {
+      "trades": 640,
+      "closed": 637,
+      "win_rate": 0.6860282574568289,
+      "avg_r": 0.8671200708651546,
+      "total_r": 552.3554851411035
+    },
+    "AUDUSD": {
+      "trades": 762,
+      "closed": 758,
+      "win_rate": 0.5897097625329816,
+      "avg_r": 0.7014555963157288,
+      "total_r": 531.7033420073225
+    }
+  },
+  "combined": {
+    "trades": 2067,
+    "closed": 2060,
+    "win_rate": 0.6378640776699029,
+    "avg_r": 0.7916368259875561,
+    "total_r": 1630.7718615343656
+  },
+  "trades_csv_row_count": 2067,
+  "trades_csv_closed_total_r_recomputed": 1630.7718615343656,
+  "trades_csv_closed_count_recomputed": 2060
+}

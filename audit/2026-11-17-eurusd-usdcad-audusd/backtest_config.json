@@ -1,0 +1,64 @@
+{
+  "_provenance": {
+    "generated_from_commit": "451a1bce9f0a9f82fbd38b6e9c7518331bdfdc33",
+    "generated_at_commit_timestamp": "2026-11-17T10:22:18-06:00",
+    "source_file": "detector/experimental/htf_trigger_1am_9am_backtest.py (SYMBOL_CONFIG, lines 76-113)",
+    "cross_checked_against": "scanner/main.py (BACKTEST_CONFIG, lines 78-99) -- byte-identical for EURUSD/USDCAD/AUDUSD as of this commit"
+  },
+  "global": {
+    "risk_pct_per_trade": 1.0,
+    "initial_balance_usd": 10000.0,
+    "balance_model": "fixed, non-compounding -- scanner/main.py:123 INITIAL_BALANCE, never the live account balance",
+    "max_fill_wait_candles": 20,
+    "source_file_global": "scanner/main.py (RISK_PCT line 114, INITIAL_BALANCE line 123, PARTIAL_FRACTION line 125)"
+  },
+  "pairs": {
+    "EURUSD": {
+      "sl_buffer_atr_multiple": 0.3,
+      "min_stop_distance_price": 0.0006,
+      "min_risk_reward": 2.0,
+      "trading_cost_price": 0.00013,
+      "kill_zone_gated": false,
+      "max_fill_wait": 20,
+      "partial_fraction": 0.5,
+      "breakeven_after_partial": true
+    },
+    "USDCAD": {
+      "sl_buffer_atr_multiple": 0.3,
+      "min_stop_distance_price": 0.0006,
+      "min_risk_reward": 2.0,
+      "trading_cost_price": 0.000167,
+      "kill_zone_gated": false,
+      "max_fill_wait": 20,
+      "partial_fraction": 0.5,
+      "breakeven_after_partial": true
+    },
+    "AUDUSD": {
+      "sl_buffer_atr_multiple": 0.3,
+      "min_stop_distance_price": 0.0006,
+      "min_risk_reward": 2.0,
+      "trading_cost_price": 0.00013,
+      "kill_zone_gated": false,
+      "max_fill_wait": 20,
+      "partial_fraction": 0.5,
+      "breakeven_after_partial": true
+    }
+  },
+  "data_sources": {
+    "EURUSD": {
+      "h4": "data\\EURUSD_H4_200305050000_202611122000.csv",
+      "m15": "data\\EURUSD_M15_200305042100_202611122345.csv",
+      "d1": "data\\EURUSD_D1_200305050000_202611120000.csv"
+    },
+    "USDCAD": {
+      "h4": "data\\USDCAD_H4_200308040000_202611122000.csv",
+      "m15": "data\\USDCAD_M15_200308032100_202611122345.csv",
+      "d1": "data\\USDCAD_D1_200308040000_202611120000.csv"
+    },
+    "AUDUSD": {
+      "h4": "data\\AUDUSD_H4_200308040000_202611122000.csv",
+      "m15": "data\\AUDUSD_M15_200308032100_202611122345.csv",
+      "d1": "data\\AUDUSD_D1_200308040000_202611120000.csv"
+    }
+  }
+}

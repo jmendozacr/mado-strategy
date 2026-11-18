@@ -1,0 +1,29 @@
+{
+  "scope": "EURUSD, USDCAD, AUDUSD -- the live 1AM+9AM diversified recipe (detector/experimental/htf_trigger_1am_9am_backtest.py, research/diversified_1am_9am_rolling.py, scanner/main.py)",
+  "finding": "NO train/validation/out-of-sample split exists for the backtest results this audit exports, or for the SL-floor (min_stop_distance_price) calibration of EURUSD/USDCAD/AUDUSD. Both run/ran over 100% of the available historical CSV window with nothing held out.",
+  "evidence": [
+    "grep for split/train/validation/holdout/out-of-sample logic in detector/experimental/htf_trigger_1am_9am_backtest.py and research/diversified_1am_9am_rolling.py: zero matches.",
+    "detector/experimental/htf_trigger_1am_9am_backtest.py:main() and research/diversified_1am_9am_rolling.py:main() both load the FULL CSV found by _find_csv() and pass it whole into backtest_1am_9am()/simulate() -- no slicing by date.",
+    "research/eurusd_recipe_validation/sizing.py's rolling-window check (used by research/diversified_1am_9am_rolling.py:combined_rolling_window) is a ROBUSTNESS/survival check over many overlapping historical windows of the SAME full dataset, not a held-out test set -- it never withholds data from model/parameter selection.",
+    "The USDCAD/AUDUSD SL-floor sweeps (commits b1de44d, 078655e, 2026-11-16) selected floor values by total_r over a 2022-2026 window -- stated explicitly in a code comment, detector/experimental/htf_trigger_1am_9am_backtest.py:80-82 ('SL-floor swept 0/4/6/10 pips on the 2022-2026 window'), though NOT in either commit message. That window itself has no internal train/held-out split -- all candidates were compared on the same 2022-2026 data, and odd/tasks/realistic-cost-prop-firm-validation.md's own L15 log entry explicitly calls an analogous full-history, all-candidates-seen sweep a 'selection-bias risk'."
+  ],
+  "scope_mismatch_flagged": "This audit's own trades.csv/execution_events.csv run the FULL 2003-2026 history available under data/<SYMBOL>_*.csv (the backtest harness's own default behavior, unchanged) -- NOT the narrower 2022-2026 window the USDCAD/AUDUSD SL floors were actually calibrated on. The harness itself has no date-range flag to restrict this, so reproducing the exact calibration window was not possible without modifying it, which the task's constraints forbid. Stated here rather than hidden.",
+  "one_genuine_exception_found": {
+    "parameter": "min_risk_reward (R:R floor)",
+    "where": "odd/tasks/realistic-cost-prop-firm-validation.md, L15-L17 (2026-11-13)",
+    "what": "A real 3-fold expanding-window walk-forward: train on an earlier span, pick the best floor by TRAIN total_r among {2.0, 1.75, 1.5, 1.25, 1.0}, then measure that SAME floor on the following, never-seen year.",
+    "fold_boundaries": [
+      {"train": "2022-2023", "test": "2024"},
+      {"train": "2022-2024", "test": "2025"},
+      {"train": "2022-2025", "test": "2026 (partial, through August)"}
+    ],
+    "result": "The walk-forward CONTRADICTED the in-sample sweep's apparent winner (R:R=1.0): on the most recent, most decision-relevant fold, R:R=1.0 collapsed out-of-sample (+8.48R/48.6% WR) while the current production default R:R=2.0 held up better on the identical test window (+13.89R/64.3% WR). Verdict: keep min_risk_reward=2.0 unchanged -- see optimization_history.csv OPT-4.",
+    "caveat": "This split validates min_risk_reward on the OLDER single-pair EURUSD-only, 3-feeder-model (1AM+5AM+9AM) population, not the final 3-pair (EURUSD/USDCAD/AUDUSD), 2-feeder-model (1AM+9AM, 5AM dropped) production recipe this audit's trades.csv/execution_events.csv cover. It was never re-run against the current recipe."
+  },
+  "unrelated_formal_discipline_confirmed_disconnected": {
+    "what": "detector/runner/, detector/selection/, detector/adapter/, detector/policy/, detector/evaluation/ implement a separate, formal 'Statistical Runner' / DirectionPolicy preregistration pipeline (frozen policy IDs, candidate-identity integrity checks, bootstrap/nomination gates -- genuine train/discovery discipline of its own).",
+    "instrument_scope": "EURUSDm, GBPUSDm, DXYm (detector/runner/manifest_builder.py:15 INSTRUMENT_ORDER) -- note the broker-suffixed 'm' symbols, a DIFFERENT symbol set from this audit's EURUSD/USDCAD/AUDUSD (no suffix).",
+    "connection_to_this_recipe": "NONE. Grepping detector/runner, detector/selection, detector/adapter, detector/policy, detector/evaluation for htf_trigger/find_1am_9am/scanner.main/BACKTEST_CONFIG returns zero hits; grepping the 1AM+9AM code paths for DirectionPolicyObservation/selection.model/runner.run_discovery/adapter.manifest also returns zero hits. No import or data path connects the two systems. Do not treat the Statistical Runner's discipline as covering this recipe's results."
+  },
+  "recommendation_not_acted_on": "Per the task's constraints, no new split was created and nothing was recalibrated or re-run with a held-out window. This file only reports what split discipline already exists in the repository, verbatim."
+}
