@@ -1,0 +1,13 @@
+arm,candidates,closed,excluded_confirmed_no_retest,excluded_duplicate,excluded_kill_zone,excluded_never_confirmed,excluded_never_filled,excluded_no_crt_range,excluded_no_key_level,excluded_rr_floor,excluded_unaligned,never_filled,pair,signals_considered,skipped_no_placement,trades_opened
+arm_a,,,2132,0,0,0,8,0,0,1844,0,,EURUSD,4649,,665
+b1_ideal,673,455,,,,,,,,,,218,EURUSD,,0,
+b1_realistic,673,440,,,,,,,,,,233,EURUSD,,0,
+b2,,,253,0,0,0,0,0,0,104,0,,EURUSD,373,,16
+arm_a,,,2300,0,0,0,8,0,0,1691,0,,USDCAD,4639,,640
+b1_ideal,648,430,,,,,,,,,,217,USDCAD,,0,
+b1_realistic,648,415,,,,,,,,,,232,USDCAD,,0,
+b2,,,224,0,0,0,1,0,0,96,0,,USDCAD,335,,14
+arm_a,,,1760,0,0,0,13,0,0,1321,0,,AUDUSD,3856,,762
+b1_ideal,775,553,,,,,,,,,,221,AUDUSD,,0,
+b1_realistic,775,541,,,,,,,,,,233,AUDUSD,,0,
+b2,,,177,0,0,0,1,0,0,75,0,,AUDUSD,284,,31

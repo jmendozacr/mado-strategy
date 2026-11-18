@@ -1,0 +1,9 @@
+{
+  "generated_from_commit": "b3ebfe238be082a460e9513c5c5411a353b8dd4b",
+  "poll_seconds_assumption": 120,
+  "symbols": [
+    "EURUSD",
+    "USDCAD",
+    "AUDUSD"
+  ]
+}
