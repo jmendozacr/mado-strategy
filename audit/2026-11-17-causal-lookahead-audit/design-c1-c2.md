@@ -1,10 +1,10 @@
-# Design — Intrabar causal detector (Arms C1/C2), REVISED
+# Design — Intrabar causal detector (Arms C1/C2), REVISED (round 2)
 
-Status: **design only, not implemented**. This revises the version reviewed at commit `07fc24c` after an independent review found 4 blocking issues (§1-§4 below). Nothing under `detector/`/`scanner/` touched; nothing in `/docs` touched; A/B1/B2 outputs untouched; no commits made from this revision.
+Status: **design only, not implemented**. Round 1 revised the version reviewed at commit `07fc24c` (4 blocking issues). This round 2 closes the two pending decisions from round 1's §10 (Key-Level source causality; USDCAD/AUDUSD completeness) and fixes one more critical issue a further review found in round 1's own `fill_pass_c` fix. Nothing under `detector/`/`scanner/` touched; nothing in `/docs` touched; A/B1/B2 outputs untouched; no commits made from this revision.
 
-## 0. What changed since the last version, and why
+## 0. What changed since round 1, and why
 
-The reviewed version claimed C1/C2 could reuse `simulate()` fully unmodified because "the trigger is causal, so `retest_index` is causal too." **That claim was wrong** — `retest_index` and `confirmation_index` are different indices, and nothing enforced that a fill could only happen after confirmation. §1 below fixes this with a real custom fill pass (`fill_pass_c`), not a reuse of unmodified `simulate()`. §2 replaces the direct reuse of `_key_level_credit_map`'s index comparison (broken across C1/C2's two different candle grids) with a timestamp-based bridge. §3 fixes every place the design confused a bar's open timestamp with its availability instant — including the EST/EDT examples, which contained an impossible M15 close time (`14:20`, not a real M15 boundary) as a direct symptom of this bug. §4 adds real completeness validation with real numbers, not just a "skip if empty" check.
+Round 1 fixed `fill_pass_c` to floor fill-eligibility at `confirmation_index` instead of `retest_index` — an improvement, but **still not causally sound by itself**: the confirming M15 bar's own high/low (its *full* 15-minute range) was still being used to check for a fill, even though the order is only placed once that bar's *close* occurs. §1 below fixes this precisely: the first fillable bar is the one *after* confirmation, located by real timestamp (not a blind `+1`), with two new required test cases. §2 now carries a full, independent causal trace of `primitives/fvg.py` and `composite/ict_order_block.py` (swings → MSS → displacement → anchor), closing round 1's open blocker on Key-Level-source causality. §4 adds the same completeness measurement for USDCAD and AUDUSD that round 1 only had for EURUSD, including one real, non-trivial anomaly (AUDUSD, concentrated in 2007-2009).
 
 ## 1. CRITICAL — fixed: `retest_index` vs. `confirmation_index`, and the fill-pass redesign
 
@@ -28,49 +28,70 @@ Bullish anchor at M15 index 100, `entry_price = 1.10500` (fixed at the body-engu
 - `j=104`: price dips to `low=1.10490` — **this touches `entry_price`**. Price does not yet close back beyond `retest_open` this bar.
 - `j=105`: price finally closes beyond `retest_open` → `confirmation_index = 105`. The `Model1Signal` is `CONFIRMED` only now.
 
-Under the reviewed (broken) design, `eligible_at = retest_index = 103` would let `_fill_pass`'s sweep credit the touch at `j=104` as a valid fill — one bar *before* the signal was even confirmed. If price never returns to `1.10500` after `j=105`, production's `simulate()` would still show a filled, resolved trade that, causally, could not have existed: at `j=104` nothing yet distinguished this anchor from one about to `INVALIDATE`.
+Under the round-1-reviewed (broken) design, `eligible_at = retest_index = 103` would let `_fill_pass`'s sweep credit the touch at `j=104` as a valid fill — one bar *before* the signal was even confirmed.
 
-**Fix**: `eligible_at = confirmation_index = 105`, not `retest_index`. The candidate is not even pushed into the fill-sweep's heap until step `j=105` is reached, so the `j=104` touch is correctly invisible to it. If price does not come back to `1.10500` at or after `j=105` within `max_fill_wait`, the trade is correctly `never_filled` — not a phantom early fill.
+### 1.2b Round-2 finding: round 1's fix (`eligible_at = confirmation_index`) was still incomplete
 
-### 1.3 Separating the five moments explicitly (per the review's ask)
+A further review caught this: bar `j=105` (the confirmation bar) itself has a full 15-minute range (say it opens `09:30`, closes `09:45`). Its `low`/`high` reflect price action across that *entire* 15 minutes — but the order is only placed once that bar's **close** occurs, i.e., at `09:45`. If `eligible_at = confirmation_index = 105` is used directly, `_fill_sides`' sweep checks bar `105`'s *own* `low`/`high` against `entry_price` — using price movement from `09:30`-`09:44`, before the order existed. That is the same class of bug §1.1 fixed, one bar later.
+
+**Corrected fix**: the first fillable bar is the first one whose *own open* is at or after `order_placed_ts` (`confirmation_index`'s close) — not `confirmation_index` itself:
+
+```python
+first_fillable_index = bisect.bisect_left(m15_timestamps, order_placed_ts)
+# order_placed_ts = available_at(m15.candles[confirmation_index], M15_DURATION)
+#                  = m15.candles[confirmation_index].timestamp + M15_DURATION
+```
+
+On a gapless grid this equals `confirmation_index + 1` exactly (verified: `m15.candles[confirmation_index + 1].timestamp == m15.candles[confirmation_index].timestamp + M15_DURATION` whenever no gap follows). The `bisect` form is used anyway, per the review's explicit instruction, because §4 confirms real gaps exist (holidays, DST) where a blind `+1` would land on a bar that does not actually open at `order_placed_ts` — `bisect_left` on real timestamps always finds the correct next *actually existing* bar.
+
+If price touched `entry_price` only inside the confirmation bar (`j=105`, `09:30`-`09:45`) and never again at or after `first_fillable_index` (`09:45` onward), the trade is `never_filled` — not filled at `j=105`. If price touches `entry_price` again at or after `first_fillable_index`, *that* later touch is the credited fill.
+
+### 1.3 Separating the five moments explicitly (per the review's ask), corrected
 
 | Moment | Definition | Field |
 |---|---|---|
 | Retest observed | `m15.candles[signal.retest_index]` wicks back into the anchor body | `retest_observed_index` |
-| Confirmation available | `m15.candles[signal.confirmation_index]`'s own bar has closed (see §3) — the signal's final state (`CONFIRMED`/`PENDING`/`INVALIDATED`) is now knowable | `model1_available_index` / `model1_available_ts` |
-| Order constructible | Same instant as confirmation available, for a `CONFIRMED` signal only — `entry_price`/`stop_loss`/`take_profit`/`partial_price` are already fixed values (from `_build_candidate`, unmodified), so nothing new needs computing | `order_constructed_ts` = `model1_available_ts` |
-| Order placed | Same instant (no separate scanner-discovery delay here, unlike B1 — this whole path only ever used information real at the time) | `order_placed_ts` = `model1_available_ts` |
-| First executable instant | The first M15 bar at or after `order_placed_ts` whose OWN close has occurred — i.e., `eligible_at = model1_available_index` itself, interpreted as "this bar's close is `model1_available_ts`" | `first_fillable_index` = `model1_available_index` |
+| Confirmation available | `m15.candles[signal.confirmation_index]`'s own bar has closed (§3) — the signal's final state (`CONFIRMED`/`PENDING`/`INVALIDATED`) is now knowable | `model1_available_ts = available_at(confirmation_index)` |
+| Order constructible | Same instant as confirmation available, for a `CONFIRMED` signal only — `entry_price`/`stop_loss`/`take_profit`/`partial_price` are already fixed values (from `_build_candidate`, unmodified) | `order_constructed_ts = model1_available_ts` |
+| Order placed | Same instant (no separate scanner-discovery delay here, unlike B1) | `order_placed_ts = model1_available_ts` |
+| **First executable instant** | The first M15 bar whose own **open** is `>= order_placed_ts` — i.e. the bar *after* the confirmation bar, never the confirmation bar itself | `first_fillable_index = bisect_left(m15_timestamps, order_placed_ts)` **(corrected from round 1, which wrongly used `confirmation_index` itself)** |
 
-Only `CONFIRMED` signals are carried forward into C1/C2's candidate stream at all (an explicit, new filter — stricter than production's existing `retest_index is not None` check, and documented as a deliberate divergence: production's looser behavior is a pre-existing question about A/B1/B2, not something this causal-correctness arm should reproduce).
+Only `CONFIRMED` signals are carried forward into C1/C2's candidate stream at all (an explicit, new filter — stricter than production's existing `retest_index is not None` check, a deliberate divergence unchanged from round 1).
 
-### 1.4 `fill_pass_c` — the actual design (supersedes "no custom fill pass needed")
+### 1.4 `fill_pass_c` — corrected design
 
 ```python
 # causal_intrabar.py — reuses _fill_sides, two_heap_sweep, _resolve_exits
-# from backtest.simulate UNMODIFIED, imported. Only eligible_at changes,
-# exactly the same shape as fill_b1.fill_pass_b1, floored at a DIFFERENT
-# per-candidate index (model1_available_index, not a placement delay).
+# from backtest.simulate UNMODIFIED, imported. eligible_at and the
+# max_fill_wait anchor both use first_fillable_index (the bar AFTER
+# confirmation, located by real timestamp) -- never confirmation_index
+# itself, and never retest_index.
 
-def fill_pass_c(candidates, candles, max_fill_wait, available_index_by_signal_id):
-    eligible = [c for c in candidates if available_index_by_signal_id.get(c.signal_id) is not None]
-    fill_order = sorted(eligible, key=lambda c: available_index_by_signal_id[c.signal_id])
+def fill_pass_c(candidates, candles, m15_timestamps, max_fill_wait, order_placed_ts_by_signal_id):
+    first_fillable = {
+        sid: bisect.bisect_left(m15_timestamps, ts)
+        for sid, ts in order_placed_ts_by_signal_id.items()
+    }
+    eligible = [c for c in candidates if first_fillable.get(c.signal_id, len(candles)) < len(candles)]
+    fill_order = sorted(eligible, key=lambda c: first_fillable[c.signal_id])
     fill_results = two_heap_sweep(
         candles, fill_order,
-        eligible_at=lambda c: available_index_by_signal_id[c.signal_id],
+        eligible_at=lambda c: first_fillable[c.signal_id],
         sides=_fill_sides(), default=None,
     )
     filled = [
         (candidate, fill_index) for candidate, fill_index in zip(fill_order, fill_results)
-        if fill_index is not None
-        and fill_index - available_index_by_signal_id[candidate.signal_id] <= max_fill_wait
+        if fill_index is not None and fill_index - first_fillable[candidate.signal_id] <= max_fill_wait
     ]
     return filled, len(fill_order) - len(filled)
 ```
 
-`_resolve_exits` (unmodified) is then called on `filled` exactly as production does — SL/TP/partial/breakeven resolution has no causality defect of its own (confirmed in Phase 1), so it is reused as-is, satisfying "no reimplementes innecesariamente ... las funciones de salida que sean correctas."
+`_resolve_exits` (unmodified) is then called on `filled` exactly as production does — SL/TP/partial/breakeven resolution has no causality defect of its own (confirmed in Phase 1), reused as-is.
 
-This is architecturally identical in shape to `fill_b1.fill_pass_b1` (same reuse of `_fill_sides`/`two_heap_sweep`/`_resolve_exits`), but floored at a semantically different index. **Correction to the prior design: C1/C2 are NOT like B2 in this respect — they need the same kind of custom fill pass B1 needed, just with a different, correctly-causal floor.**
+### 1.5 The two required test cases (both now specified precisely)
+
+1. **`test_fill_pass_c_touch_only_during_confirmation_bar_never_fills`**: bullish candidate, `entry_price=1.10500`; confirmation bar (`confirmation_index`, opening `09:30`, closing `09:45`) has `low=1.10490` (touches); every bar from `first_fillable_index` (`09:45` onward) through `max_fill_wait` has `low > 1.10500` (never touches again). **Required result: `never_filled`.**
+2. **`test_fill_pass_c_touch_after_activation_fills_at_that_later_touch`**: same setup, but one bar at or after `first_fillable_index` (say `10:15`) also has `low=1.10495` (touches). **Required result: filled at `10:15`'s index, never at the confirmation bar's index.**
 
 ## 2. CRITICAL — fixed: Key Levels compared by timestamp, never by raw index across grids
 
@@ -82,7 +103,27 @@ This is architecturally identical in shape to `fill_b1.fill_pass_b1` (same reuse
 
 So every `KeyLevel.origin_index`/`expiry_index` in this codebase is, and can only be, an index into the **broker H4 grid**. `_key_level_credit_map`'s check `level.origin_index < purge_index` (and the expiry check) is only meaningful when `purge_index` is *also* a broker-H4-grid index. **C2's "current candle" is a NY-anchored feeder candle — a different series, with a different count and different boundaries. Passing its position as `purge_index` into that comparison would compare two unrelated numbers.**
 
-I did not re-derive `detect_order_blocks`'s own internal `confirmation_index` causal correctness from scratch (out of scope for this phase, same inherited-trust boundary as §8.1) — I verified only the documented contract and the reindexing step, which are both explicitly causal by their own comments.
+### 2.1b Full independent causal trace (round 2 — closes round 1's open blocker)
+
+Round 1 only verified the documented *contract* on `to_key_levels`'s own comments. Per this round's instruction ("no aceptes comentarios del código como prueba suficiente"), every dependency was traced to its primitive source:
+
+**FVG chain** (`primitives/fvg.py`):
+- `detect_fvgs`: `_formed_gap(candles[i], candles[i+2])` compares candle `i`'s high/low against candle `i+2`'s low/high — needs candle `i+2`'s own high/low, i.e., needs candle `i+2` to have closed. The size filter uses `atr(candles, i+2)`.
+- `core/atr.py::atr(candles, index)`: `start = max(0, index - period + 1); true_ranges = [true_range(candles, j) for j in range(start, index+1)]` — strictly backward-looking (never reads `candles[j]` for `j > index`), and `true_range` itself only reads `candles[index]` and `candles[index-1]`. No future dependency.
+- `to_key_levels`: `origin_index = fvg.end_index = i+2`. **Verdict: `origin_index`'s true availability is `available_at(candles[i+2], H4_DURATION)` — that candle's own close — exactly what `key_level_credited` (§2.2) already uses. No bug.**
+
+**Order-Block chain** (`composite/ict_order_block.py` + its three dependencies):
+1. `primitives/swing.py::detect_swings`: a swing at index `i` requires `candles[i].high > candles[i-1].high and candles[i].high > candles[i+1].high` (symmetric for lows) — **needs candle `i+1` to exist and have closed**. A swing's own true availability is `available_at(candles[i+1])`, one candle later than its own index — confirmed, this is the exact mechanism `backtest/levels.py::stop_loss`'s own docstring already names ("`detect_swings` only confirms a swing at index `i` once candle `i+1` exists").
+2. `composite/mss.py::detect_mss_events`: for each swing, `_sweep_decisive_breaks` only considers candles from `swing.index + 1` onward (`eligible_at = p[0].index + 1`) and resolves via `candle.close` at the break index — so `MSSEvent.index = break_index` always satisfies `break_index >= swing.index + 1`, and the event's own availability (`available_at(candles[break_index])`) is, by construction, never earlier than the swing's own availability (`available_at(candles[swing.index+1])`), whether or not they coincide on the same bar. **No violation.**
+3. `composite/displacement.py::confirm_displacement`: accumulates `candle.close - candle.open` from `break_index` through at most 3 candles, returning the first index where the net crosses an ATR(14)-based threshold — that returned `index`'s own close is part of the sum, so **its true availability is `available_at(candles[index], H4_DURATION)`** — exactly what `origin_index = block.confirmation_index` represents, and exactly what `key_level_credited` already uses.
+4. `composite/order_block_scan.py::scan_for_anchor`: a pure *backward* scan (`range(displacement_start - 1, floor - 1, -1)`) over candles strictly before `displacement_start` (which is itself before `confirmation_index`) — every candle it reads already closed before `confirmation_index`'s own close. **No future dependency.**
+5. `_resolve_lifecycle` (mitigation/invalidation): forward scan from `confirmation_index + 1`, reading each candle's own `low`/`high`/`close` — same uniform bar-close convention as everywhere else.
+
+**Daily-sourced reindexing** (`alignment/htf_ltf.py::_reindex_daily_key_levels`/`_daily_close`/`_ceiling_htf_index`, re-confirmed): `_daily_close` returns the *next* Daily candle's open as a conservative stand-in for "this Daily candle's own close" (explicitly documented, and conservative in the right direction — never earlier than the real close); `_ceiling_htf_index` finds the first broker-H4 index whose own timestamp is `>=` that conservative instant. Combined with the strict `origin_index < purge_index` check (and the broker H4 grid's own candles being contiguous, confirmed in Phase 1's M15-aggregation check), `purge_index`'s own open is guaranteed to be at or after the Daily level's real confirmation. **No violation.**
+
+### 2.1c Verdict
+
+**FVG and Order-Block Key Levels are both causally correct**, independently re-derived from their primitive detectors (swings, MSS, displacement, ATR, backward anchor scan) rather than taken on faith from a comment — answering this round's explicit question #1/#2: **yes, both are causally correct**, under one condition that was already true of the design: the credit check must use `available_at(origin_index)` (that candle's own **close**), never its open — which is exactly what `key_level_credited` (§2.2) implements. **Round 1's open blocker is closed.** Nothing in `detector/` needed to change to reach this conclusion; this was investigation only.
 
 ### 2.2 Fix: a timestamp bridge, Key-Level source held constant between C1 and C2
 
@@ -113,9 +154,9 @@ This reproduces `_key_level_credit_map`'s exact rule (origin strictly before the
 
 **This is the one place the design knowingly does NOT reuse an existing function's comparison logic verbatim** (`_key_level_credit_map` itself) — documented here as a deliberate, narrow divergence with a stated reason (cross-grid index incomparability), not a silent reimplementation, and not touching `detector/`.
 
-### 2.3 Remaining explicit blocker
+### 2.3 Blocker status: CLOSED (see §2.1c)
 
-Per the review's own instruction: *"Si la causalidad de las fuentes de Key Level sigue sin poder demostrarse, debe tratarse como un bloqueo explícito."* I have verified the documented *contract* (origin = first provably-knowable index, conservative Daily-close reindexing) but have **not** independently re-derived `detect_fvgs`/`detect_order_blocks`'s own internal logic line-by-line the way I did for `_track_anchor`. **This stays an open blocker**, carried by every arm (A/B1/B2/C1/C2 alike) equally — it does not bias a C1-vs-C2 comparison against each other, but it does mean no arm's absolute numbers can yet be called fully, end-to-end causally proven from Key-Level origin through to position close. Resolving it would require the same depth of code-tracing §1 just got, applied to `primitives/fvg.py`'s 3-candle gap confirmation and `composite/ict_order_block.py`'s swing/MSS-based confirmation — not done in this revision; flagged for explicit decision on whether to do it before trusting C1/C2's own absolute R numbers, as opposed to trusting only the *qualitative, relative* C1-vs-C2 and C-vs-A comparison (which is unaffected, since the same unverified Key-Level pipeline feeds both C1 and C2 identically).
+Round 1 left this open. §2.1c's independent trace through `primitives/fvg.py` and `composite/ict_order_block.py` (down to swings/MSS/displacement/ATR) closes it: both Key-Level sources are causally correct under the `available_at(origin_index)` convention already used by `key_level_credited`.
 
 ## 3. HIGH — fixed: bar open/close/availability contract
 
@@ -157,15 +198,25 @@ def validate_complete_feeder_bucket(bucket: tuple[Candle, ...], expected_open_ts
 
 A bucket that fails this check is **not** turned into a `CompleteFeederCandle` at all — it is marked `incomplete` (holiday/gap/DST), reported, and excluded from being used as a *reference range* (§2's "previous candle"). This is stricter than the reviewed design's "skip if zero M15 bars" — it now also catches a *partially* populated bucket.
 
-### 4.2 Empirical measurement (EURUSD, run against real data, full 2003-2026 history)
+### 4.2 Empirical measurement — all three pairs, full 2003-2026 history (round 2 adds USDCAD/AUDUSD)
 
-| Construction | Buckets with ≥1 bar | Incomplete (≠16 bars) | Misaligned despite 16 bars |
-|---|---|---|---|
-| NY-anchored 9AM | 6,118 | 11 (0.18%) | 0 |
-| NY-anchored 1AM | 6,128 | 12 (0.20%) | 0 |
-| Broker-grid (today's code's "1AM" slot) | 6,128 | 4 (0.07%) | 0 |
+| Pair | Construction | Buckets with ≥1 bar | Incomplete (≠16 bars) | Misaligned despite 16 bars |
+|---|---|---|---|---|
+| EURUSD | NY-anchored 9AM | 6,118 | 11 (0.18%) | 0 |
+| EURUSD | NY-anchored 1AM | 6,128 | 12 (0.20%) | 0 |
+| EURUSD | Broker-grid | 6,128 | 4 (0.07%) | 0 |
+| USDCAD | NY-anchored 9AM | 6,050 | 12 (0.20%) | 0 |
+| USDCAD | NY-anchored 1AM | 6,061 | 15 (0.25%) | 0 |
+| USDCAD | Broker-grid | 6,061 | 7 (0.12%) | 0 |
+| AUDUSD | NY-anchored 9AM | 6,041 | **127 (2.10%)** | 0 |
+| AUDUSD | NY-anchored 1AM | 6,056 | 18 (0.30%) | 0 |
+| AUDUSD | Broker-grid | 6,056 | 6 (0.10%) | 0 |
 
-Real examples of incomplete buckets: `2013-12-25` (Christmas, 8/16 bars), `2003-07-22`/`2003-08-15`/`2003-09-02` (early-history thin-liquidity gaps, 12-15/16 bars), `2004-03-30` and `2005-06-10` (DST-adjacent gaps, 9-14/16 bars). **Zero cases of 16 bars present but misaligned/non-consecutive** — when this dataset has a full bucket, it is always a clean, contiguous 4-hour span; incompleteness is always an outright missing-bar count, never a hidden ordering problem. Rate is low (~0.1-0.2%) but nonzero and must be handled explicitly, not assumed away — exactly the review's point. USDCAD/AUDUSD not yet re-measured for this specific check; expected to be similar in kind (same broker, same M15 grid) but not yet confirmed — flagged, not assumed.
+**Zero cases of 16 bars present but misaligned/non-consecutive, across all three pairs, all three constructions** — when this dataset has a full bucket, it is always a clean, contiguous 4-hour span; incompleteness is always an outright missing-bar count, never a hidden ordering problem. Duplicate timestamps are structurally impossible in this dataset (`ingestion/loader.py::_validate_timestamp_order` rejects them at CSV-load time), so no separate duplicate check was needed beyond consecutiveness.
+
+**Real examples**: EURUSD `2013-12-25` (Christmas, 8/16), `2004-03-30`/`2005-06-10` (DST-adjacent gaps); USDCAD `2003-12-25`, `2004-01-01` (1/16 — nearly the whole session missing), `2004-03-30`/`2005-06-10`; AUDUSD `2003-12-25`, `2004-01-01`, `2004-03-30`/`2005-06-10`, and (see below) a large 2007-2009 cluster.
+
+**AUDUSD anomaly, investigated rather than assumed**: AUDUSD's NY-anchored 9AM incompleteness (2.10%) is **4-7x every other row in this table**. Characterized its 127 incomplete dates by year rather than guessing: `{2007: 47, 2008: 35, 2009: 25, 2003: 8, 2005: 4, 2010: 3, 2004: 2, 2012: 1, 2014: 1, 2015: 1}` — **84% of the incompleteness (107/127) is concentrated in 2007-2009**, not early-history thin liquidity (which would show up in 2003 and taper off — it does not). This is a genuine, AUDUSD-specific, 2007-2009-concentrated broker-data-export gap pattern affecting the NY 13:00-17:00 UTC window specifically (the 9AM-NY slot) more than the 1AM-NY slot (0.30%) or the broker's own native grid (0.10%) for the same pair/period — consistent with a gap that happens to fall disproportionately inside that particular UTC window during those years, not a general AUDUSD data-quality problem (AUDUSD's OTHER two constructions are in line with EURUSD/USDCAD). **Not yet root-caused further** (e.g., not checked against MT5/broker history of AUDUSD trading-hours changes in 2007-2009) — flagged as a known, quantified, non-uniform gap rather than averaged away.
 
 ## 5. Revised state machine
 
@@ -177,20 +228,24 @@ Real examples of incomplete buckets: `2013-12-25` (Christmas, 8/16 bars), `2003-
 | `WAITING_FOR_MODEL1` | Immediately follows `HTF_CONDITIONS_OBSERVED` — `confirm_in_ltf_window` is now searching `[max(window_start, activation_instant), window_end)` | (no new timestamp; a search interval, not an instant) |
 | `MODEL1_CONFIRMED_AND_AVAILABLE` *(renamed, per review §5 — no longer conflated with "retest")* | `confirm_in_ltf_window` returns `status=CONFIRMED`; `model1_available_ts = available_at(m15.candles[signal.confirmation_index], M15_DURATION)` | `model1_available_ts` |
 | `ORDER_CONSTRUCTED_AND_PLACED` | Same instant as above (§1.3 — nothing new to wait for; nothing here uses `retest_ts` as if it were later confirmation) | `order_placed_ts = model1_available_ts` |
-| `ORDER_ACTIVE` | `fill_pass_c` has pushed the candidate into its sweep (eligible from `order_placed_ts`'s bar onward) | `order_placed_ts` (carried forward) |
+| `ORDER_ACTIVE` | `fill_pass_c` has pushed the candidate into its sweep -- eligible from `first_fillable_index` onward, **the bar AFTER the one whose close produced `order_placed_ts`, never that bar itself** (round-2 fix, §1.2b) | `first_fillable_ts = m15.candles[first_fillable_index].timestamp` (an open, not a close -- this is when the bar the sweep reads FROM begins, not when anything new becomes known) |
 | `FILLED` / `EXPIRED` / `INVALIDATED` | `fill_pass_c` + unmodified `_resolve_exits` outcome | `entry_ts`/`exit_ts` |
 
 Explicit invariant (tested, §6): for every signal, `feeder_ref_available_ts <= activation_instant_ts <= model1_available_ts <= entry_ts (if filled) <= exit_ts`. **`retest_ts` is never used as an activation timestamp anywhere** — it is retained only as a diagnostic field (when the retest was *observed*, for the reconciliation file), never as a decision boundary.
 
 ## 6. Automated tests needed (additions to the existing suite, not a rewrite)
 
-1. `test_fill_pass_c_never_fills_between_retest_and_confirmation` — the §1.2 example, made concrete: assert a touch strictly between `retest_index` and `confirmation_index` is never credited, and the SAME touch, moved to at-or-after `confirmation_index`, is credited.
-2. `test_key_level_credited_rejects_cross_grid_index_reuse` — construct a `KeyLevel` with `origin_index=5` on a 10-candle broker H4 series and a *different*, shorter NY-feeder series; assert `key_level_credited` only ever compares via `available_at(...)` timestamps, never raw indices (i.e., changing the NY-series' bucket count must not change which levels credit).
-3. `test_bar_available_at_is_open_plus_duration` — pins §3.2's contract for both M15 (15 min) and H4-feeder (4h) durations, including the two DST-transition days found in §4.2.
-4. `test_validate_complete_feeder_bucket_rejects_partial_and_misaligned` — table-driven: 16 consecutive bars (pass), 15 bars (fail), 16 bars with a duplicate/gap (fail), bars starting one step late (fail).
-5. `test_state_machine_timestamps_are_monotonic` — run C1 (cheap, synthetic) and assert the §5 invariant chain holds for every produced signal.
-6. `test_c1_c2_share_everything_except_candle_source` — a structural test: both call the same `detect_triggers(feeder_source, ...)` entry point; assert via introspection or a shared-code-path marker that no C1-only or C2-only branch exists outside the swapped `feeder_source` argument.
-7. Re-affirm from the existing suite: Arm A still reproduces the audited baseline exactly (already covered, unaffected by this revision).
+1. `test_fill_pass_c_never_fills_between_retest_and_confirmation` — §1.2's example: a touch strictly between `retest_index` and `confirmation_index` is never credited.
+2. **`test_fill_pass_c_touch_only_during_confirmation_bar_never_fills`** (new, round 2, §1.5.1) — a touch occurring only inside the confirmation bar itself (`confirmation_index`, before `first_fillable_index`) must resolve `never_filled`, not filled.
+3. **`test_fill_pass_c_touch_after_activation_fills_at_that_later_touch`** (new, round 2, §1.5.2) — the same setup, with an additional touch at or after `first_fillable_index`, must fill there, never at the confirmation bar.
+4. `test_fill_pass_c_first_fillable_index_uses_real_timestamps_across_a_gap` (new, round 2) — construct an M15 series with a gap immediately after `confirmation_index` (next bar opens later than `+15min`); assert `first_fillable_index` resolves to the actual next bar via `bisect`, not a blind `confirmation_index + 1`.
+5. `test_key_level_credited_rejects_cross_grid_index_reuse` — construct a `KeyLevel` with `origin_index=5` on a 10-candle broker H4 series and a *different*, shorter NY-feeder series; assert `key_level_credited` only ever compares via `available_at(...)` timestamps, never raw indices.
+6. `test_key_level_credited_matches_fvg_and_order_block_origin_semantics` (new, round 2) — two cases, one FVG-sourced (`origin_index = fvg.end_index`) and one Order-Block-sourced (`origin_index = block.confirmation_index`, reindexed), both asserting the credit only fires at-or-after that candle's **close**, never its open — pins §2.1b/§2.1c's trace as a regression test, not just a one-time manual audit.
+7. `test_bar_available_at_is_open_plus_duration` — pins §3.2's contract for both M15 (15 min) and H4-feeder (4h) durations, including the two DST-transition days found in §4.2.
+8. `test_validate_complete_feeder_bucket_rejects_partial_and_misaligned` — table-driven: 16 consecutive bars (pass), 15 bars (fail), 16 bars with a duplicate/gap (fail), bars starting one step late (fail).
+9. `test_state_machine_timestamps_are_monotonic` — run C1 (cheap, synthetic) and assert the §5 invariant chain holds for every produced signal, including `first_fillable_ts > model1_available_ts` strictly (never equal, per the round-2 fix).
+10. `test_c1_c2_share_everything_except_candle_source` — a structural test: both call the same `detect_triggers(feeder_source, ...)` entry point; assert via introspection or a shared-code-path marker that no C1-only or C2-only branch exists outside the swapped `feeder_source` argument.
+11. Re-affirm from the existing suite: Arm A still reproduces the audited baseline exactly (already covered, unaffected by this revision).
 
 ## 7. B1-realistic caveat (review §7 — documentation only, B1 not rerun)
 
@@ -200,20 +255,39 @@ Explicit invariant (tested, §6): for every signal, `feeder_ref_available_ts <= 
 
 Both arms now share: §1's `fill_pass_c`, §2's `key_level_credited` (same `KeyLevel` objects, sourced identically), §3's bar contract, §5's state machine, and `build_stage6_population`/`_resolve_exits` (unmodified). The **only** swapped dependency remains which function supplies the reference/current `ProvisionalFeederCandle`/`CompleteFeederCandle` pair (§4's broker-grid builder for C1, NY-anchored builder for C2) — enforced by both arms calling one shared `causal_intrabar.detect_triggers(feeder_source, h4_broker_for_key_levels, ...)`, where `h4_broker_for_key_levels` is **always** the broker grid (Key-Level source held constant per §2.2, independent of which grid supplies the sweep side).
 
-## 9. Risks, ambiguities, pending decisions (updated)
+## 9. Risks, ambiguities, pending decisions (updated, round 2)
 
-1. **Key-Level source causality not independently re-derived** (§2.3) — now an explicit, named blocker on trusting C1/C2's *absolute* numbers, though not on the C1-vs-C2 *comparison* itself.
-2. DOL-gated reversal/continuation profile selection — still out of scope (charter defers to unreleased material).
-3. 9AM sweeping the 1AM range (i-2) instead of 5AM's (i-1) — still out of scope per user restriction.
-4. Non-Model-1 (TSQ/breaker-block) entries — still out of scope, no detector scaffolding.
-5. Intrabar same-M15-bar ambiguity — unchanged conservative policy (resolve at that bar's `available_at`), now correctly defined per §3.
-6. DST-transition-day 4-hours convention — unchanged policy, now with real measured impact (§4.2: 2 of the ~23 incomplete-bucket examples found were DST-adjacent, out of ~6,100+6,100 buckets checked — small, not zero, reported per-pair rather than assumed away).
-7. **New**: USDCAD/AUDUSD have not yet been run through §4's completeness check — only EURUSD has real numbers so far.
+1. ~~Key-Level source causality not independently re-derived~~ — **CLOSED, §2.1c.**
+2. ~~USDCAD/AUDUSD completeness not measured~~ — **CLOSED, §4.2**, with one new, real finding: the AUDUSD 2007-2009 9AM-NY gap concentration, not root-caused further (not checked against broker trading-hours-change history for that pair/period) — carried forward as a known, quantified, non-uniform data limitation specific to AUDUSD's 9AM arm, not averaged away.
+3. DOL-gated reversal/continuation profile selection — still out of scope (charter defers to unreleased material).
+4. 9AM sweeping the 1AM range (i-2) instead of 5AM's (i-1) — still out of scope per user restriction.
+5. Non-Model-1 (TSQ/breaker-block) entries — still out of scope, no detector scaffolding.
+6. Intrabar same-M15-bar ambiguity — unchanged conservative policy (resolve at that bar's `available_at`), correctly defined per §3.
+7. DST-transition-day 4-hours convention — unchanged policy; §4.2 confirms 2004-03-30/2005-06-10 appear as incomplete-bucket examples in all three pairs, consistent and small.
 
-## 10. Explicit answer to "is this ready for implementation?"
+## 10. Full causal-chain verification
 
-**Not yet fully** — two things should be decided before implementation, not assumed by me:
-- Whether §2.3's open Key-Level-source-causality question must be resolved (full trace of `primitives/fvg.py`/`composite/ict_order_block.py`) *before* trusting C1/C2's absolute R numbers, or whether it is acceptable to proceed now and treat it as a stated limitation on the final report (it does not bias C1 vs. C2 against each other either way).
-- Whether to also run §4's completeness check against USDCAD/AUDUSD before implementation, or accept EURUSD's measured rate as representative.
+Re-checked explicitly against the chain the review specified, stage by stage, under the round-2 fixes:
 
-Everything else in this revision (§1's fill-pass redesign, §2.2's timestamp bridge, §3's bar contract, §5's state machine) is a concrete, code-level design with no remaining open question I'm aware of — ready to implement once the two points above are answered.
+| Stage | Instant used | Never uses information known later than... |
+|---|---|---|
+| Key Level available | `available_at(level.origin_index)` — that candle's own close (§2.1b/§2.1c, independently traced to swings/MSS/displacement/ATR or the 3-candle FVG gap) | ...its own origin candle's close. |
+| Previous feeder candle confirmed | Passes §4's `validate_complete_feeder_bucket`; its `available_at` is its own close | ...its own close. A bucket failing validation is never promoted to a reference range at all. |
+| Sweep + Key Level observed | `activation_instant_ts = available_at(the M15 bar whose running high/low first satisfies both)` (§5, `HTF_CONDITIONS_OBSERVED`) | ...that M15 bar's own close. The Key-Level side of this check already only credits levels with `available_at(origin_index) < activation_instant_ts` (§2.2). |
+| Model-1 search | Window `[max(window_start, activation_instant), window_end)` (§5's `WAITING_FOR_MODEL1`), unmodified `confirm_in_ltf_window` | ...nothing new — a search interval, not a decision; everything it can find is already bounded to start at-or-after `activation_instant_ts`. |
+| Model-1 confirmed and available | `model1_available_ts = available_at(confirmation_index)` (§1.3) | ...the confirmation bar's own close. |
+| Order constructed and placed | Same instant as above (§1.3) | ...nothing new; all price levels were already fixed earlier and are not time-sensitive data. |
+| First negotiable instant | `first_fillable_index`, the bar strictly **after** the confirmation bar, located via `bisect` on real timestamps (§1.2b, the round-2 fix) | ...`order_placed_ts`; critically, **not** the confirmation bar's own high/low range. |
+| Fill | `fill_pass_c` (§1.4), `_fill_sides`/`two_heap_sweep` unmodified, swept from `first_fillable_index` | ...each swept bar's own close, exactly as production's fill mechanics already assume uniformly. |
+| SL/TP/partial/breakeven | `_resolve_exits` unmodified | ...each resolving bar's own close — no causality defect of its own (Phase 1 finding, unchanged). |
+
+No stage in this chain reads a value from a candle later than the one that stage's own `available_at` instant corresponds to.
+
+## 11. Explicit answers (per the review's 6 questions)
+
+1. **¿Son causalmente correctos los FVG?** Sí — trazado hasta `core/atr.py`, sin dependencia futura, confirmado en §2.1b.
+2. **¿Son causalmente correctos los Order Blocks?** Sí — trazado hasta swings (`primitives/swing.py`, que SÍ necesita la vela `i+1` para confirmar un swing — una capa adicional de retraso causal que resultó estar ya correctamente absorbida por el diseño existente), MSS, displacement y el escaneo hacia atrás del anchor, confirmado en §2.1b.
+3. **¿Qué porcentaje de velas feeder está incompleto en cada par?** EURUSD 0.07-0.20%, USDCAD 0.12-0.25%, AUDUSD 0.10-0.30% salvo su 9AM-NY específico en 2.10% (concentrado 84% en 2007-2009, no en historial temprano) — tabla completa en §4.2.
+4. **¿Está corregida la elegibilidad temporal de `fill_pass_c`?** Sí, en esta ronda — el piso ahora es `first_fillable_index` (la vela DESPUÉS de la de confirmación, localizada por timestamp real vía `bisect`), no `confirmation_index` como en la ronda anterior, que todavía permitía usar el rango completo de la vela de confirmación misma.
+5. **¿Queda algún problema que impida considerar C1/C2 experimentalmente ejecutables?** No, a nivel de diseño. Los dos bloqueos pendientes de la ronda anterior quedaron cerrados (§2.1c, §4.2). La anomalía de AUDUSD 2007-2009 (§9.2) es una limitación de datos conocida y cuantificada, no un bloqueo de diseño — debe reportarse junto a los resultados de esa pata, no impide implementar.
+6. **¿Recomiendas autorizar la implementación?** Sí. El diseño (máquina de estados, contrato de timestamps, `fill_pass_c` corregido, puente de Key Levels, validación de integridad de velas) no tiene ninguna pregunta abierta que yo pueda identificar. La única salvedad que dejo explícita: la anomalía de AUDUSD 2007-2009 debería leerse como "los resultados del brazo 9AM de AUDUSD en ese período tienen una cobertura de datos más débil que el resto" en el informe final, no como un defecto a corregir antes de implementar.
