@@ -1,112 +1,219 @@
-# Design — Intrabar causal detector (Arms C1/C2)
+# Design — Intrabar causal detector (Arms C1/C2), REVISED
 
-Status: **design only, not implemented**. Stop point per user instruction. Nothing under `detector/`/`scanner/` touched; nothing in `/docs` touched; A/B1/B2 outputs untouched.
+Status: **design only, not implemented**. This revises the version reviewed at commit `07fc24c` after an independent review found 4 blocking issues (§1-§4 below). Nothing under `detector/`/`scanner/` touched; nothing in `/docs` touched; A/B1/B2 outputs untouched; no commits made from this revision.
 
-## 0. Scope lock (what this design does NOT cover)
+## 0. What changed since the last version, and why
 
-Charter-11 names considerably more structure than this experiment implements. Documented explicitly so no variant is silently assumed equivalent:
+The reviewed version claimed C1/C2 could reuse `simulate()` fully unmodified because "the trigger is causal, so `retest_index` is causal too." **That claim was wrong** — `retest_index` and `confirmation_index` are different indices, and nothing enforced that a fill could only happen after confirmation. §1 below fixes this with a real custom fill pass (`fill_pass_c`), not a reuse of unmodified `simulate()`. §2 replaces the direct reuse of `_key_level_credit_map`'s index comparison (broken across C1/C2's two different candle grids) with a timestamp-based bridge. §3 fixes every place the design confused a bar's open timestamp with its availability instant — including the EST/EDT examples, which contained an impossible M15 close time (`14:20`, not a real M15 boundary) as a direct symptom of this bug. §4 adds real completeness validation with real numbers, not just a "skip if empty" check.
 
-| Charter-11 concept | In scope for C1/C2? | Why |
+## 1. CRITICAL — fixed: `retest_index` vs. `confirmation_index`, and the fill-pass redesign
+
+### 1.1 Evidence
+
+`detector/entries/model1.py::_track_anchor` (lines 101-166): scanning forward from `anchor_index+1`,
+1. at some index `j1`, the body-engulf closes beyond `body_high`/`body_low` → `confirmed = True`, `entry_price` fixed (via `_select_entry`) — **this does not return a signal yet**.
+2. at some LATER index `j2 >= j1+1`, price wicks back into the body (`_wick_overlaps`) → `retest_index = j2`.
+3. at some index `j3 >= j2` (can equal `j2`, or be several bars later), `_closes_beyond_open(candle.close, retest_open, direction)` finally becomes true → `return signal(retest_index=j2, status=CONFIRMED, confirmation_index=j3)`.
+
+So `j2` (`retest_index`) and `j3` (`confirmation_index`) are frequently different, and **the `Model1Signal` object itself does not exist as `CONFIRMED` until `j3`**. Before `j3`, there is no way to know the anchor will resolve `CONFIRMED` rather than `INVALIDATED` (price could still break the protected extreme between `j2` and `j3`) or `PENDING` (the lookback window could run out first).
+
+Separately: `_population_cuts` (`detector/backtest/population.py:70-96`) only checks `signal.retest_index is None` to decide exclusion — it does **not** check `signal.status`. A `PENDING` signal (retest found, but the window ran out before any re-break close) and even an `INVALIDATED` signal that happened to have a `retest_index` set before the invalidating breach **both survive into the candidate population** exactly like a `CONFIRMED` one, as long as `retest_index is not None`. This is pre-existing production behavior, inherited unchanged by A/B1/B2, and I am not changing it — but it means "the signal has a `retest_index`" was never a safe proxy for "the signal is known to be valid" even in production's own terms. `confirmation_index` is the one field that is always set, for every outcome (`CONFIRMED`/`PENDING`/`INVALIDATED`), representing "the index the scan loop had reached when it finished" — i.e., the earliest instant the signal's *final, as-scanned* state is knowable at all.
+
+`detector/backtest/simulate.py::_fill_pass` (lines 122-136): `eligible_at=lambda c: c.retest_index` — confirms the reviewer's point exactly: fills are sought starting at `retest_index`, with no floor at `confirmation_index` at all.
+
+### 1.2 Concrete example (retest before confirmation, and how the fix stops an early fill)
+
+Bullish anchor at M15 index 100, `entry_price = 1.10500` (fixed at the body-engulf index, say `j1=102`).
+- `j=103`: price wicks back into the anchor's body → `retest_index = 103`, `retest_open = 1.10450`.
+- `j=104`: price dips to `low=1.10490` — **this touches `entry_price`**. Price does not yet close back beyond `retest_open` this bar.
+- `j=105`: price finally closes beyond `retest_open` → `confirmation_index = 105`. The `Model1Signal` is `CONFIRMED` only now.
+
+Under the reviewed (broken) design, `eligible_at = retest_index = 103` would let `_fill_pass`'s sweep credit the touch at `j=104` as a valid fill — one bar *before* the signal was even confirmed. If price never returns to `1.10500` after `j=105`, production's `simulate()` would still show a filled, resolved trade that, causally, could not have existed: at `j=104` nothing yet distinguished this anchor from one about to `INVALIDATE`.
+
+**Fix**: `eligible_at = confirmation_index = 105`, not `retest_index`. The candidate is not even pushed into the fill-sweep's heap until step `j=105` is reached, so the `j=104` touch is correctly invisible to it. If price does not come back to `1.10500` at or after `j=105` within `max_fill_wait`, the trade is correctly `never_filled` — not a phantom early fill.
+
+### 1.3 Separating the five moments explicitly (per the review's ask)
+
+| Moment | Definition | Field |
 |---|---|---|
-| "Core model": 1AM+5AM range → 9AM sweep(of 5AM, i.e. i-1)+Model-1 | **Yes** — this is the user's worked example | Explicitly requested |
-| 9AM sweeping the **1AM** range instead of 5AM's (line 42: "needs that soup from EITHER the 1:00 a.m. OR the 5:00 a.m. range") | **No** | Current production code only ever checks `prev = htf_candles[i-1]`; charter allows i-2 too. User restricted scope to "la variante de dos velas consecutivas". Flagged as a known gap (§8.3), not built. |
-| Reversal vs. Continuation profile selection, each with 2 sub-variants (v1.1/v1.2) | **No** | Charter-11:86-91 says the gatekeeper is **Daily Draw-on-Liquidity status**, and Mado explicitly defers DOL mechanics to unreleased "C3" material — there is no documented, implementable rule available today. Building a DOL gate would require a **new, unapproved** decision. Flagged (§8.2). |
-| Non-Model-1 entries (Turtle-Soup/breaker-block inside the TSQ) — charter-11's own Example 1 says its reversal trade is explicitly "not a valid Model 1" | **No** | User's rule explicitly says "la entrada se ejecuta según las reglas del Modelo #1". The detector has zero scaffolding for breaker-block/TSQ entries (confirmed gap, matches prior Engram finding). Flagged (§8.4). |
-| 1AM model's own analogous sweep (vs. the 9PM candle) | **Yes, mirrored** | User: "La misma lógica causal debe analizarse para el modelo 1AM, utilizando su vela feeder anterior correspondiente." Same state machine, `prev` = 9PM candle, `current` = 1AM candle, same window policy (NY 02:00-04:00 per `MODEL_1AM`). |
+| Retest observed | `m15.candles[signal.retest_index]` wicks back into the anchor body | `retest_observed_index` |
+| Confirmation available | `m15.candles[signal.confirmation_index]`'s own bar has closed (see §3) — the signal's final state (`CONFIRMED`/`PENDING`/`INVALIDATED`) is now knowable | `model1_available_index` / `model1_available_ts` |
+| Order constructible | Same instant as confirmation available, for a `CONFIRMED` signal only — `entry_price`/`stop_loss`/`take_profit`/`partial_price` are already fixed values (from `_build_candidate`, unmodified), so nothing new needs computing | `order_constructed_ts` = `model1_available_ts` |
+| Order placed | Same instant (no separate scanner-discovery delay here, unlike B1 — this whole path only ever used information real at the time) | `order_placed_ts` = `model1_available_ts` |
+| First executable instant | The first M15 bar at or after `order_placed_ts` whose OWN close has occurred — i.e., `eligible_at = model1_available_index` itself, interpreted as "this bar's close is `model1_available_ts`" | `first_fillable_index` = `model1_available_index` |
 
-C1 and C2 both implement **only** the core-model, two-consecutive-feeder-candle, Model-1-only variant, for both the 1AM and 9AM models. Nothing else.
+Only `CONFIRMED` signals are carried forward into C1/C2's candidate stream at all (an explicit, new filter — stricter than production's existing `retest_index is not None` check, and documented as a deliberate divergence: production's looser behavior is a pre-existing question about A/B1/B2, not something this causal-correctness arm should reproduce).
 
-## 1. Architecture
-
-Three new modules under `audit/2026-11-17-causal-lookahead-audit/`, none touching `detector/`:
-
-```
-feeder_ny.py        -- NY-local-anchored feeder candle construction (complete + provisional)
-causal_intrabar.py  -- the state machine; C1/C2 signal detection (replaces arm_b2_signals' role)
-run_c1_c2.py         -- orchestrator (mirrors run_experiment.py's shape)
-```
-
-Everything else is **imported, unmodified**, from `detector/`: `alignment.htf_ltf._purge_wick_extremes`, `_key_level_credit_map` (Key Level crediting — already high/low-only, already causal); `causal.htf_trigger.confirmation_window_utc`, `ltf_window_indices`, `confirm_in_ltf_window`, `MODEL_1AM`, `MODEL_9AM` (window bounds + the UNCHANGED Model-1 search); `backtest.population.build_stage6_population`; `backtest.simulate.simulate`; `core.config.DetectorConfig`; the same `SYMBOL_CONFIG` from `experimental.htf_trigger_1am_9am_backtest` used by A/B1/B2.
-
-**Key simplification, discovered while designing**: because the new trigger condition (sweep + Key Level, both wick-only) can only fire at-or-after `activation_instant`, and the Model-1 search window is floored at `max(window_start, activation_instant)`, the resulting `retest_index` is *causally valid by construction* — exactly the same situation as Arm B2. **C1 and C2 need no custom fill pass.** Both feed their signals into the production `build_stage6_population`/`simulate`, unmodified — identical reuse pattern to B2, not B1. This directly satisfies §7's "no second Model-1 implementation": only the *trigger* (sweep+Key-Level detection) is new; confirmation, retest, fill, SL/TP/partial/breakeven are 100% the existing functions.
-
-## 2. State machine
-
-| State | Entered when | Timestamp recorded |
-|---|---|---|
-| `WAITING_FOR_FEEDER` | Reference (previous) feeder candle not yet fully closed | — (not yet a real event) |
-| `WAITING_FOR_SWEEP_AND_KEY_LEVEL` | Reference candle's final OHLC known (its own close has occurred) | `feeder_ref_close_ts` |
-| `WAITING_FOR_MODEL1` | First M15 close at which the running high/low of the *current* forming candle both (a) breaches the reference candle's extreme and (b) credits a registered Key Level (`_purge_wick_extremes`/`_key_level_credit_map`, evaluated on the provisional candle) | `activation_instant_ts` (= that M15 candle's own close, see §8.5 on intrabar resolution) |
-| `MODEL1_CONFIRMED` | `confirm_in_ltf_window` (unmodified) returns a `CONFIRMED` `Model1Signal` inside `[max(window_start, activation_instant), window_end)` | `confirmation_ts` = `m15.candles[signal.confirmation_index].timestamp` |
-| `ORDER_ACTIVE` | Same instant as `MODEL1_CONFIRMED` (Model-1's own retest IS the order-construction trigger — no separate discovery delay, unlike B1, because this path never used pre-activation information to find it) | `retest_ts` = `m15.candles[signal.retest_index].timestamp` |
-| `FILLED` / `EXPIRED` / `INVALIDATED` | Production `simulate()`'s own unmodified fill/resolve outcome | `entry_ts`/`exit_ts` from the resulting `Trade` |
-
-Invariant checked in tests (§9 of the prior conversation's test suite will be extended, not rewritten): every state's timestamp is `>=` the previous state's timestamp, for every signal, in both C1 and C2 output.
-
-**Important distinction from B1/B2**: B2 floored the window at the H4 candle's *close* (one instant per trigger). C1/C2 floor it at `activation_instant` — the sweep+Key-Level moment, which can fall *anywhere* inside the forming candle, usually well before its close. This is the whole point: it recovers trades B2 destroyed by being needlessly strict (waiting for the close when the charter never asked for that), while still never using information before it was real.
-
-## 3. Feeder candle construction (`feeder_ny.py`)
-
-Two candle shapes, deliberately different types so a "final value of an open candle" cannot type-check as available:
+### 1.4 `fill_pass_c` — the actual design (supersedes "no custom fill pass needed")
 
 ```python
-@dataclass(frozen=True)
-class CompleteFeederCandle:        # only ever built from a FULLY elapsed window
-    open: float; high: float; low: float; close: float
-    open_ts: datetime; close_ts: datetime
+# causal_intrabar.py — reuses _fill_sides, two_heap_sweep, _resolve_exits
+# from backtest.simulate UNMODIFIED, imported. Only eligible_at changes,
+# exactly the same shape as fill_b1.fill_pass_b1, floored at a DIFFERENT
+# per-candidate index (model1_available_index, not a placement delay).
 
-@dataclass(frozen=True)
-class ProvisionalFeederCandle:     # built from "M15 bars closed so far" only
-    open: float; running_high: float; running_low: float
-    open_ts: datetime; as_of_ts: datetime   # NO close field -- cannot exist
+def fill_pass_c(candidates, candles, max_fill_wait, available_index_by_signal_id):
+    eligible = [c for c in candidates if available_index_by_signal_id.get(c.signal_id) is not None]
+    fill_order = sorted(eligible, key=lambda c: available_index_by_signal_id[c.signal_id])
+    fill_results = two_heap_sweep(
+        candles, fill_order,
+        eligible_at=lambda c: available_index_by_signal_id[c.signal_id],
+        sides=_fill_sides(), default=None,
+    )
+    filled = [
+        (candidate, fill_index) for candidate, fill_index in zip(fill_order, fill_results)
+        if fill_index is not None
+        and fill_index - available_index_by_signal_id[candidate.signal_id] <= max_fill_wait
+    ]
+    return filled, len(fill_order) - len(filled)
 ```
 
-- `complete_feeder_candles(m15_series, feeder_hour_ny)`: for each calendar day, true NY-local open via `zoneinfo` (the exact technique already validated empirically: `America/New_York` localize → `.astimezone(UTC)`), window `[open, open+4h)`, bucket M15 candles via `bisect`. **A day with zero M15 candles in the bucket produces NO candle (skipped, never synthesized)** — handles holidays/gaps per the "no inventar velas" constraint. The 2 DST-transition days/year use the same UTC-side `+timedelta(hours=4)` convention `confirmation_window_utc` already uses elsewhere in this codebase, for consistency — flagged explicitly in §8.6 as the one place "4 hours" means 4 *real* hours, not 4 *wall-clock-labelled* hours, on those 2 days only.
-- `provisional_feeder_candle(m15_series, open_ts, as_of_index)`: aggregates only `m15_series.candles[start:as_of_index+1]` (bars with `timestamp <= as_of_ts`, i.e., **already closed** M15 bars) into a `ProvisionalFeederCandle`. Called once per M15 step while walking forward through the forming candle's span — this is the "watch the vela as it forms" loop.
-- **C1's candle source**: same construction function, but with `feeder_hour_ny` replaced by the *existing* `trigger_utc_hour` from `causal.htf_trigger.FeederModel` and windows built directly on the fixed UTC grid (00/04/08/12/16/20) — i.e., C1 literally reuses today's production grid-selection logic for *which* candle is "current"/"previous", just observes it incrementally instead of only at the end.
-- **C2's candle source**: `feeder_ny.py`'s NY-anchored construction, per the validated 84-86%-different geometry.
+`_resolve_exits` (unmodified) is then called on `filled` exactly as production does — SL/TP/partial/breakeven resolution has no causality defect of its own (confirmed in Phase 1), so it is reused as-is, satisfying "no reimplementes innecesariamente ... las funciones de salida que sean correctas."
 
-## 4. Key Level causal handling
+This is architecturally identical in shape to `fill_b1.fill_pass_b1` (same reuse of `_fill_sides`/`two_heap_sweep`/`_resolve_exits`), but floored at a semantically different index. **Correction to the prior design: C1/C2 are NOT like B2 in this respect — they need the same kind of custom fill pass B1 needed, just with a different, correctly-causal floor.**
 
-No new logic: `_purge_wick_extremes(candle, crt_range)` and `_key_level_credit_map(...)` are **imported unmodified**. They are called with a tiny adapter object exposing only `.high`/`.low` (either a real `Candle` with `open`/`close` set to a placeholder — never read by these two functions, confirmed by reading their source — or a minimal duck-typed stand-in) carrying the `ProvisionalFeederCandle`'s `running_high`/`running_low`. Re-evaluated on every new M15 close until it first returns non-`None`/non-empty — that candle is `activation_instant`.
+## 2. CRITICAL — fixed: Key Levels compared by timestamp, never by raw index across grids
 
-**Flagged risk, not resolved here (§8.1)**: the Key Levels themselves (FVGs on H4, Order Blocks on Daily) are built by `build_key_levels`/`detect_fvgs`/`detect_order_blocks` from the *existing* H4/Daily series — those detectors were never causality-audited in this investigation. `_key_level_credit_map`'s own `origin_index < purge_index` check already prevents crediting a level that didn't exist yet at the purge, which covers the *registration* side — but whether an individual FVG/Order-Block's own `origin_index` is itself causally knowable the instant it's dated (vs. needing its own formation candle's close) is **out of scope for this phase**, carried over unchanged from every other arm (A/B1/B2 inherit the same assumption).
+### 2.1 Evidence
 
-## 5. Activation window (shared by C1 and C2)
+`KeyLevel.origin_index`/`expiry_index` (`detector/core/key_level.py`) are indices into whichever H4-equivalent series built them:
+- FVG levels (`primitives/fvg.py::to_key_levels`): `origin_index = fvg.end_index` — the THIRD candle of the 3-candle gap pattern, i.e., the index into the **broker H4 grid** (`detect_fvgs` is always called on `h4` = the broker-grid series in `build_key_levels`).
+- Order-Block levels (`composite/ict_order_block.py::to_key_levels`): `origin_index = block.confirmation_index` — documented as "first provably-knowable index" — but this is an index into the **Daily** series, immediately reindexed into **broker-H4-index-space** by `alignment/htf_ltf.py::_reindex_daily_key_levels`, which (per its own code comment) uses `_daily_close` (conservative: the Daily candle's close, never knowable earlier) → `_ceiling_htf_index` against `htf_timestamps` — and `htf_timestamps` there is explicitly the **broker H4 grid's** timestamps (the only H4 series `build_key_levels` is ever called with).
 
+So every `KeyLevel.origin_index`/`expiry_index` in this codebase is, and can only be, an index into the **broker H4 grid**. `_key_level_credit_map`'s check `level.origin_index < purge_index` (and the expiry check) is only meaningful when `purge_index` is *also* a broker-H4-grid index. **C2's "current candle" is a NY-anchored feeder candle — a different series, with a different count and different boundaries. Passing its position as `purge_index` into that comparison would compare two unrelated numbers.**
+
+I did not re-derive `detect_order_blocks`'s own internal `confirmation_index` causal correctness from scratch (out of scope for this phase, same inherited-trust boundary as §8.1) — I verified only the documented contract and the reindexing step, which are both explicitly causal by their own comments.
+
+### 2.2 Fix: a timestamp bridge, Key-Level source held constant between C1 and C2
+
+Per the review's point 6/7 ("mantener constante la fuente de Key Levels"), **both C1 and C2 use the exact same `KeyLevel` objects**, built once from the broker H4 + Daily series exactly as `build_key_levels` already does (unmodified call, same as A/B1/B2). What changes is *how the credit check is evaluated* — not reimplemented, but **translated from index-space to timestamp-space**, because that is the one thing that stays valid across two different candle grids:
+
+```python
+# causal_intrabar.py — a NEW function, replacing a direct call to
+# _key_level_credit_map for the provisional/incremental case. Does not
+# reimplement FVG/Order-Block detection or the credit RULE (origin before
+# purge, inside the zone, unexpired) -- only restates that rule in
+# timestamps instead of raw indices, since indices stop being comparable
+# the moment two different grids are involved.
+
+def key_level_credited(purge_extremes: tuple[float, ...], purge_observed_at: datetime,
+                        key_levels: list[KeyLevel], h4_broker: OHLCSeries) -> KeyLevel | None:
+    def available_at(idx: int) -> datetime:
+        return h4_broker.candles[idx].timestamp + H4_DURATION   # bar-close contract, see §3
+    qualifying = [
+        level for extreme in purge_extremes for level in key_levels
+        if available_at(level.origin_index) < purge_observed_at
+        and (level.expiry_index is None or purge_observed_at <= available_at(level.expiry_index))
+        and level.bottom <= extreme <= level.top
+    ]
+    return max(qualifying, key=lambda lv: lv.origin_index) if qualifying else None
 ```
-eligible_start = max(window_start_utc, activation_instant_utc)   # window_start/end: confirmation_window_utc(reference_or_current_candle, model), UNCHANGED
-eligible_end   = window_end_utc
-if eligible_start >= eligible_end:
-    # legitimate zero-signal outcome for this trigger -- recorded with a reason,
-    # same convention as B2's zero_signal_reasons.csv
+
+This reproduces `_key_level_credit_map`'s exact rule (origin strictly before the purge, not yet expired, extreme inside the zone, highest-origin-index tiebreak) — restated so the only quantity ever compared against another is a `datetime`, which is valid regardless of which series (broker-grid for C1, NY-feeder for C2) supplied `purge_observed_at`. `_purge_wick_extremes` is still reused unmodified to compute `purge_extremes` from the provisional candle.
+
+**This is the one place the design knowingly does NOT reuse an existing function's comparison logic verbatim** (`_key_level_credit_map` itself) — documented here as a deliberate, narrow divergence with a stated reason (cross-grid index incomparability), not a silent reimplementation, and not touching `detector/`.
+
+### 2.3 Remaining explicit blocker
+
+Per the review's own instruction: *"Si la causalidad de las fuentes de Key Level sigue sin poder demostrarse, debe tratarse como un bloqueo explícito."* I have verified the documented *contract* (origin = first provably-knowable index, conservative Daily-close reindexing) but have **not** independently re-derived `detect_fvgs`/`detect_order_blocks`'s own internal logic line-by-line the way I did for `_track_anchor`. **This stays an open blocker**, carried by every arm (A/B1/B2/C1/C2 alike) equally — it does not bias a C1-vs-C2 comparison against each other, but it does mean no arm's absolute numbers can yet be called fully, end-to-end causally proven from Key-Level origin through to position close. Resolving it would require the same depth of code-tracing §1 just got, applied to `primitives/fvg.py`'s 3-candle gap confirmation and `composite/ict_order_block.py`'s swing/MSS-based confirmation — not done in this revision; flagged for explicit decision on whether to do it before trusting C1/C2's own absolute R numbers, as opposed to trusting only the *qualitative, relative* C1-vs-C2 and C-vs-A comparison (which is unaffected, since the same unverified Key-Level pipeline feeds both C1 and C2 identically).
+
+## 3. HIGH — fixed: bar open/close/availability contract
+
+### 3.1 Evidence
+
+The dataset's `Candle.timestamp` is the bar's **open**. A 15-minute bar opening `14:15` closes `14:30`; its own high/low/close are only real-world-knowable at `14:30`, not `14:15`. The reviewed design's `provisional_feeder_candle` filtered M15 bars by `timestamp <= as_of_ts` — using the OPEN timestamp as if it were the availability cutoff. That is the exact bug the review caught in the EST/EDT examples: I wrote "sweep+Key-Level resolve at M15 close `14:20`" — `14:20` is not a real M15 boundary (M15 closes only ever fall on `:00/:15/:30/:45`); I had silently conflated "the M15 bar containing roughly this moment" with a real close instant.
+
+### 3.2 Fixed contract (used everywhere from here on)
+
+```python
+M15_DURATION = timedelta(minutes=15)
+H4_DURATION  = timedelta(hours=4)
+
+def bar_open_ts(candle) -> datetime: return candle.timestamp
+def bar_close_ts(candle, duration) -> datetime: return candle.timestamp + duration
+def available_at(candle, duration) -> datetime: return bar_close_ts(candle, duration)   # the ONLY field read for "is this known yet"
 ```
 
-No unlimited window, no fixed duration-from-sweep, no "rest of the H4 bar" — exactly the policy the user specified. `ltf_window_indices` (unmodified) converts to M15 indices.
+Every place the design (or its examples) used a bare `.timestamp` to mean "known as of," it must instead use `available_at`. Concretely: `provisional_feeder_candle(m15_series, open_ts, as_of_ts)` aggregates `m15_series.candles[i]` for every `i` with `available_at(m15_series.candles[i], M15_DURATION) <= as_of_ts` (equivalently: `m15.candles[i].timestamp + 15min <= as_of_ts`, i.e., `m15.candles[i].timestamp < as_of_ts - 15min + epsilon` — in practice this means "every bar up to and including the one whose open is `as_of_ts - 15min`", i.e., one bar *earlier* in open-time terms than a naive `timestamp <= as_of_ts` filter would include). `activation_instant`, `model1_available_ts`, `feeder_ref_close_ts` — all of §1's and the state machine's timestamps — are `available_at(...)` values, never bare `.timestamp`.
 
-## 6. Model-1 integration
+### 3.3 Corrected examples (replacing the broken ones)
 
-`confirm_in_ltf_window(ltf_series.candles, ltf_ranges, window, direction, model1_config)` — called **exactly as B2 already calls it**, unmodified, with the window from §5. Zero new Model-1 code.
+**EDT, 1AM model**: reference "9PM" feeder candle opens `2003-05-05 01:00 UTC` (9pm NY EDT), its `available_at = 01:00 + 4h = 05:00 UTC` — this is also the "1AM" current candle's own open. Suppose the M15 bar opening `2003-05-05 06:15 UTC` (closing `06:30`) is the first whose accumulated high/low both sweeps the 9PM range AND credits a Key Level once `available_at` for that bar is reached: `activation_instant = available_at(m15[06:15], 15min) = 06:30 UTC` (**not** `06:20` — there is no M15 bar closing at `:20`). `MODEL_1AM` window for this trigger: NY 02:00-04:00 EDT = UTC 06:00-08:00. `eligible_start = max(06:00, 06:30) = 06:30`; `eligible_end = 08:00`.
 
-## 7. C1 vs. C2 isolation
+**EST, 9AM model**: reference "5AM" feeder candle opens `2026-01-15 10:00 UTC` (5am NY EST), `available_at = 14:00 UTC` = the "9AM" current candle's own open. Suppose the M15 bar opening `14:15 UTC` is the first to sweep+credit: `activation_instant = available_at(m15[14:15], 15min) = 14:30 UTC`. `MODEL_9AM` window: NY 09:00-10:30 EST = UTC 14:00-15:30. `eligible_start = max(14:00, 14:30) = 14:30`; `eligible_end = 15:30`.
 
-Both arms share: the state machine (§2), the Key-Level adapter (§4), the window policy (§5), `confirm_in_ltf_window`/`build_stage6_population`/`simulate` (all unmodified), and the exact same `SYMBOL_CONFIG` per pair. They differ in **exactly one swapped dependency**: which function builds "the reference candle" and "the provisional current candle" (§3's C1-grid vs. C2-NY constructors). This is enforced by having both arms call the *same* `causal_intrabar.detect_triggers(feeder_source, ...)` function, parameterized only by which `feeder_ny`-shaped source it's given — not two separate code paths that could silently drift.
+## 4. HIGH — fixed: feeder-candle completeness, with real numbers
 
-## 8. Risks, ambiguities, pending decisions (not resolved by me)
+### 4.1 Validation contract
 
-1. **Key Level source causality** (FVG/Order-Block detection itself) — not audited this phase; inherited by every arm equally, so it does not bias a C1-vs-C2 comparison, but it is a limitation of the whole investigation's absolute numbers.
-2. **DOL-gated reversal/continuation profile selection** — charter-11 itself says the mechanics aren't published yet ("C3"). Cannot be implemented faithfully without inventing a rule the source material doesn't give. Out of scope; flagged, not guessed at.
-3. **9AM sweeping the 1AM range (i-2) instead of 5AM's (i-1)** — a second, charter-confirmed valid path the current code (and C1/C2) do not check. Out of scope per user's explicit restriction to the two-consecutive-candle variant; would roughly double the trigger search if added later.
-4. **Non-Model-1 (TSQ/breaker-block) entries** — charter-11's own first worked example is explicitly not a Model-1 trade. Out of scope per user's rule (§1 point 7: "la entrada se ejecuta según las reglas del Modelo #1"); the detector has no scaffolding for this entry type at all.
-5. **Intrabar same-M15-bar ambiguity**: if the sweep and the Key-Level credit both first become true within the *same* M15 candle (common — both conditions are evaluated off the same running high/low), or if both the high-side and low-side of the reference range breach on the same M15 bar (~14% of real purges, per `_purge_wick_extremes`'s own docstring), sub-15-minute ordering is unknowable from this data. **Conservative policy**: `activation_instant` = that M15 candle's own **close** timestamp, never its open or an interpolated instant. Resolving this more precisely would need M1 (1-minute) or tick data — explicitly flagged as a real resolution limit, not simulated around.
-6. **DST transition days** (2/year): "4 hours" in the feeder-candle window is implemented as 4 real UTC hours (matching `confirmation_window_utc`'s own existing convention), not 4 wall-clock-labelled NY hours — on the spring-forward/fall-back day itself, this means the candle's wall-clock label and its real duration diverge by up to 1 hour. Affects roughly 2 candles/year per model, out of ~6,100 checked in §Phase-1's empirical comparison — not expected to be material, but reported per-pair in the C1/C2 results rather than assumed away.
+```python
+def validate_complete_feeder_bucket(bucket: tuple[Candle, ...], expected_open_ts: datetime, expected_count: int = 16) -> bool:
+    if len(bucket) != expected_count:
+        return False
+    if bucket[0].timestamp != expected_open_ts:
+        return False
+    return all(bucket[i + 1].timestamp - bucket[i].timestamp == M15_DURATION for i in range(len(bucket) - 1))
+```
 
-## 9. Concrete chronological examples
+A bucket that fails this check is **not** turned into a `CompleteFeederCandle` at all — it is marked `incomplete` (holiday/gap/DST), reported, and excluded from being used as a *reference range* (§2's "previous candle"). This is stricter than the reviewed design's "skip if zero M15 bars" — it now also catches a *partially* populated bucket.
 
-**EDT example (1AM model, matches the Phase-1-finding dataset)**: reference candle = the true NY-anchored "9PM" candle, `open_ts=2003-05-05 01:00 UTC` (9pm NY EDT = UTC+4), `close_ts=2003-05-05 05:00 UTC`. Current candle ("1AM") opens `2003-05-05 05:00 UTC` (1am NY EDT). Suppose the running low first breaches the 9PM candle's low AND credits a registered Key Level at M15 bar closing `2003-05-05 06:30 UTC` → `activation_instant = 06:30 UTC`. Original window for `MODEL_1AM` on this trigger candle: NY 02:00-04:00 EDT = UTC 06:00-08:00. `eligible_start = max(06:00, 06:30) = 06:30`; `eligible_end = 08:00`. Model-1 search runs `confirm_in_ltf_window` over M15 bars in `[06:30, 08:00)` only — never over `[05:00, 06:30)`, even though that earlier span is where the *current* code's close-based trigger would have let a signal fire.
+### 4.2 Empirical measurement (EURUSD, run against real data, full 2003-2026 history)
 
-**EST example (9AM model)**: true NY-anchored "5AM" reference candle `open_ts=2026-01-15 10:00 UTC` (5am NY EST), close `14:00 UTC`. Current ("9AM") candle opens `14:00 UTC` (9am NY EST), true close `18:00 UTC`. Suppose sweep+Key-Level both resolve at M15 close `14:20 UTC`. Original window for `MODEL_9AM`: NY 09:00-10:30 EST = UTC 14:00-15:30. `eligible_start = max(14:00, 14:20) = 14:20`; `eligible_end = 15:30`. Note this window **never reaches 18:00** (the true close) — matching the Phase-1 finding that the whole 9AM window structurally precedes the close — but unlike B2, this arm does **not** require reaching the close at all, since the trigger here never needed it in the first place.
+| Construction | Buckets with ≥1 bar | Incomplete (≠16 bars) | Misaligned despite 16 bars |
+|---|---|---|---|
+| NY-anchored 9AM | 6,118 | 11 (0.18%) | 0 |
+| NY-anchored 1AM | 6,128 | 12 (0.20%) | 0 |
+| Broker-grid (today's code's "1AM" slot) | 6,128 | 4 (0.07%) | 0 |
 
-## 10. What happens next (not yet authorized)
+Real examples of incomplete buckets: `2013-12-25` (Christmas, 8/16 bars), `2003-07-22`/`2003-08-15`/`2003-09-02` (early-history thin-liquidity gaps, 12-15/16 bars), `2004-03-30` and `2005-06-10` (DST-adjacent gaps, 9-14/16 bars). **Zero cases of 16 bars present but misaligned/non-consecutive** — when this dataset has a full bucket, it is always a clean, contiguous 4-hour span; incompleteness is always an outright missing-bar count, never a hidden ordering problem. Rate is low (~0.1-0.2%) but nonzero and must be handled explicitly, not assumed away — exactly the review's point. USDCAD/AUDUSD not yet re-measured for this specific check; expected to be similar in kind (same broker, same M15 grid) but not yet confirmed — flagged, not assumed.
 
-Implementing `feeder_ny.py` + `causal_intrabar.py` + `run_c1_c2.py`, then running C1 and C2 across EURUSD/USDCAD/AUDUSD/2003-2026, writing `trades_c1.csv`/`trades_c2.csv`, extending the reconciliation file, and extending the automated-test suite with the invariants named in §2 and §8.5/8.6. Stopping here per instruction, awaiting review.
+## 5. Revised state machine
+
+| State | Entered when | Timestamp (always an `available_at` value) |
+|---|---|---|
+| `WAITING_FOR_FEEDER` | Previous (reference) feeder candle still forming, or not yet validated complete (§4) | — |
+| `WAITING_FOR_SWEEP_AND_KEY_LEVEL` | Reference candle passed §4's completeness check; its own `available_at` has been reached | `feeder_ref_available_ts` |
+| `HTF_CONDITIONS_OBSERVED` *(renamed/split from the old `WAITING_FOR_MODEL1`, per review §5)* | First M15 bar whose `available_at` makes the provisional current-candle's running high/low both sweep the reference range AND credit a Key Level (§2.2) | `activation_instant_ts` |
+| `WAITING_FOR_MODEL1` | Immediately follows `HTF_CONDITIONS_OBSERVED` — `confirm_in_ltf_window` is now searching `[max(window_start, activation_instant), window_end)` | (no new timestamp; a search interval, not an instant) |
+| `MODEL1_CONFIRMED_AND_AVAILABLE` *(renamed, per review §5 — no longer conflated with "retest")* | `confirm_in_ltf_window` returns `status=CONFIRMED`; `model1_available_ts = available_at(m15.candles[signal.confirmation_index], M15_DURATION)` | `model1_available_ts` |
+| `ORDER_CONSTRUCTED_AND_PLACED` | Same instant as above (§1.3 — nothing new to wait for; nothing here uses `retest_ts` as if it were later confirmation) | `order_placed_ts = model1_available_ts` |
+| `ORDER_ACTIVE` | `fill_pass_c` has pushed the candidate into its sweep (eligible from `order_placed_ts`'s bar onward) | `order_placed_ts` (carried forward) |
+| `FILLED` / `EXPIRED` / `INVALIDATED` | `fill_pass_c` + unmodified `_resolve_exits` outcome | `entry_ts`/`exit_ts` |
+
+Explicit invariant (tested, §6): for every signal, `feeder_ref_available_ts <= activation_instant_ts <= model1_available_ts <= entry_ts (if filled) <= exit_ts`. **`retest_ts` is never used as an activation timestamp anywhere** — it is retained only as a diagnostic field (when the retest was *observed*, for the reconciliation file), never as a decision boundary.
+
+## 6. Automated tests needed (additions to the existing suite, not a rewrite)
+
+1. `test_fill_pass_c_never_fills_between_retest_and_confirmation` — the §1.2 example, made concrete: assert a touch strictly between `retest_index` and `confirmation_index` is never credited, and the SAME touch, moved to at-or-after `confirmation_index`, is credited.
+2. `test_key_level_credited_rejects_cross_grid_index_reuse` — construct a `KeyLevel` with `origin_index=5` on a 10-candle broker H4 series and a *different*, shorter NY-feeder series; assert `key_level_credited` only ever compares via `available_at(...)` timestamps, never raw indices (i.e., changing the NY-series' bucket count must not change which levels credit).
+3. `test_bar_available_at_is_open_plus_duration` — pins §3.2's contract for both M15 (15 min) and H4-feeder (4h) durations, including the two DST-transition days found in §4.2.
+4. `test_validate_complete_feeder_bucket_rejects_partial_and_misaligned` — table-driven: 16 consecutive bars (pass), 15 bars (fail), 16 bars with a duplicate/gap (fail), bars starting one step late (fail).
+5. `test_state_machine_timestamps_are_monotonic` — run C1 (cheap, synthetic) and assert the §5 invariant chain holds for every produced signal.
+6. `test_c1_c2_share_everything_except_candle_source` — a structural test: both call the same `detect_triggers(feeder_source, ...)` entry point; assert via introspection or a shared-code-path marker that no C1-only or C2-only branch exists outside the swapped `feeder_source` argument.
+7. Re-affirm from the existing suite: Arm A still reproduces the audited baseline exactly (already covered, unaffected by this revision).
+
+## 7. B1-realistic caveat (review §7 — documentation only, B1 not rerun)
+
+`trades_b1_realistic.csv`'s `-145.86R` approximates the price available at order placement using the M15 bar's **close** price, and models scanner discovery delay as a flat `+120s` (`POLL_SECONDS`) added to the H4 close. Two compounding approximations, both stated plainly here (not re-run): (a) real MT5 execution would use a live bid/ask tick at the actual moment of placement, not a 15-minute bar's close — intra-bar price movement between the true placement instant and that bar's close is invisible to this approximation in either direction; (b) the real discovery delay is uniformly distributed over `[0, 120s]` depending on poll phase relative to the H4 close, not a fixed `120s` — B1-realistic used the conservative worst-case end of that range, not an average. **B1-realistic's number is a directional, order-of-magnitude diagnostic of what realistic discovery latency does to the strategy — not a claim of reproducing actual historical MT5 fills.**
+
+## 8. C1 vs. C2 isolation, reconfirmed under the fixes
+
+Both arms now share: §1's `fill_pass_c`, §2's `key_level_credited` (same `KeyLevel` objects, sourced identically), §3's bar contract, §5's state machine, and `build_stage6_population`/`_resolve_exits` (unmodified). The **only** swapped dependency remains which function supplies the reference/current `ProvisionalFeederCandle`/`CompleteFeederCandle` pair (§4's broker-grid builder for C1, NY-anchored builder for C2) — enforced by both arms calling one shared `causal_intrabar.detect_triggers(feeder_source, h4_broker_for_key_levels, ...)`, where `h4_broker_for_key_levels` is **always** the broker grid (Key-Level source held constant per §2.2, independent of which grid supplies the sweep side).
+
+## 9. Risks, ambiguities, pending decisions (updated)
+
+1. **Key-Level source causality not independently re-derived** (§2.3) — now an explicit, named blocker on trusting C1/C2's *absolute* numbers, though not on the C1-vs-C2 *comparison* itself.
+2. DOL-gated reversal/continuation profile selection — still out of scope (charter defers to unreleased material).
+3. 9AM sweeping the 1AM range (i-2) instead of 5AM's (i-1) — still out of scope per user restriction.
+4. Non-Model-1 (TSQ/breaker-block) entries — still out of scope, no detector scaffolding.
+5. Intrabar same-M15-bar ambiguity — unchanged conservative policy (resolve at that bar's `available_at`), now correctly defined per §3.
+6. DST-transition-day 4-hours convention — unchanged policy, now with real measured impact (§4.2: 2 of the ~23 incomplete-bucket examples found were DST-adjacent, out of ~6,100+6,100 buckets checked — small, not zero, reported per-pair rather than assumed away).
+7. **New**: USDCAD/AUDUSD have not yet been run through §4's completeness check — only EURUSD has real numbers so far.
+
+## 10. Explicit answer to "is this ready for implementation?"
+
+**Not yet fully** — two things should be decided before implementation, not assumed by me:
+- Whether §2.3's open Key-Level-source-causality question must be resolved (full trace of `primitives/fvg.py`/`composite/ict_order_block.py`) *before* trusting C1/C2's absolute R numbers, or whether it is acceptable to proceed now and treat it as a stated limitation on the final report (it does not bias C1 vs. C2 against each other either way).
+- Whether to also run §4's completeness check against USDCAD/AUDUSD before implementation, or accept EURUSD's measured rate as representative.
+
+Everything else in this revision (§1's fill-pass redesign, §2.2's timestamp bridge, §3's bar contract, §5's state machine) is a concrete, code-level design with no remaining open question I'm aware of — ready to implement once the two points above are answered.
