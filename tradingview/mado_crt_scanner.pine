@@ -1,0 +1,320 @@
+//@version=6
+indicator("Mado CRT Model-1 Scanner (H4 FVG)", overlay = true, max_boxes_count = 200, max_lines_count = 100, max_bars_back = 100)
+
+positionWidth = input.int(12, "Position width (bars)", minval = 1, maxval = 100)
+visiblePositions = input.int(15, "Recent positions to display", minval = 1, maxval = 50)
+
+type CrtRange
+    int origin
+    float high
+    float low
+    int pokeSide
+    int firstHigh
+    int firstLow
+
+type Model1
+    int anchor
+    int anchorTime
+    int h4Index
+    bool bullish
+    float anchorOpen
+    float anchorHigh
+    float anchorLow
+    float anchorClose
+    float bodyHigh
+    float bodyLow
+    bool confirmed
+    bool bodyEntry
+    int retest
+    float retestOpen
+    int nextIndex
+
+type PendingSignal
+    int anchorTime
+    int h4Index
+    bool bullish
+    float entry
+    float stop
+    int retestIndex
+    int fillIndex
+    int fillTime
+    float highestSinceRetest
+    float lowestSinceRetest
+
+f_update_range(CrtRange r, int index, float barHigh, float barLow, float barClose) =>
+    if na(r.firstHigh) and barHigh > r.high
+        r.firstHigh := index
+    if na(r.firstLow) and barLow < r.low
+        r.firstLow := index
+    bool resolved = barClose > r.high or barClose < r.low
+    if not resolved and r.pokeSide != 0
+        float midpoint = (r.high + r.low) / 2.0
+        resolved := r.pokeSide == -1 ? barClose >= midpoint : barClose <= midpoint
+    if not resolved and r.pokeSide == 0
+        if barHigh > r.high
+            r.pokeSide := 1
+        else if barLow < r.low
+            r.pokeSide := -1
+    resolved
+
+f_make_model(int anchor, bool bullish, int groupIndex) =>
+    int offset = bar_index - anchor
+    float anchorOpen = open[offset]
+    float anchorHigh = high[offset]
+    float anchorLow = low[offset]
+    float anchorClose = close[offset]
+    Model1.new(anchor, time[offset], groupIndex, bullish, anchorOpen, anchorHigh, anchorLow, anchorClose,
+         math.max(anchorOpen, anchorClose), math.min(anchorOpen, anchorClose), false, false, na, na, anchor + 1)
+
+f_update_model(Model1 m) =>
+    int offset = bar_index - m.nextIndex
+    float barOpen = open[offset]
+    float barHigh = high[offset]
+    float barLow = low[offset]
+    float barClose = close[offset]
+    float protected = m.bullish ? m.anchorLow : m.anchorHigh
+    int outcome = 0
+    if (m.bullish ? barClose < protected : barClose > protected)
+        outcome := 2
+    else if not m.confirmed
+        if (m.bullish ? barClose > m.bodyHigh : barClose < m.bodyLow)
+            m.confirmed := true
+            float span = m.anchorHigh - m.anchorLow
+            float bodyRatio = span > 0 ? math.abs(m.anchorClose - m.anchorOpen) / span : 0.0
+            bool beyondWick = m.bullish ? barClose > m.anchorHigh : barClose < m.anchorLow
+            m.bodyEntry := not beyondWick and bodyRatio >= 0.6
+    else
+        if na(m.retest) and barLow <= m.bodyHigh and barHigh >= m.bodyLow
+            m.retest := m.nextIndex
+            m.retestOpen := barOpen
+        if not na(m.retest) and (m.bullish ? barClose > m.retestOpen : barClose < m.retestOpen)
+            outcome := 1
+    m.nextIndex := m.nextIndex + 1
+    outcome
+
+f_stop(Model1 m) =>
+    float level = m.bullish ? m.anchorLow : m.anchorHigh
+    int lastSwing = m.retest - 2
+    if lastSwing >= m.anchor
+        for swingIndex = m.anchor to lastSwing
+            int offset = bar_index - swingIndex
+            bool isSwing = m.bullish ? low[offset] < low[offset + 1] and low[offset] < low[offset - 1] : high[offset] > high[offset + 1] and high[offset] > high[offset - 1]
+            float price = m.bullish ? low[offset] : high[offset]
+            if isSwing and (m.bullish ? price < level : price > level)
+                level := price
+    float totalRange = 0.0
+    int count = 0
+    int anchorOffset = bar_index - m.anchor
+    for prior = 0 to 13
+        int offset = anchorOffset + prior
+        if offset <= bar_index
+            float barRange = high[offset] - low[offset]
+            float trueRange = offset + 1 <= bar_index ? math.max(barRange, math.abs(high[offset] - close[offset + 1]), math.abs(low[offset] - close[offset + 1])) : barRange
+            totalRange += trueRange
+            count += 1
+    float buffer = count > 0 ? 0.3 * totalRange / count : 0.0
+    m.bullish ? level - buffer : level + buffer
+
+if timeframe.in_seconds() != 900
+    runtime.error("Use this indicator on a 15-minute chart.")
+
+var array<CrtRange> m15Ranges = array.new<CrtRange>()
+var array<CrtRange> h4Ranges = array.new<CrtRange>()
+var array<Model1> models = array.new<Model1>()
+var array<PendingSignal> pending = array.new<PendingSignal>()
+var array<int> alerted = array.new<int>()
+var array<box> profitZones = array.new<box>()
+var array<box> riskZones = array.new<box>()
+var array<line> entryLines = array.new<line>()
+
+var array<float> h4Highs = array.new<float>()
+var array<float> h4Lows = array.new<float>()
+var array<float> h4Closes = array.new<float>()
+var array<float> fvgTops = array.new<float>()
+var array<float> fvgBottoms = array.new<float>()
+var array<int> fvgOrigins = array.new<int>()
+var array<int> contextOrigins = array.new<int>()
+var array<float> contextHighs = array.new<float>()
+var array<float> contextLows = array.new<float>()
+var array<bool> contextEligible = array.new<bool>()
+
+var float h4High = na
+var float h4Low = na
+var float h4Close = na
+var int h4Start = na
+var int h4Index = 0
+
+bool longSignal = false
+bool shortSignal = false
+
+if barstate.isconfirmed
+    int groupTime = time("240")
+    if na(h4Start)
+        h4Start := groupTime
+        h4High := high
+        h4Low := low
+        h4Close := close
+    else if groupTime != h4Start
+        int closedIndex = array.size(h4Highs)
+        array.push(h4Highs, h4High)
+        array.push(h4Lows, h4Low)
+        array.push(h4Closes, h4Close)
+        array.push(contextOrigins, na)
+        array.push(contextHighs, na)
+        array.push(contextLows, na)
+        array.push(contextEligible, false)
+
+        int h4RangeIndex = array.size(h4Ranges) - 1
+        while h4RangeIndex >= 0
+            CrtRange r = array.get(h4Ranges, h4RangeIndex)
+            if closedIndex - r.origin > 20
+                array.remove(h4Ranges, h4RangeIndex)
+            else if f_update_range(r, closedIndex, h4High, h4Low, h4Close)
+                int purgeIndex = na(r.firstHigh) ? r.firstLow : na(r.firstLow) ? r.firstHigh : math.min(r.firstHigh, r.firstLow)
+                if not na(purgeIndex)
+                    int priorOrigin = array.get(contextOrigins, purgeIndex)
+                    if na(priorOrigin) or r.origin < priorOrigin
+                        float purgeHigh = array.get(h4Highs, purgeIndex)
+                        float purgeLow = array.get(h4Lows, purgeIndex)
+                        float purgeClose = array.get(h4Closes, purgeIndex)
+                        bool credited = false
+                        for levelIndex = 0 to (array.size(fvgTops) == 0 ? na : array.size(fvgTops) - 1)
+                            int levelOrigin = array.get(fvgOrigins, levelIndex)
+                            float levelTop = array.get(fvgTops, levelIndex)
+                            float levelBottom = array.get(fvgBottoms, levelIndex)
+                            bool highTouch = purgeHigh > r.high and purgeHigh >= levelBottom and purgeHigh <= levelTop
+                            bool lowTouch = purgeLow < r.low and purgeLow >= levelBottom and purgeLow <= levelTop
+                            if levelOrigin < purgeIndex and (highTouch or lowTouch)
+                                credited := true
+                        array.set(contextOrigins, purgeIndex, r.origin)
+                        array.set(contextHighs, purgeIndex, r.high)
+                        array.set(contextLows, purgeIndex, r.low)
+                        array.set(contextEligible, purgeIndex, purgeClose >= r.low and purgeClose <= r.high and credited)
+                array.remove(h4Ranges, h4RangeIndex)
+            h4RangeIndex -= 1
+
+        array.push(h4Ranges, CrtRange.new(closedIndex, h4High, h4Low, 0, na, na))
+
+        if closedIndex >= 2
+            float rangeSum = 0.0
+            int rangeCount = 0
+            for prior = 0 to 13
+                int index = closedIndex - prior
+                if index >= 0
+                    float barRange = array.get(h4Highs, index) - array.get(h4Lows, index)
+                    float trueRange = index > 0 ? math.max(barRange, math.abs(array.get(h4Highs, index) - array.get(h4Closes, index - 1)), math.abs(array.get(h4Lows, index) - array.get(h4Closes, index - 1))) : barRange
+                    rangeSum += trueRange
+                    rangeCount += 1
+            float minimumGap = 0.1 * rangeSum / rangeCount
+            float bullishGap = array.get(h4Lows, closedIndex) - array.get(h4Highs, closedIndex - 2)
+            float bearishGap = array.get(h4Lows, closedIndex - 2) - array.get(h4Highs, closedIndex)
+            if bullishGap > 0 and bullishGap >= minimumGap
+                array.push(fvgTops, array.get(h4Lows, closedIndex))
+                array.push(fvgBottoms, array.get(h4Highs, closedIndex - 2))
+                array.push(fvgOrigins, closedIndex)
+            else if bearishGap > 0 and bearishGap >= minimumGap
+                array.push(fvgTops, array.get(h4Lows, closedIndex - 2))
+                array.push(fvgBottoms, array.get(h4Highs, closedIndex))
+                array.push(fvgOrigins, closedIndex)
+
+        h4Index += 1
+        h4Start := groupTime
+        h4High := high
+        h4Low := low
+        h4Close := close
+    else
+        h4High := math.max(h4High, high)
+        h4Low := math.min(h4Low, low)
+        h4Close := close
+
+    int rangeIndex = array.size(m15Ranges) - 1
+    while rangeIndex >= 0
+        CrtRange r = array.get(m15Ranges, rangeIndex)
+        if bar_index - r.origin > 20
+            array.remove(m15Ranges, rangeIndex)
+        else if f_update_range(r, bar_index, high, low, close)
+            if not na(r.firstHigh)
+                int offset = bar_index - r.firstHigh
+                array.push(models, f_make_model(r.firstHigh, false, h4Index[offset]))
+            if not na(r.firstLow)
+                int offset = bar_index - r.firstLow
+                array.push(models, f_make_model(r.firstLow, true, h4Index[offset]))
+            array.remove(m15Ranges, rangeIndex)
+        rangeIndex -= 1
+    array.push(m15Ranges, CrtRange.new(bar_index, high, low, 0, na, na))
+
+    int modelIndex = array.size(models) - 1
+    while modelIndex >= 0
+        Model1 m = array.get(models, modelIndex)
+        int outcome = 0
+        while m.nextIndex <= bar_index and m.nextIndex <= m.anchor + 20 and outcome == 0
+            outcome := f_update_model(m)
+        if outcome == 1
+            int localHour = hour(m.anchorTime, "America/New_York")
+            if localHour >= 7 and localHour < 11
+                float entry = m.bodyEntry ? m.anchorOpen : m.bullish ? m.bodyHigh : m.bodyLow
+                float highest = high
+                float lowest = low
+                int fillIndex = na
+                int fillTime = na
+                int scanIndex = m.retest
+                while scanIndex <= bar_index
+                    int offset = bar_index - scanIndex
+                    highest := math.max(highest, high[offset])
+                    lowest := math.min(lowest, low[offset])
+                    if na(fillIndex) and (m.bullish ? low[offset] <= entry : high[offset] >= entry)
+                        fillIndex := scanIndex
+                        fillTime := time[offset]
+                    scanIndex += 1
+                array.push(pending, PendingSignal.new(m.anchorTime, m.h4Index, m.bullish, entry, f_stop(m), m.retest, fillIndex, fillTime, highest, lowest))
+        if outcome != 0 or m.nextIndex > m.anchor + 20
+            array.remove(models, modelIndex)
+        modelIndex -= 1
+
+    int pendingIndex = array.size(pending) - 1
+    while pendingIndex >= 0
+        PendingSignal p = array.get(pending, pendingIndex)
+        p.highestSinceRetest := math.max(p.highestSinceRetest, high)
+        p.lowestSinceRetest := math.min(p.lowestSinceRetest, low)
+        if na(p.fillIndex) and bar_index - p.retestIndex <= 20 and (p.bullish ? low <= p.entry : high >= p.entry)
+            p.fillIndex := bar_index
+            p.fillTime := time
+        bool stopTouched = p.bullish ? p.lowestSinceRetest <= p.stop : p.highestSinceRetest >= p.stop
+        bool removePending = stopTouched or h4Index - p.h4Index > 20 or (na(p.fillIndex) and bar_index - p.retestIndex > 20)
+        if not removePending and p.h4Index < array.size(contextOrigins)
+            int origin = array.get(contextOrigins, p.h4Index)
+            if not na(origin) and array.get(contextEligible, p.h4Index)
+                float target = p.bullish ? array.get(contextHighs, p.h4Index) : array.get(contextLows, p.h4Index)
+                bool targetTouched = p.bullish ? p.highestSinceRetest >= target : p.lowestSinceRetest <= target
+                float risk = p.bullish ? p.entry - p.stop : p.stop - p.entry
+                float reward = p.bullish ? target - p.entry : p.entry - target
+                int stableId = p.anchorTime * 2 + (p.bullish ? 1 : 0)
+                if targetTouched
+                    removePending := true
+                else if not na(p.fillIndex) and risk > 0 and reward / risk >= 2 and not array.includes(alerted, stableId)
+                    array.push(alerted, stableId)
+                    string side = p.bullish ? "LONG" : "SHORT"
+                    string anchor = str.format_time(p.anchorTime, "MM-dd HH:mm", "America/New_York")
+                    string fill = str.format_time(p.fillTime, "MM-dd HH:mm", "America/New_York")
+                    string details = side + " SETUP " + syminfo.ticker + " | anchor " + anchor + " NY | fill " + fill + " NY | entry " + str.tostring(p.entry, format.mintick) + " | stop " + str.tostring(p.stop, format.mintick) + " | target " + str.tostring(target, format.mintick)
+                    alert(details, alert.freq_all)
+                    int rightEdge = p.fillIndex + positionWidth
+                    box profitZone = box.new(left = p.fillIndex, top = math.max(p.entry, target), right = rightEdge, bottom = math.min(p.entry, target), border_color = color.new(color.green, 20), bgcolor = color.new(color.green, 83), text = "TP " + str.tostring(target, format.mintick) + " | " + str.tostring(reward / risk, "#.##") + "R", text_color = color.green, text_size = size.tiny)
+                    box riskZone = box.new(left = p.fillIndex, top = math.max(p.entry, p.stop), right = rightEdge, bottom = math.min(p.entry, p.stop), border_color = color.new(color.red, 20), bgcolor = color.new(color.red, 83), text = "SL " + str.tostring(p.stop, format.mintick), text_color = color.red, text_size = size.tiny)
+                    line entryLine = line.new(p.fillIndex, p.entry, rightEdge, p.entry, color = color.gray, width = 2)
+                    array.push(profitZones, profitZone)
+                    array.push(riskZones, riskZone)
+                    array.push(entryLines, entryLine)
+                    if array.size(profitZones) > visiblePositions
+                        box.delete(array.shift(profitZones))
+                        box.delete(array.shift(riskZones))
+                        line.delete(array.shift(entryLines))
+                    longSignal := longSignal or p.bullish
+                    shortSignal := shortSignal or not p.bullish
+                    removePending := true
+        if removePending
+            array.remove(pending, pendingIndex)
+        pendingIndex -= 1
+
+alertcondition(longSignal, title = "Confirmed long", message = "CRT Model-1 long confirmed on {{ticker}}")
+alertcondition(shortSignal, title = "Confirmed short", message = "CRT Model-1 short confirmed on {{ticker}}")

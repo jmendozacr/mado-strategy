@@ -1,0 +1,364 @@
+//@version=6
+// Mado 1AM+9AM EURUSD backtest -- see tradingview/README.md "1AM+9AM backtest
+// strategy" section for the full rule list, exact source citations, and the
+// four documented approximations vs. the Python recipe. Run on a 15-minute
+// EURUSD chart; open the Strategy Tester tab for the equity curve / trade list.
+strategy("Mado 1AM+9AM EURUSD Backtest", shorttitle = "M19EU-BT", overlay = true,
+     initial_capital = 10000, currency = currency.USD, default_qty_type = strategy.fixed,
+     calc_on_every_tick = false, process_orders_on_close = true,
+     max_labels_count = 300, max_boxes_count = 200)
+
+// ============================= Inputs =====================================
+riskPct        = input.float(1.0,    "Risk % per trade (fixed, non-compounding)", minval = 0.01)
+initBalance    = input.float(10000,  "Fixed account balance used for sizing")
+slFloorPrice   = input.float(0.0006, "EURUSD SL floor (price units, ~6 pips)",    step = 0.0001)
+slBufferAtrMul = input.float(0.3,    "SL structural buffer, x ATR14 (M15, at anchor)")
+minRR          = input.float(2.0,    "Minimum R:R to accept a signal")
+fvgMinAtrMul   = input.float(0.1,    "Min H4 FVG size, x ATR14 (H4)")
+partialFrac    = input.float(0.5,    "Partial-exit fraction at entry-to-target midpoint", minval = 0.0, maxval = 1.0)
+maxLookback    = input.int(20,       "M15 lookback for anchor / confirm / retest", minval = 5)
+showMarkers    = input.bool(true,    "Show anchor/entry markers and FVG zones")
+
+// ============================= H4 synthetic bucket =========================
+// Hand-built UTC-anchored H4 candles (00/04/08/12/16/20 UTC), matching the
+// MT5 broker grid -- NOT TradingView's native "240" resolution, whose bucket
+// boundaries are not guaranteed to line up with this grid.
+curSlot = math.floor(hour(time, "UTC") / 4)
+
+var int   h4Slot     = na
+var int   h4OpenHour = na
+var float h4O        = na
+var float h4H        = na
+var float h4L        = na
+var float h4C        = na
+
+bool  h4Closed       = false
+float closedH4H      = na
+float closedH4L      = na
+float closedH4C      = na
+int   closedOpenHour = na
+
+newH4 = na(h4Slot) or curSlot != h4Slot
+
+if newH4
+    if not na(h4Slot)
+        closedH4H      := h4H
+        closedH4L      := h4L
+        closedH4C       := h4C
+        closedOpenHour := h4OpenHour
+        h4Closed       := true
+    h4Slot     := curSlot
+    h4OpenHour := hour(time, "UTC")
+    h4O := open
+    h4H := high
+    h4L := low
+    h4C := close
+else
+    h4H := math.max(h4H, high)
+    h4L := math.min(h4L, low)
+    h4C := close
+
+// H4 history: lastH4 = candle n-1 ("prev" in the Python recipe), h4_2 = n-2
+var float lastH4H = na
+var float lastH4L = na
+var float lastH4C = na
+var float h4_2H   = na
+var float h4_2L   = na
+var float h4Atr   = na   // Wilder RMA(14) of H4 true range, hand-rolled (no ta.atr on a synthetic series)
+
+// Live H4 FVG key-level zones (parallel arrays): dir "bull" = gap sits BELOW
+// price after confirmation, "bear" = gap sits ABOVE. Only H4 FVGs are modeled
+// here -- Daily ICT Order Block key levels are NOT ported (see README).
+var array<float>  fvgTop    = array.new_float()
+var array<float>  fvgBot    = array.new_float()
+var array<string> fvgDir    = array.new_string()
+var array<int>    fvgOrigin = array.new_int()
+
+// Pending HTF triggers, one slot per model (mutually exclusive in time since
+// the NY windows never overlap, but each can still have a trade in flight).
+var bool   pend1Active = false
+var string pend1Dir    = ""
+var float  pend1TP     = na
+var bool   pend9Active = false
+var string pend9Dir    = ""
+var float  pend9TP     = na
+
+if h4Closed
+    // --- Turtle Soup (hand-built 2-candle), only on the two trigger-hour buckets ---
+    if (closedOpenHour == 4 or closedOpenHour == 12) and not na(lastH4H)
+        bool bearishTrig = closedH4H > lastH4H and closedH4C <= lastH4H
+        bool bullishTrig = closedH4L < lastH4L and closedH4C >= lastH4L
+        if bearishTrig or bullishTrig
+            string dir     = bearishTrig ? "bearish" : "bullish"
+            float  tp      = bearishTrig ? lastH4L   : lastH4H
+            float  extreme = bearishTrig ? closedH4H : closedH4L
+            bool   gated   = false
+            if array.size(fvgTop) > 0
+                for i = 0 to array.size(fvgTop) - 1
+                    if array.get(fvgOrigin, i) < bar_index and extreme >= array.get(fvgBot, i) and extreme <= array.get(fvgTop, i)
+                        gated := true
+            if gated
+                if closedOpenHour == 4
+                    pend1Active := true
+                    pend1Dir    := dir
+                    pend1TP     := tp
+                else
+                    pend9Active := true
+                    pend9Dir    := dir
+                    pend9TP     := tp
+
+    // --- ATR14 on H4 (Wilder RMA of true range) ---
+    float trH4 = na(lastH4C) ? (closedH4H - closedH4L) : math.max(closedH4H - closedH4L, math.max(math.abs(closedH4H - lastH4C), math.abs(closedH4L - lastH4C)))
+    h4Atr := na(h4Atr) ? trH4 : (h4Atr * 13 + trH4) / 14
+
+    // --- H4 FVG detection (3-candle gap: h4_2 vs this close, lastH4 = middle) ---
+    if not na(h4_2H)
+        if h4_2H < closedH4L and (closedH4L - h4_2H) >= fvgMinAtrMul * h4Atr
+            array.push(fvgTop, closedH4L)
+            array.push(fvgBot, h4_2H)
+            array.push(fvgDir, "bull")
+            array.push(fvgOrigin, bar_index)
+            if showMarkers
+                box.new(bar_index[1], h4_2H, bar_index + 40, closedH4L, border_color = color.new(color.green, 70), bgcolor = color.new(color.green, 88))
+        if h4_2L > closedH4H and (h4_2L - closedH4H) >= fvgMinAtrMul * h4Atr
+            array.push(fvgTop, h4_2L)
+            array.push(fvgBot, closedH4H)
+            array.push(fvgDir, "bear")
+            array.push(fvgOrigin, bar_index)
+            if showMarkers
+                box.new(bar_index[1], closedH4H, bar_index + 40, h4_2L, border_color = color.new(color.red, 70), bgcolor = color.new(color.red, 88))
+
+    // --- prune FVG zones fully closed-through (mitigated) ---
+    if array.size(fvgTop) > 0
+        for i = array.size(fvgTop) - 1 to 0
+            string d = array.get(fvgDir, i)
+            float  t = array.get(fvgTop, i)
+            float  b = array.get(fvgBot, i)
+            bool expired = (d == "bull" and closedH4C < b) or (d == "bear" and closedH4C > t)
+            if expired
+                array.remove(fvgTop, i)
+                array.remove(fvgBot, i)
+                array.remove(fvgDir, i)
+                array.remove(fvgOrigin, i)
+
+    // --- roll H4 history forward ---
+    h4_2H   := lastH4H
+    h4_2L   := lastH4L
+    lastH4H := closedH4H
+    lastH4L := closedH4L
+    lastH4C := closedH4C
+
+// ============================= M15 ATR (built-in, exact) ====================
+m15Atr = ta.atr(14)
+
+// ============================= NY session windows ===========================
+inWin1 = not na(time(timeframe.period, "0200-0400", "America/New_York"))
+inWin9 = not na(time(timeframe.period, "0900-1030", "America/New_York"))
+
+// ============================= Model-1 state (1AM) ==========================
+var int    m1Stage      = 0     // 0 idle/searching-anchor, 2 searching confirm, 3 searching retest, 4 searching entry
+var float  m1Protected  = na
+var float  m1BodyHi     = na
+var float  m1BodyLo     = na
+var float  m1RetestOpen = na
+var float  m1RunExt     = na
+var float  m1SwingSnap  = na
+var float  m1AtrAnchor  = na
+
+var bool   m1InTrade     = false
+var float  m1OrigQty     = na
+var float  m1EntryPxS    = na
+var float  m1StopS       = na
+var float  m1TPSaved     = na
+var float  m1PartialPxS  = na
+var bool   m1PartialDone = false
+
+if pend1Active
+    if not inWin1
+        pend1Active := false
+        m1Stage     := 0
+    else
+        if m1Stage == 0
+            bool anchorBear = pend1Dir == "bearish" and high > ta.highest(high[1], maxLookback)
+            bool anchorBull = pend1Dir == "bullish" and low  < ta.lowest(low[1],  maxLookback)
+            if anchorBear or anchorBull
+                m1Protected := pend1Dir == "bearish" ? high : low
+                m1BodyHi    := math.max(open, close)
+                m1BodyLo    := math.min(open, close)
+                m1RunExt    := pend1Dir == "bearish" ? low : high
+                m1AtrAnchor := m15Atr
+                m1Stage     := 2
+                if showMarkers
+                    label.new(bar_index, pend1Dir == "bearish" ? high : low, "A1", style = pend1Dir == "bearish" ? label.style_label_down : label.style_label_up, color = color.orange, textcolor = color.white, size = size.tiny)
+        else
+            bool invalid = pend1Dir == "bearish" ? close > m1Protected : close < m1Protected
+            if invalid
+                bool reBear = pend1Dir == "bearish" and high > ta.highest(high[1], maxLookback)
+                bool reBull = pend1Dir == "bullish" and low  < ta.lowest(low[1],  maxLookback)
+                if reBear or reBull
+                    m1Protected := pend1Dir == "bearish" ? high : low
+                    m1BodyHi    := math.max(open, close)
+                    m1BodyLo    := math.min(open, close)
+                    m1RunExt    := pend1Dir == "bearish" ? low : high
+                    m1AtrAnchor := m15Atr
+                    m1Stage     := 2
+                else
+                    pend1Active := false
+                    m1Stage     := 0
+            else if m1Stage == 2
+                bool engulf = pend1Dir == "bearish" ? close < m1BodyLo : close > m1BodyHi
+                if engulf
+                    m1Stage := 3
+                else
+                    m1RunExt := pend1Dir == "bearish" ? math.max(m1RunExt, high) : math.min(m1RunExt, low)
+            else if m1Stage == 3
+                bool retestHit = low <= m1BodyHi and high >= m1BodyLo
+                if retestHit
+                    m1SwingSnap  := m1RunExt
+                    m1RetestOpen := open
+                    m1Stage      := 4
+                else
+                    m1RunExt := pend1Dir == "bearish" ? math.max(m1RunExt, high) : math.min(m1RunExt, low)
+            else if m1Stage == 4
+                bool triggered = pend1Dir == "bearish" ? close < m1RetestOpen : close > m1RetestOpen
+                if triggered and not m1InTrade
+                    float entryPx     = close
+                    float structLevel = pend1Dir == "bearish" ? math.max(m1Protected, m1SwingSnap) : math.min(m1Protected, m1SwingSnap)
+                    float buffer      = slBufferAtrMul * m1AtrAnchor
+                    float stopPre     = pend1Dir == "bearish" ? structLevel + buffer : structLevel - buffer
+                    float dist        = math.abs(entryPx - stopPre)
+                    float stopFinal   = dist >= slFloorPrice ? stopPre : (pend1Dir == "bearish" ? entryPx + slFloorPrice : entryPx - slFloorPrice)
+                    float rr          = math.abs(pend1TP - entryPx) / math.abs(entryPx - stopFinal)
+                    if rr >= minRR
+                        float qty = (initBalance * riskPct / 100) / math.abs(entryPx - stopFinal)
+                        strategy.entry("E1am", pend1Dir == "bearish" ? strategy.short : strategy.long, qty = qty)
+                        m1OrigQty     := qty
+                        m1EntryPxS    := entryPx
+                        m1StopS       := stopFinal
+                        m1TPSaved     := pend1TP
+                        m1PartialPxS  := (entryPx + pend1TP) / 2
+                        m1PartialDone := false
+                        m1InTrade     := true
+                        strategy.exit("TP1-1am", "E1am", qty_percent = 50, limit = m1PartialPxS, stop = stopFinal)
+                        strategy.exit("TP2-1am", "E1am", qty_percent = 50, limit = pend1TP,       stop = stopFinal)
+                        if showMarkers
+                            label.new(bar_index, entryPx, pend1Dir == "bearish" ? "S1am" : "L1am", color = pend1Dir == "bearish" ? color.red : color.lime, textcolor = color.white, size = size.tiny)
+                    pend1Active := false
+                    m1Stage     := 0
+
+// --- 1AM partial-fill -> breakeven management (runs every bar) ---
+if m1InTrade
+    float remain1 = 0.0
+    for i = 0 to strategy.opentrades - 1
+        if strategy.opentrades.entry_id(i) == "E1am"
+            remain1 += strategy.opentrades.size(i)
+    if remain1 == 0.0
+        m1InTrade := false
+    else if not m1PartialDone and math.abs(remain1) < math.abs(m1OrigQty) * 0.9
+        m1PartialDone := true
+        strategy.cancel("TP2-1am")
+        strategy.exit("TP2-1am", "E1am", qty = math.abs(remain1), limit = m1TPSaved, stop = m1EntryPxS)
+
+// ============================= Model-2 state (9AM) ===========================
+var int    m9Stage      = 0
+var float  m9Protected  = na
+var float  m9BodyHi     = na
+var float  m9BodyLo     = na
+var float  m9RetestOpen = na
+var float  m9RunExt     = na
+var float  m9SwingSnap  = na
+var float  m9AtrAnchor  = na
+
+var bool   m9InTrade     = false
+var float  m9OrigQty     = na
+var float  m9EntryPxS    = na
+var float  m9StopS       = na
+var float  m9TPSaved     = na
+var float  m9PartialPxS  = na
+var bool   m9PartialDone = false
+
+if pend9Active
+    if not inWin9
+        pend9Active := false
+        m9Stage     := 0
+    else
+        if m9Stage == 0
+            bool anchorBear = pend9Dir == "bearish" and high > ta.highest(high[1], maxLookback)
+            bool anchorBull = pend9Dir == "bullish" and low  < ta.lowest(low[1],  maxLookback)
+            if anchorBear or anchorBull
+                m9Protected := pend9Dir == "bearish" ? high : low
+                m9BodyHi    := math.max(open, close)
+                m9BodyLo    := math.min(open, close)
+                m9RunExt    := pend9Dir == "bearish" ? low : high
+                m9AtrAnchor := m15Atr
+                m9Stage     := 2
+                if showMarkers
+                    label.new(bar_index, pend9Dir == "bearish" ? high : low, "A9", style = pend9Dir == "bearish" ? label.style_label_down : label.style_label_up, color = color.blue, textcolor = color.white, size = size.tiny)
+        else
+            bool invalid = pend9Dir == "bearish" ? close > m9Protected : close < m9Protected
+            if invalid
+                bool reBear = pend9Dir == "bearish" and high > ta.highest(high[1], maxLookback)
+                bool reBull = pend9Dir == "bullish" and low  < ta.lowest(low[1],  maxLookback)
+                if reBear or reBull
+                    m9Protected := pend9Dir == "bearish" ? high : low
+                    m9BodyHi    := math.max(open, close)
+                    m9BodyLo    := math.min(open, close)
+                    m9RunExt    := pend9Dir == "bearish" ? low : high
+                    m9AtrAnchor := m15Atr
+                    m9Stage     := 2
+                else
+                    pend9Active := false
+                    m9Stage     := 0
+            else if m9Stage == 2
+                bool engulf = pend9Dir == "bearish" ? close < m9BodyLo : close > m9BodyHi
+                if engulf
+                    m9Stage := 3
+                else
+                    m9RunExt := pend9Dir == "bearish" ? math.max(m9RunExt, high) : math.min(m9RunExt, low)
+            else if m9Stage == 3
+                bool retestHit = low <= m9BodyHi and high >= m9BodyLo
+                if retestHit
+                    m9SwingSnap  := m9RunExt
+                    m9RetestOpen := open
+                    m9Stage      := 4
+                else
+                    m9RunExt := pend9Dir == "bearish" ? math.max(m9RunExt, high) : math.min(m9RunExt, low)
+            else if m9Stage == 4
+                bool triggered = pend9Dir == "bearish" ? close < m9RetestOpen : close > m9RetestOpen
+                if triggered and not m9InTrade
+                    float entryPx     = close
+                    float structLevel = pend9Dir == "bearish" ? math.max(m9Protected, m9SwingSnap) : math.min(m9Protected, m9SwingSnap)
+                    float buffer      = slBufferAtrMul * m9AtrAnchor
+                    float stopPre     = pend9Dir == "bearish" ? structLevel + buffer : structLevel - buffer
+                    float dist        = math.abs(entryPx - stopPre)
+                    float stopFinal   = dist >= slFloorPrice ? stopPre : (pend9Dir == "bearish" ? entryPx + slFloorPrice : entryPx - slFloorPrice)
+                    float rr          = math.abs(pend9TP - entryPx) / math.abs(entryPx - stopFinal)
+                    if rr >= minRR
+                        float qty = (initBalance * riskPct / 100) / math.abs(entryPx - stopFinal)
+                        strategy.entry("E9am", pend9Dir == "bearish" ? strategy.short : strategy.long, qty = qty)
+                        m9OrigQty     := qty
+                        m9EntryPxS    := entryPx
+                        m9StopS       := stopFinal
+                        m9TPSaved     := pend9TP
+                        m9PartialPxS  := (entryPx + pend9TP) / 2
+                        m9PartialDone := false
+                        m9InTrade     := true
+                        strategy.exit("TP1-9am", "E9am", qty_percent = 50, limit = m9PartialPxS, stop = stopFinal)
+                        strategy.exit("TP2-9am", "E9am", qty_percent = 50, limit = pend9TP,       stop = stopFinal)
+                        if showMarkers
+                            label.new(bar_index, entryPx, pend9Dir == "bearish" ? "S9am" : "L9am", color = pend9Dir == "bearish" ? color.red : color.lime, textcolor = color.white, size = size.tiny)
+                    pend9Active := false
+                    m9Stage     := 0
+
+// --- 9AM partial-fill -> breakeven management (runs every bar) ---
+if m9InTrade
+    float remain9 = 0.0
+    for i = 0 to strategy.opentrades - 1
+        if strategy.opentrades.entry_id(i) == "E9am"
+            remain9 += strategy.opentrades.size(i)
+    if remain9 == 0.0
+        m9InTrade := false
+    else if not m9PartialDone and math.abs(remain9) < math.abs(m9OrigQty) * 0.9
+        m9PartialDone := true
+        strategy.cancel("TP2-9am")
+        strategy.exit("TP2-9am", "E9am", qty = math.abs(remain9), limit = m9TPSaved, stop = m9EntryPxS)
