@@ -107,7 +107,14 @@ def _categorize_reason(reason: str) -> str:
     return "no_model1_anchor_found"
 
 
-def run_c1(symbol: str, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings, key_levels):
+def run_c1(symbol: str, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings, key_levels,
+            start_date=None, end_date=None):
+    """`start_date`/`end_date` filter which TRIGGER WINDOWS are walked
+    (by `window_open_ts`) -- they never truncate the loaded h4/m15/daily
+    series or the shared detection (ltf_ranges/swings/key_levels), which
+    stay full-history so every indicator has its complete warmup lead-in
+    (user rule: never start an indicator from an artificially empty
+    state at the window boundary)."""
     counters = {"1am": FunnelCounters(), "9am": FunnelCounters()}
     records: list[ci.CausalSignalRecord] = []
     for model, model_name in ((ci.MODEL_1AM, "1am"), (ci.MODEL_9AM, "9am")):
@@ -115,8 +122,12 @@ def run_c1(symbol: str, h4, m15, daily, config, m15_timestamps, ltf_ranges, swin
         for i in range(1, len(h4.candles)):
             if h4.candles[i].timestamp.hour != model.trigger_utc_hour or h4.candles[i].timestamp.minute != 0:
                 continue
-            reference = ci.complete_feeder_candle_broker(h4, i - 1)
             window_open_ts = h4.candles[i].timestamp
+            if start_date is not None and window_open_ts < start_date:
+                continue
+            if end_date is not None and window_open_ts > end_date:
+                continue
+            reference = ci.complete_feeder_candle_broker(h4, i - 1)
             window_close_ts = window_open_ts + ci.H4_DURATION
             c.windows_considered += 1
             outcomes = ci.detect_sweep_and_key_level(
@@ -139,7 +150,11 @@ def run_c1(symbol: str, h4, m15, daily, config, m15_timestamps, ltf_ranges, swin
     return records, counters
 
 
-def run_c2(symbol: str, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings, key_levels):
+def run_c2(symbol: str, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings, key_levels,
+            start_date=None, end_date=None):
+    """Same start_date/end_date contract as run_c1 -- filters by
+    `current_open_ts` (the window being walked), never truncates the
+    loaded series or the shared detection."""
     counters = {"1am": FunnelCounters(), "9am": FunnelCounters()}
     records: list[ci.CausalSignalRecord] = []
     first_day, last_day = m15.candles[0].timestamp.date(), m15.candles[-1].timestamp.date()
@@ -156,6 +171,11 @@ def run_c2(symbol: str, h4, m15, daily, config, m15_timestamps, ltf_ranges, swin
             ref_day = (day - one_day) if ref_prev_day else day
             ref_open_ts = ci.ny_anchored_open_utc(ref_day, ref_hour)
             day += one_day
+
+            if start_date is not None and current_open_ts < start_date:
+                continue
+            if end_date is not None and current_open_ts > end_date:
+                continue
 
             reference = ci.complete_feeder_candle_ny(m15_timestamps, m15.candles, ref_open_ts)
             if reference is None:
@@ -295,7 +315,34 @@ def year_breakdown(trades, m15):
     return rows
 
 
+def _parse_date_arg(value):
+    """YYYY-MM-DD -> naive datetime at 00:00. None stays None (no filter,
+    full available history -- today's default, matching every prior run)."""
+    if value is None:
+        return None
+    return datetime.strptime(value, "%Y-%m-%d")
+
+
+def build_arg_parser():
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Run Arms C1/C2 over a configurable trigger-window date range. "
+                     "The loaded series and shared detection (CRT ranges, swings, Key Levels) "
+                     "always use the FULL available history as warmup/context -- only which "
+                     "TRIGGER WINDOWS get walked is filtered by these dates."
+    )
+    parser.add_argument("--start-date", default=None, help="YYYY-MM-DD, inclusive. Default: full history.")
+    parser.add_argument("--end-date", default=None, help="YYYY-MM-DD, inclusive. Default: last available date.")
+    return parser
+
+
 def main():
+    args = build_arg_parser().parse_args()
+    start_date = _parse_date_arg(args.start_date)
+    end_date = _parse_date_arg(args.end_date)
+    if end_date is not None:
+        end_date = end_date + timedelta(hours=23, minutes=59)  # inclusive through the full end date
+
     head_commit = _git("rev-parse", "HEAD")
     all_trade_rows = {"c1": [], "c2": []}
     all_trades_objs = {"c1": {}, "c2": {}}
@@ -313,7 +360,10 @@ def main():
         key_levels = build_key_levels(h4, daily, config.fvg)
 
         for arm, run_fn in (("c1", run_c1), ("c2", run_c2)):
-            records_with_ids, counters = run_fn(symbol, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings, key_levels)
+            records_with_ids, counters = run_fn(
+                symbol, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings, key_levels,
+                start_date=start_date, end_date=end_date,
+            )
             trades, rows, fill_stats = process_arm(symbol, arm, records_with_ids, h4, m15, daily, config, m15_timestamps, swings)
             all_trade_rows[arm] += rows
             all_trades_objs[arm][symbol] = trades
@@ -373,7 +423,13 @@ def main():
         json.dump(metrics, f, indent=2, default=str)
 
     with open(os.path.join(OUT_DIR, "run_metadata_c1_c2.json"), "w", encoding="utf-8") as f:
-        json.dump({"generated_from_commit": head_commit, "symbols": list(SYMBOLS)}, f, indent=2)
+        json.dump({
+            "generated_from_commit": head_commit, "symbols": list(SYMBOLS),
+            "start_date": args.start_date, "end_date": args.end_date,
+            "note": "start_date/end_date filter which trigger windows are walked; "
+                    "loaded series and shared detection (CRT ranges/swings/Key Levels) "
+                    "always use the full available history as warmup.",
+        }, f, indent=2, default=str)
 
     for arm in ("c1", "c2"):
         c = metrics[arm]["combined"]
