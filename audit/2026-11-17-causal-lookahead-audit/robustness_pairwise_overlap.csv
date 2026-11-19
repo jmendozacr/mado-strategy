@@ -1,0 +1,4 @@
+pair_a,pair_b,a_trades,b_trades,a_overlapping,a_overlap_freq,b_overlapping,b_overlap_freq,both_loss_overlaps
+EURUSD,USDCAD,636,696,453,0.7123,518,0.7443,26
+EURUSD,AUDUSD,636,715,458,0.7201,515,0.7203,37
+USDCAD,AUDUSD,696,715,508,0.7299,466,0.6517,29

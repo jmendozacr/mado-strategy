@@ -1,0 +1,5 @@
+pair,n_closed,ambiguous_bar_count,ambiguous_bar_r,gap_filled_count,gap_filled_r,either_flag_count,either_flag_pct,full_total_r,full_expectancy,excl_flagged_total_r,excl_flagged_expectancy,delta_r
+EURUSD,635,2,-2.338,2,0.4995,4,0.63,-0.2525,-0.0004,1.586,0.00251,1.8385
+USDCAD,695,1,0.3834,5,2.5885,6,0.86,51.178,0.07364,48.2061,0.06997,-2.9719
+AUDUSD,713,3,-0.0325,5,2.9069,8,1.12,27.6775,0.03882,24.8031,0.03518,-2.8744
+COMBINED,2043,6,-1.987,12,5.9949,18,0.88,78.6029,0.03847,74.5951,0.03684,-4.0078

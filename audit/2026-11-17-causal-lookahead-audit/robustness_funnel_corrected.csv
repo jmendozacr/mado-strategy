@@ -1,0 +1,4 @@
+pair,model1_confirmed_1am,model1_confirmed_9am,population_candidates_built_PAIR_LEVEL,never_filled_PAIR_LEVEL,filled_PAIR_LEVEL,filled_1am_verified,filled_9am_verified,filled_sum_check_matches_pair_level,closed_1am,closed_9am,open_1am,open_9am
+EURUSD,680,1039,783,147,636,143,493,True,143,492,0,1
+USDCAD,601,1202,854,158,696,207,489,True,207,488,0,1
+AUDUSD,524,1070,887,172,715,270,445,True,269,444,1,1
