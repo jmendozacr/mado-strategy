@@ -1,0 +1,144 @@
+====================================================================================================
+RECONCILIATION: sum(r_multiple) from CSV vs. runner's printed total_r aggregate
+====================================================================================================
+EURUSD: CSV sum(r_multiple)=-0.2525  runner printed=-0.2525  diff=0.000038  OK
+USDCAD: CSV sum(r_multiple)=51.1780  runner printed=51.1780  diff=0.000012  OK
+AUDUSD: CSV sum(r_multiple)=27.6775  runner printed=27.6775  diff=0.000002  OK
+
+====================================================================================================
+EURUSD -- D3/C2, 2015-01-01 to latest available
+====================================================================================================
+Funnel: HTF triggers+KeyLevel=6915  Model-1 CONFIRMED=1719  population candidates=1566  filled(=trades)=636  never_filled(pending, no fill)=294  open(pending, still running)=1  closed=635
+Win rate (closed): 236/635 = 0.3717
+Total R (closed): -0.2525   Expectancy per closed trade: -0.0004 R
+Profit factor: 0.9994
+Max drawdown (R, chronological by exit): 48.1619
+Execution cost already applied (SYMBOL_CONFIG.trading_cost_price=0.00013, baked into r_multiple via _resolve_exits): aggregate cost impact across all 636 trades ~= 74.9499 R total (0.11785 R/trade avg)
+
+  -- Per model --
+  1am: trades=143 closed=143 wr=0.4196 total_r=+0.4723 expectancy=+0.0033 pf=1.0049
+  9am: trades=493 closed=492 wr=0.3577 total_r=-0.7248 expectancy=-0.0015 pf=0.9979
+
+  -- Per year (closed trades, by exit date) --
+    2015: trades= 52 (  8.2% of all closed) wr=0.2885 total_r=  -8.573
+    2016: trades= 64 ( 10.1% of all closed) wr=0.3594 total_r=  -0.401
+    2017: trades= 47 (  7.4% of all closed) wr=0.3191 total_r=  -3.116
+    2018: trades= 62 (  9.8% of all closed) wr=0.2581 total_r= -23.211
+    2019: trades= 50 (  7.9% of all closed) wr=0.3600 total_r=  -5.896
+    2020: trades= 59 (  9.3% of all closed) wr=0.5085 total_r= +26.824
+    2021: trades= 49 (  7.7% of all closed) wr=0.3878 total_r=  -2.293
+    2022: trades= 47 (  7.4% of all closed) wr=0.4468 total_r= +11.299
+    2023: trades= 49 (  7.7% of all closed) wr=0.3673 total_r=  +2.997
+    2024: trades= 47 (  7.4% of all closed) wr=0.3830 total_r=  -2.142
+    2025: trades= 59 (  9.3% of all closed) wr=0.4746 total_r= +15.814
+    2026: trades= 50 (  7.9% of all closed) wr=0.3000 total_r= -11.554
+
+  -- Profit concentration (years sorted by |total_r| contribution) --
+    2020: total_r= +26.824  cumulative= +26.824  (-10621.8% of grand total_r)
+    2018: total_r= -23.211  cumulative=  +3.613  (+9191.0% of grand total_r)
+    2025: total_r= +15.814  cumulative= +19.427  (-6262.0% of grand total_r)
+    2026: total_r= -11.554  cumulative=  +7.873  (+4575.1% of grand total_r)
+    2022: total_r= +11.299  cumulative= +19.172  (-4474.1% of grand total_r)
+    2015: total_r=  -8.573  cumulative= +10.599  (+3394.8% of grand total_r)
+    2019: total_r=  -5.896  cumulative=  +4.703  (+2334.8% of grand total_r)
+    2017: total_r=  -3.116  cumulative=  +1.587  (+1233.7% of grand total_r)
+    2023: total_r=  +2.997  cumulative=  +4.584  (-1186.7% of grand total_r)
+    2021: total_r=  -2.293  cumulative=  +2.291  (+908.1% of grand total_r)
+    2024: total_r=  -2.142  cumulative=  +0.148  (+848.3% of grand total_r)
+    2016: total_r=  -0.401  cumulative=  -0.253  (+158.8% of grand total_r)
+
+  -- Win/loss R distribution (closed trades) --
+    Wins: n=236 mean=+1.889 median=+1.787 min=+0.355 max=+5.667
+    Losses: n=399 mean=-1.118 median=-1.105 min=-1.217 max=-1.025
+
+====================================================================================================
+USDCAD -- D3/C2, 2015-01-01 to latest available
+====================================================================================================
+Funnel: HTF triggers+KeyLevel=6866  Model-1 CONFIRMED=1803  population candidates=1708  filled(=trades)=696  never_filled(pending, no fill)=316  open(pending, still running)=1  closed=695
+Win rate (closed): 272/695 = 0.3914
+Total R (closed): +51.1780   Expectancy per closed trade: +0.0736 R
+Profit factor: 1.1055
+Max drawdown (R, chronological by exit): 45.4440
+Execution cost already applied (SYMBOL_CONFIG.trading_cost_price=0.000167, baked into r_multiple via _resolve_exits): aggregate cost impact across all 696 trades ~= 100.6624 R total (0.14463 R/trade avg)
+
+  -- Per model --
+  1am: trades=207 closed=207 wr=0.3961 total_r=+5.9624 expectancy=+0.0288 pf=1.0392
+  9am: trades=489 closed=488 wr=0.3893 total_r=+45.2156 expectancy=+0.0927 pf=1.1356
+
+  -- Per year (closed trades, by exit date) --
+    2015: trades= 49 (  7.1% of all closed) wr=0.3673 total_r=  -2.996
+    2016: trades= 57 (  8.2% of all closed) wr=0.5263 total_r= +36.882
+    2017: trades= 48 (  6.9% of all closed) wr=0.3542 total_r=  -0.736
+    2018: trades= 66 (  9.5% of all closed) wr=0.2879 total_r= -12.502
+    2019: trades= 61 (  8.8% of all closed) wr=0.2623 total_r= -19.066
+    2020: trades= 56 (  8.1% of all closed) wr=0.4107 total_r=  +2.556
+    2021: trades= 76 ( 10.9% of all closed) wr=0.4474 total_r= +17.850
+    2022: trades= 60 (  8.6% of all closed) wr=0.4500 total_r= +17.945
+    2023: trades= 67 (  9.6% of all closed) wr=0.3881 total_r=  -3.001
+    2024: trades= 52 (  7.5% of all closed) wr=0.5000 total_r= +15.052
+    2025: trades= 51 (  7.3% of all closed) wr=0.4314 total_r= +10.277
+    2026: trades= 52 (  7.5% of all closed) wr=0.2692 total_r= -11.083
+
+  -- Profit concentration (years sorted by |total_r| contribution) --
+    2016: total_r= +36.882  cumulative= +36.882  ( +72.1% of grand total_r)
+    2019: total_r= -19.066  cumulative= +17.816  ( -37.3% of grand total_r)
+    2022: total_r= +17.945  cumulative= +35.761  ( +35.1% of grand total_r)
+    2021: total_r= +17.850  cumulative= +53.612  ( +34.9% of grand total_r)
+    2024: total_r= +15.052  cumulative= +68.664  ( +29.4% of grand total_r)
+    2018: total_r= -12.502  cumulative= +56.162  ( -24.4% of grand total_r)
+    2026: total_r= -11.083  cumulative= +45.079  ( -21.7% of grand total_r)
+    2025: total_r= +10.277  cumulative= +55.356  ( +20.1% of grand total_r)
+    2023: total_r=  -3.001  cumulative= +52.354  (  -5.9% of grand total_r)
+    2015: total_r=  -2.996  cumulative= +49.358  (  -5.9% of grand total_r)
+    2020: total_r=  +2.556  cumulative= +51.914  (  +5.0% of grand total_r)
+    2017: total_r=  -0.736  cumulative= +51.178  (  -1.4% of grand total_r)
+
+  -- Win/loss R distribution (closed trades) --
+    Wins: n=272 mean=+1.972 median=+1.762 min=+0.259 max=+6.834
+    Losses: n=423 mean=-1.147 median=-1.130 min=-1.584 max=-1.036
+
+====================================================================================================
+AUDUSD -- D3/C2, 2015-01-01 to latest available
+====================================================================================================
+Funnel: HTF triggers+KeyLevel=6137  Model-1 CONFIRMED=1594  population candidates=1774  filled(=trades)=715  never_filled(pending, no fill)=344  open(pending, still running)=2  closed=713
+Win rate (closed): 270/713 = 0.3787
+Total R (closed): +27.6775   Expectancy per closed trade: +0.0388 R
+Profit factor: 1.0546
+Max drawdown (R, chronological by exit): 36.8150
+Execution cost already applied (SYMBOL_CONFIG.trading_cost_price=0.00013, baked into r_multiple via _resolve_exits): aggregate cost impact across all 715 trades ~= 102.7588 R total (0.14372 R/trade avg)
+
+  -- Per model --
+  1am: trades=270 closed=269 wr=0.3755 total_r=+2.6635 expectancy=+0.0099 pf=1.0138
+  9am: trades=445 closed=444 wr=0.3806 total_r=+25.0140 expectancy=+0.0563 pf=1.0800
+
+  -- Per year (closed trades, by exit date) --
+    2015: trades= 52 (  7.3% of all closed) wr=0.2885 total_r= -11.368
+    2016: trades= 55 (  7.7% of all closed) wr=0.3818 total_r=  +4.042
+    2017: trades= 59 (  8.3% of all closed) wr=0.4576 total_r= +17.705
+    2018: trades= 73 ( 10.2% of all closed) wr=0.3014 total_r= -22.155
+    2019: trades= 52 (  7.3% of all closed) wr=0.3846 total_r=  +1.916
+    2020: trades= 52 (  7.3% of all closed) wr=0.4038 total_r=  +3.405
+    2021: trades= 72 ( 10.1% of all closed) wr=0.4028 total_r= +10.566
+    2022: trades= 63 (  8.8% of all closed) wr=0.3492 total_r=  +7.348
+    2023: trades= 62 (  8.7% of all closed) wr=0.3065 total_r= -15.690
+    2024: trades= 62 (  8.7% of all closed) wr=0.4194 total_r= +17.471
+    2025: trades= 65 (  9.1% of all closed) wr=0.4154 total_r=  +1.081
+    2026: trades= 46 (  6.5% of all closed) wr=0.4565 total_r= +13.355
+
+  -- Profit concentration (years sorted by |total_r| contribution) --
+    2018: total_r= -22.155  cumulative= -22.155  ( -80.0% of grand total_r)
+    2017: total_r= +17.705  cumulative=  -4.449  ( +64.0% of grand total_r)
+    2024: total_r= +17.471  cumulative= +13.022  ( +63.1% of grand total_r)
+    2023: total_r= -15.690  cumulative=  -2.668  ( -56.7% of grand total_r)
+    2026: total_r= +13.355  cumulative= +10.687  ( +48.3% of grand total_r)
+    2015: total_r= -11.368  cumulative=  -0.681  ( -41.1% of grand total_r)
+    2021: total_r= +10.566  cumulative=  +9.885  ( +38.2% of grand total_r)
+    2022: total_r=  +7.348  cumulative= +17.233  ( +26.5% of grand total_r)
+    2016: total_r=  +4.042  cumulative= +21.275  ( +14.6% of grand total_r)
+    2020: total_r=  +3.405  cumulative= +24.680  ( +12.3% of grand total_r)
+    2019: total_r=  +1.916  cumulative= +26.596  (  +6.9% of grand total_r)
+    2025: total_r=  +1.081  cumulative= +27.677  (  +3.9% of grand total_r)
+
+  -- Win/loss R distribution (closed trades) --
+    Wins: n=270 mean=+1.978 median=+1.846 min=+0.371 max=+6.249
+    Losses: n=443 mean=-1.143 median=-1.137 min=-1.385 max=-1.049

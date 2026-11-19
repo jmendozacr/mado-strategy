@@ -213,14 +213,36 @@ def main():
     symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
     output_label = args.output_label or f"{args.start_date or 'full'}_{args.end_date or 'latest'}"
 
+    # Optimization (user-authorized, 2026-11-19): `ltf_ranges` (detect_crt_ranges'
+    # output) is consumed ONLY by `old_confirm_fn(ltf_ranges)` inside run_d_c1/
+    # run_d_c2, which is only ever called when `anchor_source == "old"` -- i.e.
+    # only by D2. D1/D3 (anchor_source == "new") never touch it (confirmed by
+    # grep: no other reference to `ltf_ranges` exists anywhere in this file or
+    # in causal_anchor_v2.py). When no requested config is D2, skip the
+    # computation entirely and pass `None` -- it is provably never dereferenced
+    # on that path, so this cannot change any signal or trade for D1/D3.
+    need_old_anchor = any(CONFIGS[c][0] == "old" for c in configs)
+
+    # Accumulate across ALL symbols per arm, write once at the end --
+    # mirrors run_c1_c2.py's own main() exactly (all_trade_rows[arm] +=
+    # rows, written after the symbol loop). Writing inside the per-symbol
+    # loop (this file's earlier bug, caught in the 2015+ USDCAD/AUDUSD run:
+    # the output filename never varied by symbol, so each symbol silently
+    # overwrote the previous one's CSV) would lose every earlier symbol's
+    # rows for the same arm+label.
+    all_trade_rows: dict[str, list] = {}
+    funnel_rows: list = []
+    year_rows: list = []
+
     for symbol in symbols:
         h4, m15, daily = base.load_symbol_data(symbol)
         config = DetectorConfig(backtest=SYMBOL_CONFIG[symbol])
         m15_timestamps = [c.timestamp for c in m15.candles]
-        ltf_ranges = detect_crt_ranges(m15, config.crt_range)
+        ltf_ranges = detect_crt_ranges(m15, config.crt_range) if need_old_anchor else None
         swings = detect_swings(m15, config.swing)
         key_levels = build_key_levels(h4, daily, config.fvg)
-        print(f"{symbol}: shared detection ready ({len(ltf_ranges)} ranges, {len(swings)} swings, "
+        ranges_desc = len(ltf_ranges) if ltf_ranges is not None else "skipped (no D2 requested)"
+        print(f"{symbol}: shared detection ready ({ranges_desc} ranges, {len(swings)} swings, "
               f"{len(key_levels)} key levels)", flush=True)
 
         for cfg_name in configs:
@@ -242,9 +264,23 @@ def main():
                       f"pop={pop_stats} trades={stats['trades']} closed={stats['closed']} "
                       f"wr={stats['win_rate']:.4f} total_r={stats['total_r']:.4f} max_dd={dd:.4f}",
                       flush=True)
-                base.write_csv(
-                    os.path.join(OUT_DIR, f"trades_{arm_name}_{output_label}.csv"), base.TRADE_COLUMNS, rows
-                )
+                all_trade_rows.setdefault(arm_name, []).extend(rows)
+                for model_name, c in counters.items():
+                    funnel_rows.append({"pair": symbol, "arm": arm_name, "model": model_name,
+                                         **c.to_dict(), **pop_stats})
+                for yr in base.year_breakdown(trades, m15):
+                    year_rows.append({"pair": symbol, "arm": arm_name, **yr})
+
+    for arm_name, rows in all_trade_rows.items():
+        base.write_csv(
+            os.path.join(OUT_DIR, f"trades_{arm_name}_{output_label}.csv"), base.TRADE_COLUMNS, rows
+        )
+    if funnel_rows:
+        funnel_columns = sorted({k for row in funnel_rows for k in row.keys()})
+        base.write_csv(os.path.join(OUT_DIR, f"funnel_{output_label}.csv"), funnel_columns, funnel_rows)
+    if year_rows:
+        year_columns = sorted({k for row in year_rows for k in row.keys()})
+        base.write_csv(os.path.join(OUT_DIR, f"year_breakdown_{output_label}.csv"), year_columns, year_rows)
 
 
 if __name__ == "__main__":

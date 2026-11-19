@@ -1,0 +1,7 @@
+arm,candidates_built,filled,model,model1_confirmed,never_filled,pair,reference_incomplete_skipped,skipped_no_placement,swept_bearish_only,swept_both,swept_bullish_only,swept_neither,triggers_with_key_level,windows_considered,zero_signal_reason_categories
+d3_c2,783,636,1am,680,147,EURUSD,1249,0,933,1203,897,52,4199,3085,"{'no_model1_anchor_found': 1759, 'model1_pending_or_invalidated': 1282, 'window_empty_before_search': 478}"
+d3_c2,783,636,9am,1039,147,EURUSD,1256,0,1139,202,1209,528,2716,3078,"{'no_model1_anchor_found': 632, 'model1_pending_or_invalidated': 1045}"
+d3_c2,854,696,1am,601,158,USDCAD,1251,0,1077,855,1052,99,3830,3083,"{'model1_pending_or_invalidated': 1229, 'no_model1_anchor_found': 1547, 'window_empty_before_search': 453}"
+d3_c2,854,696,9am,1202,158,USDCAD,1258,0,1266,342,1093,375,3036,3076,"{'no_model1_anchor_found': 654, 'model1_pending_or_invalidated': 1180}"
+d3_c2,887,715,1am,524,172,AUDUSD,1251,0,1212,427,1117,327,3177,3083,"{'no_model1_anchor_found': 1328, 'model1_pending_or_invalidated': 953, 'window_empty_before_search': 372}"
+d3_c2,887,715,9am,1070,172,AUDUSD,1258,0,1162,284,1236,394,2960,3076,"{'model1_pending_or_invalidated': 1244, 'no_model1_anchor_found': 646}"

@@ -1,0 +1,15 @@
+C2 original: 1544 total trades (full 2003-2026), 857 scoped to >=2015-01-01 (same criterion as D3)
+D3/C2 corrected: 2047 trades (already scoped to 2015-01-01+ by construction)
+
+pair    arm       trades  closed      wr   total_r  expectancy
+EURUSD  C2-orig(scoped)      222     222  0.4009     4.897      0.0221
+EURUSD  D3/C2(agreed)        636     635  0.3717    -0.253     -0.0004
+
+USDCAD  C2-orig(scoped)      290     290  0.3897     2.048      0.0071
+USDCAD  D3/C2(agreed)        696     695  0.3914    51.178      0.0736
+
+AUDUSD  C2-orig(scoped)      345     344  0.3866     6.559      0.0191
+AUDUSD  D3/C2(agreed)        715     713  0.3787    27.677      0.0388
+
+COMBINED (3 pairs): C2-orig(scoped) trades=857 closed=856 total_r=+13.504
+COMBINED (3 pairs): D3/C2(agreed)  trades=2047 closed=2043 total_r=+78.603
