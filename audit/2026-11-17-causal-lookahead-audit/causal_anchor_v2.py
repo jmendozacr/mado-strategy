@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Callable
+from zoneinfo import ZoneInfo
 
 from causal.htf_trigger import FeederModel, confirmation_window_utc, ltf_window_indices
 from core.candle import Candle, OHLCSeries
@@ -22,6 +23,9 @@ from core.results import DetectionStatus
 from entries.model1 import Direction, Model1Signal, _track_anchor
 
 import causal_intrabar as ci
+
+_NY = ZoneInfo("America/New_York")
+_UTC = ZoneInfo("UTC")
 
 FOUR_HOURS = timedelta(hours=4)
 NINE_AM_ACTIVATION_DURATION = timedelta(hours=2)              # design S19 S1: activation window 09:00-11:00 NY
@@ -138,19 +142,59 @@ def old_window_fns(model: FeederModel) -> tuple[WindowBoundaryFn, WindowBoundary
     return start_fn, end_fn
 
 
+def _ny_instant_on_trigger_day(window_open_ts: datetime, hour_ny: int) -> datetime:
+    """Design S19/correction round 4 (user's review of commit 4e36b1a):
+    `window_open_ts` must NEVER be assumed to itself be 09:00 NY. In C2
+    (NY-anchored grid) it genuinely is; in C1 (broker H4 grid) the "9am"
+    trigger candle opens at 12:00 UTC, which is 07:00 NY in EST or
+    08:00 NY in EDT -- 2-3 hours before true 09:00 NY, never equal to
+    it. This mirrors `confirmation_window_utc`'s own, already-correct
+    mechanism exactly (same midpoint-based NY-day derivation, same
+    DST-aware `zoneinfo` wall-clock construction) rather than doing
+    naive UTC arithmetic on `window_open_ts` -- that naive arithmetic
+    was the bug. The broker candle's own UTC open is used ONLY to find
+    which NY calendar day this trigger belongs to (via the same +2h
+    midpoint convention, to correctly handle the day-boundary edge case
+    that convention exists for) -- never as a stand-in for NY wall-clock
+    time itself. The broker-grid geometry feeding `reference` (which H4
+    candle supplies the swept high/low) stays completely independent of
+    this and is never touched here."""
+    midpoint = window_open_ts + timedelta(hours=2)
+    ny_day = midpoint.replace(tzinfo=_UTC).astimezone(_NY).date()
+    instant_ny = datetime(ny_day.year, ny_day.month, ny_day.day, hour_ny, tzinfo=_NY)
+    return instant_ny.astimezone(_UTC).replace(tzinfo=None)
+
+
 def new_9am_window_fns() -> tuple[WindowBoundaryFn, WindowBoundaryFn]:
-    """Design S19 S1/S0: for the 9AM model, `window_open_ts` IS the
-    search-window start (MODEL_9AM.window_start_hour_ny == 9, matching
-    the feeder's own open) -- no NY-day reconstruction needed. The new
-    confirmation deadline is the feeder candle's own close (window_open
-    + 4h = 13:00 NY)."""
+    """Design S19 S1, corrected: the Model-1 search window is
+    [true 09:00 NY, true 13:00 NY] -- both derived via
+    `_ny_instant_on_trigger_day`, never via naive arithmetic on
+    `window_open_ts` (which is only a true 09:00 NY instant for C2,
+    not for C1 -- see that function's docstring)."""
     def start_fn(window_open_ts: datetime) -> datetime:
-        return window_open_ts
+        return _ny_instant_on_trigger_day(window_open_ts, 9)
 
     def end_fn(window_open_ts: datetime) -> datetime:
-        return window_open_ts + NINE_AM_CONFIRMATION_DEADLINE_DURATION
+        return _ny_instant_on_trigger_day(window_open_ts, 13)
 
     return start_fn, end_fn
+
+
+def activation_window_open_ts(window_open_ts: datetime, model_name: str, windows_9am: str) -> datetime:
+    """What to pass as `window_open_ts` (the scan START) to
+    `detect_sweep_and_key_level` -- design S19/correction round 4: for
+    the new 9AM windows, this must be true 09:00 NY, so the sweep+Key-
+    Level scan itself never even looks at candles before 09:00 NY (a
+    post-hoc filter on the returned `activation_instant_ts` would not
+    be enough -- `detect_sweep_and_key_level` locks in the FIRST
+    qualifying instant per direction and never looks further once
+    found, so an early, pre-09:00 match would need to be re-searched
+    for a later one, not just discarded). For every other case (1AM
+    always; 9AM with old windows), the scan starts at `window_open_ts`
+    itself, unchanged from today."""
+    if model_name == "9am" and windows_9am == "new":
+        return _ny_instant_on_trigger_day(window_open_ts, 9)
+    return window_open_ts
 
 
 def activation_window_close_ts(window_open_ts: datetime, model_name: str, windows_9am: str) -> datetime:
@@ -159,10 +203,12 @@ def activation_window_close_ts(window_open_ts: datetime, model_name: str, window
     search spans the FULL feeder candle (no explicit activation deadline
     of its own -- the effective ~10:30 cutoff comes indirectly from the
     Model-1 window closing there, not from this parameter). The new 9AM
-    rule makes the activation deadline EXPLICIT and INDEPENDENT at 11:00
-    NY (window_open + 2h)."""
+    rule makes the activation deadline EXPLICIT and INDEPENDENT at true
+    11:00 NY -- derived the same DST-aware way as the other new 9AM
+    boundaries, never as `window_open_ts + 2h` (that naive arithmetic
+    was round 4's bug: correct only for C2, wrong by 2-3h for C1)."""
     if model_name == "9am" and windows_9am == "new":
-        return window_open_ts + NINE_AM_ACTIVATION_DURATION
+        return _ny_instant_on_trigger_day(window_open_ts, 11)
     return window_open_ts + ci.H4_DURATION
 
 

@@ -87,10 +87,11 @@ def run_d_c1(symbol, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings,
             if end_date is not None and window_open_ts > end_date:
                 continue
             reference = ci.complete_feeder_candle_broker(h4, i - 1)
-            window_close_ts = ca.activation_window_close_ts(window_open_ts, model_name, windows_9am)
+            activation_start_ts = ca.activation_window_open_ts(window_open_ts, model_name, windows_9am)
+            activation_close_ts = ca.activation_window_close_ts(window_open_ts, model_name, windows_9am)
             c.windows_considered += 1
             outcomes = ci.detect_sweep_and_key_level(
-                m15_timestamps, m15.candles, reference, window_open_ts, window_close_ts, key_levels, h4
+                m15_timestamps, m15.candles, reference, activation_start_ts, activation_close_ts, key_levels, h4
             )
             c.record_sweep(outcomes)
             for direction, outcome in outcomes.items():
@@ -147,9 +148,10 @@ def run_d_c2(symbol, h4, m15, daily, config, m15_timestamps, ltf_ranges, swings,
                 c.reference_incomplete_skipped += 1
                 continue
             c.windows_considered += 1
-            window_close_ts = ca.activation_window_close_ts(current_open_ts, model_name, windows_9am)
+            activation_start_ts = ca.activation_window_open_ts(current_open_ts, model_name, windows_9am)
+            activation_close_ts = ca.activation_window_close_ts(current_open_ts, model_name, windows_9am)
             outcomes = ci.detect_sweep_and_key_level(
-                m15_timestamps, m15.candles, reference, current_open_ts, window_close_ts, key_levels, h4
+                m15_timestamps, m15.candles, reference, activation_start_ts, activation_close_ts, key_levels, h4
             )
             c.record_sweep(outcomes)
             for direction, outcome in outcomes.items():
@@ -175,16 +177,28 @@ RUN_FN_BY_GRID = {"c1": run_d_c1, "c2": run_d_c2}
 def build_arg_parser():
     import argparse
     parser = argparse.ArgumentParser(
-        description="Run experiments D1/D2/D3 over a configurable trigger-window date range "
-                     "(smoke-test sized by default via --start-date/--end-date). The loaded "
+        description="Run experiments D1/D2/D3 over a configurable trigger-window date range. "
+                     "Defaults to 2015-01-01+ (the user's standing scope decision) -- for a small "
+                     "smoke test, pass an explicit short --start-date/--end-date pair. The loaded "
                      "series and shared detection always use the FULL available history as "
                      "warmup -- only which TRIGGER WINDOWS get walked is filtered."
     )
-    parser.add_argument("--start-date", default=None, help="YYYY-MM-DD, inclusive. Default: full history.")
+    parser.add_argument(
+        "--start-date", default="2015-01-01",
+        help="YYYY-MM-DD, inclusive. Defaults to 2015-01-01 (per the user's standing scope decision) "
+             "specifically to avoid accidentally running the full 23-year history -- pass an explicit "
+             "value (e.g. 2003-01-01) to override.",
+    )
     parser.add_argument("--end-date", default=None, help="YYYY-MM-DD, inclusive. Default: last available date.")
     parser.add_argument("--configs", default="d1,d2,d3", help="Comma-separated subset of d1,d2,d3.")
     parser.add_argument("--grids", default="c1,c2", help="Comma-separated subset of c1,c2.")
     parser.add_argument("--symbols", default=",".join(SYMBOLS), help="Comma-separated symbols.")
+    parser.add_argument(
+        "--output-label", default=None,
+        help="Suffix for output CSV filenames (trades_<arm>_<label>.csv) so different runs/periods "
+             "never collide with each other, with the historical A/B1/B2/C1/C2 CSVs, or with the "
+             "committed smoke-test CSVs. Defaults to a label derived from --start-date/--end-date.",
+    )
     return parser
 
 
@@ -197,6 +211,7 @@ def main():
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
     grids = [g.strip() for g in args.grids.split(",") if g.strip()]
     symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+    output_label = args.output_label or f"{args.start_date or 'full'}_{args.end_date or 'latest'}"
 
     for symbol in symbols:
         h4, m15, daily = base.load_symbol_data(symbol)
@@ -209,7 +224,7 @@ def main():
               f"{len(key_levels)} key levels)", flush=True)
 
         for cfg_name in configs:
-            anchor_source, windows_9am, label = CONFIGS[cfg_name]
+            anchor_source, windows_9am, causal_label = CONFIGS[cfg_name]
             for grid in grids:
                 run_fn = RUN_FN_BY_GRID[grid]
                 arm_name = f"{cfg_name}_{grid}"
@@ -222,13 +237,13 @@ def main():
                 )
                 stats = base.trade_stats(trades)
                 dd = base.max_drawdown_r(trades, m15)
-                print(f"{symbol} {arm_name} [{label}]: "
+                print(f"{symbol} {arm_name} [{causal_label}]: "
                       f"1am={counters['1am'].to_dict()} 9am={counters['9am'].to_dict()} "
                       f"pop={pop_stats} trades={stats['trades']} closed={stats['closed']} "
                       f"wr={stats['win_rate']:.4f} total_r={stats['total_r']:.4f} max_dd={dd:.4f}",
                       flush=True)
                 base.write_csv(
-                    os.path.join(OUT_DIR, f"trades_{arm_name}.csv"), base.TRADE_COLUMNS, rows
+                    os.path.join(OUT_DIR, f"trades_{arm_name}_{output_label}.csv"), base.TRADE_COLUMNS, rows
                 )
 
 

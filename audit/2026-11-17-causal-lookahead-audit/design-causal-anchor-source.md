@@ -281,3 +281,34 @@ C1/C2 (commit `a985158`, resultados en `results-c1-c2.md`) quedan **inmutables c
 ## 11. No implementado — detenido según instrucción
 
 Nada de este diseño fue implementado ni ejecutado. `design-causal-anchor-source.md` y el seguimiento del ODD quedan actualizados. Esperando revisión y autorización explícita antes de escribir código o correr cualquier backtest.
+
+---
+
+# Corrección ronda 4 (revisión del commit 4e36b1a)
+
+## 1. Bug real: ventanas NY en la grilla C1
+
+`new_9am_window_fns()` y `activation_window_close_ts()` asumían que `window_open_ts` ERA 09:00 NY. Cierto en C2 (grilla NY-anchored, `current_open_ts` se construye exactamente así). **Falso en C1**: la vela H4 broker del trigger "9am" abre a las 12:00 UTC (`MODEL_9AM.trigger_utc_hour=12`), que es **07:00 NY en EST** o **08:00 NY en EDT** — nunca 09:00 NY. Mis funciones hacían aritmética UTC directa (`window_open_ts + 2h`/`+4h`), correcta solo para C2.
+
+**Corrección**: nueva función `_ny_instant_on_trigger_day(window_open_ts, hour_ny)` — reutiliza EXACTAMENTE el mismo mecanismo que `confirmation_window_utc` ya usa correctamente hoy (día NY derivado del punto medio +2h, luego construcción DST-aware vía `zoneinfo` del wall-clock NY para esa fecha). `window_open_ts` se usa SOLO para determinar a qué día calendario NY pertenece el trigger — nunca como sustituto de la hora NY real. Separación explícita de las 4 cosas pedidas:
+- **Apertura real de la vela H4 (geometría)**: `reference = complete_feeder_candle_broker(h4, i-1)` — sin cambios, sigue siendo la variable experimental independiente del broker.
+- **Inicio de la ventana operativa NY**: `_ny_instant_on_trigger_day(window_open_ts, 9)` — nueva función `new_9am_window_fns()`.
+- **Fin de activación NY**: `_ny_instant_on_trigger_day(window_open_ts, 11)` — `activation_window_close_ts()` corregida.
+- **Fin de confirmación NY**: `_ny_instant_on_trigger_day(window_open_ts, 13)` — `new_9am_window_fns()` corregida.
+
+**"No acreditar barridas ocurridas antes de la ventana de activación NY"**: no basta con filtrar el resultado después — `detect_sweep_and_key_level` fija el PRIMER instante calificante por dirección y nunca busca uno posterior una vez encontrado, así que un barrido temprano (antes de 09:00 NY, posible en C1 porque el scan arrancaba en la apertura del broker) quedaría fijado y descartado, perdiendo un barrido genuinamente válido que pudiera ocurrir después, dentro de [09:00,11:00]. Corrección: nueva función `activation_window_open_ts()` — el scan de `detect_sweep_and_key_level` arranca en `_ny_instant_on_trigger_day(window_open_ts, 9)` para las ventanas nuevas de 9am, nunca en `window_open_ts` directo. `reference` (la geometría del broker) no se toca.
+
+Verificado con datos reales (no solo tests sintéticos): smoke test EST (EURUSD, enero-febrero 2024) y EDT (julio-agosto 2024), D1/D2/D3 × C1/C2 — convertí cada `activation_instant_ts`/`model1_available_ts` de los trades 9am resultantes a hora NY: todas las activaciones caen en [09:00,11:00] NY en ambos DST (incluye activaciones a las 09:15/10:30 EST y 09:15/10:30 EDT), todas las confirmaciones en ≤13:00 NY (incluye un caso real confirmando EXACTAMENTE a las 13:00 NY — el límite inclusive del Ejemplo D, ejercitado con datos reales, no solo en el test sintético).
+
+## 2. Fecha predeterminada y rutas de salida
+
+`run_d1_d2_d3.py`'s CLI: `--start-date` default cambiado de `None` a `"2015-01-01"` (sobrescribible explícitamente). Agregado `--output-label` (default derivado de `--start-date`/`--end-date`) — los CSV se escriben como `trades_<arm>_<label>.csv`, nunca `trades_<arm>.csv` sin sufijo, evitando colisión con los CSV históricos (`trades_c1.csv`, etc.) y con los del smoke test anterior (ya committeados sin sufijo, dejados intactos).
+
+## 3. Validación (datos reales, no solo tests)
+
+- 9 tests nuevos (EST/EDT × C1/C2, más la verificación de que `old_window_fns`/1AM nunca usan la reconstrucción NY) — 27/27 en `test_causal_anchor_v2.py`, 49/49 en todo `audit/tests/`.
+- Suite completa `detector/`: 1265/1265, sin cambios ahí.
+- Smoke test EST (ene-feb 2024) y EDT (jul-ago 2024), 6 combinaciones cada uno — sin errores. Confirmado que el fix SÍ cambia los conteos de embudo 9am en C1 específicamente (D2_C1/D3_C1), como se esperaba — C2 y 1AM quedan sin cambios, consistente con que el bug era exclusivo de la combinación "ventanas nuevas de 9am + grilla C1".
+- Invariancia ante datos futuros reverificada tras el fix: extendí D3/EST hasta 2024-03-15 — los 8/4 trades tempranos (C1/C2) volvieron byte-idénticos.
+
+No se ejecutó el backtest 2015+ todavía. Detenido para autorización.

@@ -262,3 +262,65 @@ def test_activation_window_close_ts(model_name, windows_9am, expected_hours):
     window_open_ts = datetime(2026, 3, 10, 13, 0)
     result = ca.activation_window_close_ts(window_open_ts, model_name, windows_9am)
     assert result == window_open_ts + timedelta(hours=expected_hours)
+
+
+# ---------------------------------------------------------------------------
+# EST/EDT, C1 (broker grid) vs. C2 (NY-anchored grid) -- round-4 fix (user's
+# review of commit 4e36b1a): new_9am_window_fns/activation_window_close_ts
+# previously did naive UTC arithmetic on `window_open_ts`, correct ONLY when
+# that timestamp already IS true 09:00 NY (C2). In C1, the broker H4 "9am"
+# trigger candle opens at 12:00 UTC -- 07:00 NY in EST, 08:00 NY in EDT,
+# never 09:00 NY. The tests above happened to use a window_open_ts that was
+# already true-09:00-NY-equivalent (coincidentally EDT-correct), so they
+# never exercised the bug -- these do, explicitly, in both DST states.
+# ---------------------------------------------------------------------------
+
+# 2024: DST (EDT) ran 2024-03-10 .. 2024-11-03. Jan 15 is EST; Jul 15 is EDT.
+_C1_9AM_OPEN_EST = datetime(2024, 1, 15, 12, 0)   # broker 12:00 UTC = 07:00 NY (EST)
+_C1_9AM_OPEN_EDT = datetime(2024, 7, 15, 12, 0)   # broker 12:00 UTC = 08:00 NY (EDT)
+_C2_9AM_OPEN_EST = datetime(2024, 1, 15, 14, 0)   # true 09:00 NY (EST) in UTC
+_C2_9AM_OPEN_EDT = datetime(2024, 7, 15, 13, 0)   # true 09:00 NY (EDT) in UTC
+
+
+@pytest.mark.parametrize("window_open_ts,expected_start_utc,expected_close11_utc,expected_deadline13_utc", [
+    # C1 (broker grid): window_open_ts is NOT 09:00 NY -- true 09:00/11:00/13:00 NY
+    # must be derived, never assumed equal to window_open_ts.
+    (_C1_9AM_OPEN_EST, datetime(2024, 1, 15, 14, 0), datetime(2024, 1, 15, 16, 0), datetime(2024, 1, 15, 18, 0)),
+    (_C1_9AM_OPEN_EDT, datetime(2024, 7, 15, 13, 0), datetime(2024, 7, 15, 15, 0), datetime(2024, 7, 15, 17, 0)),
+    # C2 (NY-anchored grid): window_open_ts already IS true 09:00 NY -- identity.
+    (_C2_9AM_OPEN_EST, datetime(2024, 1, 15, 14, 0), datetime(2024, 1, 15, 16, 0), datetime(2024, 1, 15, 18, 0)),
+    (_C2_9AM_OPEN_EDT, datetime(2024, 7, 15, 13, 0), datetime(2024, 7, 15, 15, 0), datetime(2024, 7, 15, 17, 0)),
+])
+def test_new_9am_windows_use_true_ny_time_in_both_grids_and_dst_states(
+    window_open_ts, expected_start_utc, expected_close11_utc, expected_deadline13_utc,
+):
+    start_fn, end_fn = ca.new_9am_window_fns()
+    assert start_fn(window_open_ts) == expected_start_utc, "Model-1 search window must start at true 09:00 NY"
+    assert end_fn(window_open_ts) == expected_deadline13_utc, "confirmation deadline must be true 13:00 NY"
+    assert ca.activation_window_open_ts(window_open_ts, "9am", "new") == expected_start_utc, \
+        "the sweep+Key-Level SCAN must start at true 09:00 NY, never at the broker candle's own open"
+    assert ca.activation_window_close_ts(window_open_ts, "9am", "new") == expected_close11_utc, \
+        "activation deadline must be true 11:00 NY"
+
+
+@pytest.mark.parametrize("window_open_ts", [_C1_9AM_OPEN_EST, _C1_9AM_OPEN_EDT, _C2_9AM_OPEN_EST, _C2_9AM_OPEN_EDT])
+def test_old_windows_and_1am_never_use_ny_reconstruction(window_open_ts):
+    """D1 (old 9am windows) and 1AM in every config must stay exactly
+    as before: `window_open_ts` unchanged for the activation scan
+    start, and `+4h` unchanged for the activation close -- the NY
+    reconstruction is exclusively a `windows_9am == "new"` behavior."""
+    assert ca.activation_window_open_ts(window_open_ts, "9am", "old") == window_open_ts
+    assert ca.activation_window_close_ts(window_open_ts, "9am", "old") == window_open_ts + timedelta(hours=4)
+    for windows_9am in ("old", "new"):
+        assert ca.activation_window_open_ts(window_open_ts, "1am", windows_9am) == window_open_ts
+        assert ca.activation_window_close_ts(window_open_ts, "1am", windows_9am) == window_open_ts + timedelta(hours=4)
+
+
+def test_c1_broker_open_is_genuinely_different_from_c2_ny_open():
+    """Sanity check on the test fixtures themselves: the C1 broker-grid
+    "9am" open and the C2 NY-anchored "9am" open must NOT be the same
+    UTC instant -- confirming the bug this round fixes was real (both
+    grids' raw `window_open_ts` genuinely differ) and not a fixture
+    artifact."""
+    assert _C1_9AM_OPEN_EST != _C2_9AM_OPEN_EST
+    assert _C1_9AM_OPEN_EDT != _C2_9AM_OPEN_EDT
