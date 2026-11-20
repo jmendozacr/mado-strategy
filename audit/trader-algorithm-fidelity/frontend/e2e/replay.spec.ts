@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 const api = 'http://127.0.0.1:8766';
 
 test('a real case stays causal and its human decision survives reload', async ({ page, request }) => {
+  test.setTimeout(60_000); // the deep H4/Daily pan below drives several real historical_context() scans
   await page.route('**/api/**', route => {
     const url = new URL(route.request().url());
     url.port = '8766';
@@ -64,6 +65,36 @@ test('a real case stays causal and its human decision survives reload', async ({
 
   const saved = await (await request.get(replayUrl)).json();
   expect(saved.decisions[0]).toMatchObject({ case_id: selected.id, decision: 'wait', cursor_utc: after.cursor_utc });
+
+  // Problem A: H4/Daily must be pannable for months, fed by historical_context()
+  // pages, well past the original ~32h M15 execution window -- and the replay
+  // cursor must never move while doing it.
+  // historical_context() scans the real multi-year M15 CSV per page (~0.8-0.9s
+  // each on this dataset -- a real but separate performance characteristic, not
+  // one of the four named defects) -- so this real-browser proof targets a
+  // modest depth that is still an order of magnitude past the old 32h ceiling.
+  // tests/test_context.py separately proves the pagination chain itself keeps
+  // extending correctly over many pages, several months back, using a fast
+  // synthetic fixture.
+  const cursorBeforePan = await page.locator('#cursor-utc').textContent();
+  for (let i = 0; i < 6; i += 1) await page.locator('button[aria-label="Zoom out H4"]').click();
+  const oldestVisible = async (chart: string) => {
+    const times = await page.locator(`#${chart}-chart g[data-time]`).evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
+    return times.length ? Math.min(...times.map(t => Date.parse(t!))) : Infinity;
+  };
+  const targetDaysMs = 10 * 24 * 60 * 60 * 1000;
+  const target = Date.parse(before.cursor_utc) - targetDaysMs;
+  for (let i = 0; i < 8; i += 1) {
+    const [oldestH4, oldestDaily] = await Promise.all([oldestVisible('h4'), oldestVisible('daily')]);
+    if (oldestH4 < target && oldestDaily < target) break;
+    const nextH4 = page.waitForResponse(resp => resp.url().includes('timeframe=h4'), { timeout: 15000 }).catch(() => null);
+    await page.locator('button[aria-label="Review earlier H4 candles"]').click();
+    await nextH4;
+  }
+  const [finalH4, finalDaily] = await Promise.all([oldestVisible('h4'), oldestVisible('daily')]);
+  expect(Date.parse(before.cursor_utc) - finalH4).toBeGreaterThan(targetDaysMs);
+  expect(Date.parse(before.cursor_utc) - finalDaily).toBeGreaterThan(targetDaysMs);
+  expect(await page.locator('#cursor-utc').textContent()).toBe(cursorBeforePan);
 
   await expect(page.locator('#finish')).toBeDisabled();
   for (let step = 0; step < 15; step += 1) {

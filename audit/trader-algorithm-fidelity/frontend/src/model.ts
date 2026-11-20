@@ -117,6 +117,13 @@ export function changeAnnotationType(draft: AnnotationDraft, nextType: Annotatio
   };
 }
 
+export function earliestPannableMs(bars: { h4: Bar[]; daily: Bar[]; m15: Bar[] }, fallback: number): number {
+  const candidates = [bars.h4[0]?.time, bars.daily[0]?.time, bars.m15[0]?.time]
+    .filter((time): time is string => Boolean(time))
+    .map(utcMs);
+  return candidates.length ? Math.min(...candidates) : fallback;
+}
+
 export function mergeOlderBars(current: Bar[], older: Bar[]): Bar[] {
   const seen = new Set(current.map(bar => bar.time));
   const merged = [...older.filter(bar => !seen.has(bar.time)), ...current];

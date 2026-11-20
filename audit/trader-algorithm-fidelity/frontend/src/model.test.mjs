@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { annotationPayload, barsThrough, changeAnnotationType, decisionPayload, feederLabel, formatClock, isDecisionReady, mergeOlderBars } from './model.ts';
+import { annotationPayload, barsThrough, changeAnnotationType, decisionPayload, earliestPannableMs, feederLabel, formatClock, isDecisionReady, mergeOlderBars } from './model.ts';
 
 describe('causal replay view', () => {
   const bars = [
@@ -84,5 +84,18 @@ describe('causal replay view', () => {
     const backToKeyLevel = changeAnnotationType(switched, 'key_level');
     assert.equal(backToKeyLevel.timeframe, 'm15');
     assert.equal(backToKeyLevel.source_time, undefined);
+  });
+
+  it('lets H4/Daily history extend the pan floor past the short M15 execution window', () => {
+    const bar = (time) => ({ time, available_at: time, open: 1, high: 1, low: 1, close: 1 });
+    const m15 = [bar('2025-06-01T00:00:00+00:00')];
+    const h4 = [bar('2025-01-01T00:00:00+00:00')];
+    const daily = [bar('2024-11-01T00:00:00+00:00')];
+    const fallback = Date.parse('2025-06-01T00:00:00Z') - 86400000;
+
+    assert.equal(earliestPannableMs({ h4: [], daily: [], m15: [] }, fallback), fallback);
+    assert.equal(earliestPannableMs({ h4: [], daily: [], m15 }, fallback), Date.parse(m15[0].time));
+    assert.equal(earliestPannableMs({ h4, daily: [], m15 }, fallback), Date.parse(h4[0].time));
+    assert.equal(earliestPannableMs({ h4, daily, m15 }, fallback), Date.parse(daily[0].time));
   });
 });

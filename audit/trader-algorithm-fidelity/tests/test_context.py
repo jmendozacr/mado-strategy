@@ -152,6 +152,43 @@ class HistoricalContextTests(unittest.TestCase):
             self.assertLessEqual(datetime.fromisoformat(slot).replace(tzinfo=None) + timedelta(minutes=15), cursor)
         fresh_journal.unlink(missing_ok=True)
 
+    def test_pagination_chains_several_months_back_on_a_fast_fixture(self):
+        # Problem A proof at the logic level (the real-browser E2E proof targets
+        # a modest depth, since historical_context() scans the real multi-year
+        # CSV per page and is slow for dozens of pages): a synthetic ~7-month
+        # fixture, chained page by page, must keep extending with no overlap and
+        # no leak past the cursor, reaching clearly more than 60 days back.
+        csv_path = self.root / f"EURUSD_M15_months_{uuid.uuid4().hex}.csv"
+        journal_path = self.root / f"journal_months_{uuid.uuid4().hex}.jsonl"
+        write_range(csv_path, datetime(2014, 6, 1, 0, 0), datetime(2015, 1, 9, 22, 0))
+        case = {"id": "fixture", "pair": "EURUSD", "date_ny": "2015-01-09", "model": "9am"}
+        engine = AuditEngine([case], {"EURUSD": csv_path}, journal_path, "rules-v1")
+        engine.start("fixture")
+        for _ in range(16):
+            engine.next("fixture")
+        cursor = engine._cursor("fixture")
+
+        before = None
+        oldest_seen = cursor
+        pages = 0
+        while pages < 10:
+            page = engine.historical_context("fixture", "daily", before=before, page_days=30)
+            page_times = [datetime.fromisoformat(c["time"]).replace(tzinfo=None) for c in page["candles"]]
+            for instant in page_times:
+                self.assertLessEqual(instant, cursor)
+            if page_times:
+                self.assertLessEqual(max(page_times), oldest_seen)  # no overlap/jump-forward across pages
+                oldest_seen = min(oldest_seen, min(page_times))
+            pages += 1
+            if page["exhausted"]:
+                break
+            before = datetime.fromisoformat(page["next_before"]).astimezone(timezone.utc).replace(tzinfo=None)
+
+        self.assertGreater((cursor - oldest_seen).days, 60)
+        self.assertTrue(page["exhausted"] or pages == 10)
+        csv_path.unlink(missing_ok=True)
+        journal_path.unlink(missing_ok=True)
+
     def test_pagination_chains_to_an_older_page(self):
         first = self.engine.historical_context("fixture", "h4", before=None, page_days=1)
         self.assertFalse(first["exhausted"])

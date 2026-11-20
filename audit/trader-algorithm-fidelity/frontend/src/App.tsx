@@ -3,7 +3,7 @@ import { AnnotationPanel } from './AnnotationPanel.tsx';
 import { Chart } from './Chart.tsx';
 import { DecisionForm } from './DecisionForm.tsx';
 import {
-  annotationPayload, barsThrough, decisionPayload, formatClock, mergeOlderBars, utcMs,
+  annotationPayload, barsThrough, decisionPayload, earliestPannableMs, formatClock, mergeOlderBars, utcMs,
   type AnnotationDraft, type Bar, type CaseSummary, type DecisionFields, type HistoricalContext,
   type PriceLevel, type Replay,
 } from './model.ts';
@@ -132,7 +132,11 @@ export function App() {
 
   function pan(delta: number) {
     const cursor = replay ? utcMs(replay.cursor_utc) : Date.now();
-    const earliest = replay?.m15.length ? utcMs(replay.m15[0].time) : cursor - span;
+    const fallback = replay?.m15.length ? utcMs(replay.m15[0].time) : cursor - span;
+    // H4/Daily can keep paging back toward the real dataset start; M15 keeps its
+    // original short execution window (Problem A) -- the pan floor is whichever
+    // of the three currently-loaded series reaches furthest back.
+    const earliest = earliestPannableMs({ h4: h4All, daily: dailyAll, m15: replay?.m15 ?? [] }, fallback);
     setViewEnd(previous => Math.min(cursor, Math.max(earliest + span * 0.2, (previous ?? cursor) - delta)));
   }
 

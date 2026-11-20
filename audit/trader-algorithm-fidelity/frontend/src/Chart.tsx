@@ -98,7 +98,7 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, zone, sel
           const middle = x(bar.time);
           const color = bar.integrity === 'gap' ? '#9a6b2f' : bar.close >= bar.open ? '#48c6a7' : '#ef7583';
           const label = formatClock(bar.time, zone);
-          return <g key={bar.time}
+          return <g key={bar.time} data-time={bar.time}
             onPointerEnter={() => setTooltip(`${label} ${zone.toUpperCase()} · O ${bar.open.toFixed(5)} H ${bar.high.toFixed(5)} L ${bar.low.toFixed(5)} C ${bar.close.toFixed(5)}${bar.complete === false ? ' · forming' : ''}${bar.integrity === 'gap' ? ' · data gap' : ''}`)}
             onPointerLeave={() => setTooltip('Hover a candle for OHLC')}
             style={{ cursor: selecting ? 'crosshair' : 'default' }}>
