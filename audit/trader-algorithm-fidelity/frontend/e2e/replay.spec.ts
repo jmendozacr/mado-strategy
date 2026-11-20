@@ -34,10 +34,20 @@ test('a real case stays causal and its human decision survives reload', async ({
   await expect(page.locator('#h4-chart rect[fill="transparent"]').first()).toBeVisible();
   await expect(page.locator('#m15-chart rect[fill="transparent"]').first()).toBeVisible();
 
+  await expect(page.locator('#daily-chart')).toBeVisible();
+  await page.locator('#zone-utc').click();
+  await expect(page.locator('#zone-utc')).toHaveClass(/button-primary/);
+  await page.locator('#zone-ny').click();
+
   await page.locator('#final-decision').selectOption('wait');
   await page.locator('textarea[name="notes"]').fill('Browser verification only; not a trader judgment.');
   await page.locator('#save').click();
   await expect(page.locator('#decision-count')).toHaveText('1');
+
+  await page.locator('#annotation-type').selectOption('horizontal_level');
+  await page.locator('#annotation-price').fill('1.11111');
+  await page.locator('#save-annotation').click();
+  await expect(page.locator('#annotation-count')).toHaveText('1');
   const saved = await (await request.get(replayUrl)).json();
   expect(saved.decisions[0]).toMatchObject({ case_id: selected.id, decision: 'wait', cursor_utc: after.cursor_utc });
 

@@ -17,9 +17,53 @@ export type Bar = {
   low: number;
   close: number;
   complete?: boolean;
+  integrity?: 'complete' | 'forming' | 'gap';
+  gap_slots?: string[];
 };
 
 export type PriceLevel = { price: number; label: string; time?: string };
+
+export type HistoricalContext = {
+  timeframe: 'h4' | 'daily';
+  candles: Bar[];
+  next_before: string | null;
+  exhausted: boolean;
+};
+
+export type AnnotationType = 'max' | 'min' | 'horizontal_level' | 'key_level' | 'm15_anchor';
+
+export type Annotation = {
+  id: string;
+  case_id: string;
+  annotation_type: AnnotationType;
+  timeframe: 'm15' | 'h4' | 'daily';
+  time_convention: string;
+  source_time: string | null;
+  source_available_at: string | null;
+  price: number | null;
+  documented_level_type: string | null;
+  notes: string | null;
+  cursor_utc: string;
+  cursor_ny: string;
+  recorded_at: string;
+};
+
+const FEEDER_LABELS: Record<number, string> = { 21: '9PM', 1: '1AM', 5: '5AM', 9: '9AM' };
+
+export function feederLabel(utcIso: string): string | null {
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(new Date(utcMs(utcIso))));
+  return FEEDER_LABELS[hour % 24] ?? null;
+}
+
+export function formatClock(utcIso: string, zone: 'ny' | 'utc'): string {
+  if (zone === 'utc') return utcIso.slice(0, 16).replace('T', ' ');
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(utcMs(utcIso)));
+  const get = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+}
 
 export type SavedDecision = {
   id: string;
@@ -39,6 +83,7 @@ export type Replay = {
   key_levels: PriceLevel[];
   last_available_m15: string | null;
   decisions: SavedDecision[];
+  annotations: Annotation[];
 };
 
 export type DecisionFields = Record<string, string | undefined>;
@@ -61,6 +106,40 @@ export function isDecisionReady(decision: DecisionFields): boolean {
     return ['entry_price', 'stop_loss', 'take_profit'].every(field => Number(decision[field]) > 0);
   }
   return true;
+}
+
+export function mergeOlderBars(current: Bar[], older: Bar[]): Bar[] {
+  const seen = new Set(current.map(bar => bar.time));
+  const merged = [...older.filter(bar => !seen.has(bar.time)), ...current];
+  return merged.sort((a, b) => utcMs(a.time) - utcMs(b.time));
+}
+
+export type AnnotationDraft = {
+  annotation_type: AnnotationType;
+  timeframe: 'm15' | 'h4' | 'daily';
+  source_time?: string;
+  price?: string;
+  documented_level_type?: string;
+  notes?: string;
+};
+
+export function annotationPayload(draft: AnnotationDraft): Record<string, string | number | undefined> {
+  const payload: Record<string, string | number | undefined> = {
+    annotation_type: draft.annotation_type, timeframe: draft.timeframe,
+    source_time: draft.source_time, documented_level_type: draft.documented_level_type, notes: draft.notes,
+  };
+  if (draft.annotation_type !== 'm15_anchor') {
+    const price = Number(draft.price);
+    if (!draft.price || !Number.isFinite(price) || price <= 0) throw new Error('A positive price is required for this annotation.');
+    payload.price = price;
+  }
+  if (draft.annotation_type === 'key_level' && !draft.documented_level_type?.trim()) {
+    throw new Error('Describe the documented Key Level type (charter terminology).');
+  }
+  if (['max', 'min', 'key_level', 'm15_anchor'].includes(draft.annotation_type) && !draft.source_time) {
+    throw new Error('Select a candle on the chart first.');
+  }
+  return payload;
 }
 
 export function decisionPayload(decision: DecisionFields, cursor: string): Record<string, string | number | null | undefined> {

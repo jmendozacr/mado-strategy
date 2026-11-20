@@ -224,7 +224,7 @@ main {
   flex-direction:column;
   gap:16px
 }
-.chart-card,.decision-panel {
+.chart-card,.decision-panel,.annotation-panel {
   border:1px solid #2a4050;
   background:#10202d;
   border-radius:14px;
@@ -278,6 +278,10 @@ main {
   fill:#edc785;
   font:11px 'DM Sans',sans-serif
 }
+.feeder-label {
+  fill:#6fb6e0;
+  font:9px 'DM Sans',sans-serif
+}
 .empty-chart {
   position:absolute;
   inset:0;
@@ -315,8 +319,46 @@ main {
   flex:1;
   min-width:0
 }
-.decision-panel {
+.decision-panel,.annotation-panel {
   padding:20px
+}
+.side-column {
+  display:flex;
+  flex-direction:column;
+  gap:18px
+}
+.annotation-form {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px 18px;
+  padding-top:14px;
+  border-top:1px solid #294050
+}
+.annotation-form .notes-field,.annotation-form button {
+  grid-column:1/-1
+}
+.header-tools {
+  display:flex;
+  align-items:center;
+  gap:14px
+}
+.zone-toggle {
+  display:flex;
+  border:1px solid #2a4050;
+  border-radius:100px;
+  overflow:hidden
+}
+.zone-toggle button {
+  border:0;
+  background:transparent;
+  color:#9fb3c2;
+  padding:7px 14px;
+  font-size:12px;
+  cursor:pointer
+}
+.zone-toggle button.button-primary {
+  background:#1f4f6b;
+  color:#eaf4ff
 }
 .panel-heading h2 {
   font:700 21px 'Space Grotesk',sans-serif;

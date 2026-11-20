@@ -1,19 +1,22 @@
 import { useRef, useState, type PointerEvent, type WheelEvent } from 'react';
-import { utcMs, type Bar, type PriceLevel } from './model.ts';
+import { feederLabel, formatClock, utcMs, type Bar, type PriceLevel } from './model.ts';
 
 type Props = {
-  id: 'h4' | 'm15';
+  id: 'h4' | 'm15' | 'daily';
   title: string;
   subtitle: string;
   bars: Bar[];
   markers: PriceLevel[];
   end: number;
   span: number;
+  zone: 'ny' | 'utc';
+  selecting?: boolean;
   onPan: (delta: number) => void;
   onZoom: (factor: number) => void;
+  onSelectCandle?: (bar: Bar) => void;
 };
 
-export function Chart({ id, title, subtitle, bars, markers, end, span, onPan, onZoom }: Props) {
+export function Chart({ id, title, subtitle, bars, markers, end, span, zone, selecting, onPan, onZoom, onSelectCandle }: Props) {
   const [tooltip, setTooltip] = useState('Hover a candle for OHLC');
   const dragStart = useRef<number | null>(null);
   const left = 14, right = 80, top = 16, bottom = 30, width = 1000, height = 260;
@@ -65,8 +68,13 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, onPan, on
           const tickX = left + plotWidth * index / 5;
           return <g key={`time-${index}`}>
             <line x1={tickX} y1={top} x2={tickX} y2={height - bottom} stroke="#1c2c3a" />
-            <text x={tickX} y={height - 8} textAnchor="middle" className="axis-label">{new Date(time).toISOString().slice(5, 16).replace('T', ' ')}</text>
+            <text x={tickX} y={height - 8} textAnchor="middle" className="axis-label">{formatClock(new Date(time).toISOString(), zone)}</text>
           </g>;
+        })}
+        {(id === 'h4' || id === 'm15') && visible.map(bar => {
+          const label = feederLabel(bar.time);
+          if (!label) return null;
+          return <text key={`feeder-${bar.time}`} x={x(bar.time)} y={top - 4} textAnchor="middle" className="feeder-label">{label}</text>;
         })}
         {markers.map((marker, index) => <g key={`${marker.label}-${index}`}>
           <line x1={left} y1={y(marker.price)} x2={width - right} y2={y(marker.price)} stroke="#e8b96b" strokeDasharray="6 4" />
@@ -74,8 +82,12 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, onPan, on
         </g>)}
         {visible.map(bar => {
           const middle = x(bar.time);
-          const color = bar.close >= bar.open ? '#48c6a7' : '#ef7583';
-          return <g key={bar.time} onPointerEnter={() => setTooltip(`${bar.time} UTC · O ${bar.open.toFixed(5)} H ${bar.high.toFixed(5)} L ${bar.low.toFixed(5)} C ${bar.close.toFixed(5)}${bar.complete === false ? ' · forming' : ''}`)} onPointerLeave={() => setTooltip('Hover a candle for OHLC')}>
+          const color = bar.integrity === 'gap' ? '#9a6b2f' : bar.close >= bar.open ? '#48c6a7' : '#ef7583';
+          const label = formatClock(bar.time, zone);
+          return <g key={bar.time}
+            onPointerEnter={() => setTooltip(`${label} ${zone.toUpperCase()} · O ${bar.open.toFixed(5)} H ${bar.high.toFixed(5)} L ${bar.low.toFixed(5)} C ${bar.close.toFixed(5)}${bar.complete === false ? ' · forming' : ''}${bar.integrity === 'gap' ? ' · data gap' : ''}`)}
+            onPointerLeave={() => setTooltip('Hover a candle for OHLC')}
+            onClick={() => onSelectCandle?.(bar)} style={{ cursor: selecting ? 'crosshair' : 'default' }}>
             <line x1={middle} y1={y(bar.high)} x2={middle} y2={y(bar.low)} stroke={color} strokeWidth="2" />
             <rect x={middle - candleWidth / 2} y={Math.min(y(bar.open), y(bar.close))} width={candleWidth} height={Math.max(2, Math.abs(y(bar.open) - y(bar.close)))} fill={color} opacity={bar.complete === false ? 0.64 : 1} stroke={bar.complete === false ? '#f8d18b' : 'none'} />
             <rect x={middle - Math.max(7, candleWidth / 2)} y={top} width={Math.max(14, candleWidth)} height={plotHeight} fill="transparent" />
@@ -84,6 +96,6 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, onPan, on
       </svg>
       <div id={`${id}-empty`} className="empty-chart" hidden={visible.length > 0}>No candles in this view</div>
     </div>
-    <div className="chart-footer"><span>Drag or use arrows to review · Scroll or use +/- to zoom</span><span id={`${id}-tooltip`}>{tooltip}</span></div>
+    <div className="chart-footer"><span>{selecting ? 'Click a candle to use it as the annotation source' : 'Drag or use arrows to review · Scroll or use +/- to zoom'}</span><span id={`${id}-tooltip`}>{tooltip}</span></div>
   </section>;
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { barsThrough, decisionPayload, isDecisionReady } from './model.ts';
+import { annotationPayload, barsThrough, decisionPayload, feederLabel, formatClock, isDecisionReady, mergeOlderBars } from './model.ts';
 
 describe('causal replay view', () => {
   const bars = [
@@ -42,5 +42,35 @@ describe('causal replay view', () => {
     assert.equal(payload.data_issue_reason, 'Missing M15 candle at 14:15 UTC');
     assert.equal(payload.reason, 'Missing M15 candle at 14:15 UTC');
     assert.equal(payload.sweep_confirmed_at, '2025-01-07T14:00:00.000Z');
+  });
+
+  it('merges an older historical context page without duplicating bars', () => {
+    const current = [{ time: '2025-01-08T00:00:00+00:00', available_at: '2025-01-08T04:00:00+00:00', open: 1, high: 1, low: 1, close: 1 }];
+    const older = [
+      { time: '2025-01-07T20:00:00+00:00', available_at: '2025-01-08T00:00:00+00:00', open: 1, high: 1, low: 1, close: 1 },
+      { time: '2025-01-08T00:00:00+00:00', available_at: '2025-01-08T04:00:00+00:00', open: 9, high: 9, low: 9, close: 9 },
+    ];
+    const merged = mergeOlderBars(current, older);
+    assert.equal(merged.length, 2);
+    assert.equal(merged[0].time, '2025-01-07T20:00:00+00:00');
+    assert.equal(merged[1].open, 1);
+  });
+
+  it('labels only the four documented feeder opens, in New York time', () => {
+    assert.equal(feederLabel('2025-01-07T14:00:00+00:00'), '9AM');
+    assert.equal(feederLabel('2025-01-07T18:00:00+00:00'), null);
+  });
+
+  it('formats a UTC instant in New York wall time when requested', () => {
+    assert.equal(formatClock('2025-01-07T14:00:00+00:00', 'ny'), '2025-01-07 09:00');
+    assert.equal(formatClock('2025-01-07T14:00:00+00:00', 'utc'), '2025-01-07 14:00');
+  });
+
+  it('requires a selected candle for candle-sourced annotation types', () => {
+    assert.throws(() => annotationPayload({ annotation_type: 'max', timeframe: 'm15', price: '1.2' }), /Select a candle/);
+    assert.throws(() => annotationPayload({ annotation_type: 'key_level', timeframe: 'h4', price: '1.2', source_time: '2025-01-07T09:00:00+00:00' }), /documented Key Level/);
+    const payload = annotationPayload({ annotation_type: 'horizontal_level', timeframe: 'h4', price: '1.2345' });
+    assert.equal(payload.price, 1.2345);
+    assert.equal(payload.source_time, undefined);
   });
 });
