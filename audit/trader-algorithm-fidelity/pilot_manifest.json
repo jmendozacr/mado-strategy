@@ -1,0 +1,216 @@
+{
+  "seed": 20261119,
+  "source": "audit\\2026-11-17-causal-lookahead-audit\\trades_d3_c2_2015plus_run2.csv",
+  "cases": [
+    {
+      "id": "470c887e7e3892dc",
+      "pair": "AUDUSD",
+      "model": "9am",
+      "date_ny": "2015-01-23",
+      "category": "no_signal"
+    },
+    {
+      "id": "ce56409cd5a3b34a",
+      "pair": "USDCAD",
+      "model": "1am",
+      "date_ny": "2024-05-10",
+      "category": "no_signal"
+    },
+    {
+      "id": "a50e9abd7a361fb4",
+      "pair": "USDCAD",
+      "model": "1am",
+      "date_ny": "2019-06-25",
+      "category": "no_signal"
+    },
+    {
+      "id": "e80aaf1f7ebcb4c8",
+      "pair": "AUDUSD",
+      "model": "1am",
+      "date_ny": "2023-11-06",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "29b1a79bf0dc5e92",
+      "pair": "EURUSD",
+      "model": "9am",
+      "date_ny": "2016-03-14",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "cdb91f0043acf911",
+      "pair": "EURUSD",
+      "model": "9am",
+      "date_ny": "2019-08-27",
+      "category": "with_trade"
+    },
+    {
+      "id": "5f28d1debf179095",
+      "pair": "EURUSD",
+      "model": "9am",
+      "date_ny": "2015-09-04",
+      "category": "no_signal"
+    },
+    {
+      "id": "14b1d44959d97812",
+      "pair": "EURUSD",
+      "model": "9am",
+      "date_ny": "2024-03-11",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "3803f56967bbe9f8",
+      "pair": "AUDUSD",
+      "model": "1am",
+      "date_ny": "2015-09-04",
+      "category": "no_signal"
+    },
+    {
+      "id": "7756a1799869bdb0",
+      "pair": "AUDUSD",
+      "model": "9am",
+      "date_ny": "2023-11-16",
+      "category": "no_signal"
+    },
+    {
+      "id": "1091b08ee4749760",
+      "pair": "USDCAD",
+      "model": "9am",
+      "date_ny": "2015-03-09",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "69f2e00bf73e1136",
+      "pair": "EURUSD",
+      "model": "1am",
+      "date_ny": "2025-12-17",
+      "category": "with_trade"
+    },
+    {
+      "id": "27a8676b7c7f9971",
+      "pair": "USDCAD",
+      "model": "1am",
+      "date_ny": "2016-11-07",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "4877398436c043bf",
+      "pair": "EURUSD",
+      "model": "9am",
+      "date_ny": "2015-08-19",
+      "category": "no_signal"
+    },
+    {
+      "id": "ee7cc763ca713a45",
+      "pair": "USDCAD",
+      "model": "9am",
+      "date_ny": "2020-03-09",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "3ad7bed021f66bd6",
+      "pair": "AUDUSD",
+      "model": "1am",
+      "date_ny": "2024-11-14",
+      "category": "no_signal"
+    },
+    {
+      "id": "7e2af84bc1b046fb",
+      "pair": "EURUSD",
+      "model": "9am",
+      "date_ny": "2015-01-07",
+      "category": "with_trade"
+    },
+    {
+      "id": "5df32dbbc7382dff",
+      "pair": "USDCAD",
+      "model": "9am",
+      "date_ny": "2022-06-24",
+      "category": "with_trade"
+    },
+    {
+      "id": "a40ccac6c125bc25",
+      "pair": "AUDUSD",
+      "model": "1am",
+      "date_ny": "2015-11-02",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "6160b8305c63baf7",
+      "pair": "AUDUSD",
+      "model": "9am",
+      "date_ny": "2017-03-13",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "09f55d42fbbbafec",
+      "pair": "AUDUSD",
+      "model": "1am",
+      "date_ny": "2021-01-25",
+      "category": "with_trade"
+    },
+    {
+      "id": "971279a6394d0f1b",
+      "pair": "EURUSD",
+      "model": "1am",
+      "date_ny": "2018-11-05",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "8ae4d0d91d5810ae",
+      "pair": "EURUSD",
+      "model": "1am",
+      "date_ny": "2024-11-01",
+      "category": "with_trade"
+    },
+    {
+      "id": "f4821566b90da4bf",
+      "pair": "USDCAD",
+      "model": "9am",
+      "date_ny": "2015-01-23",
+      "category": "no_signal"
+    },
+    {
+      "id": "4a1429129b064c79",
+      "pair": "AUDUSD",
+      "model": "1am",
+      "date_ny": "2021-11-11",
+      "category": "with_trade"
+    },
+    {
+      "id": "c0d0293538ea07b2",
+      "pair": "USDCAD",
+      "model": "1am",
+      "date_ny": "2024-04-26",
+      "category": "with_trade"
+    },
+    {
+      "id": "07d9e39b00893715",
+      "pair": "EURUSD",
+      "model": "1am",
+      "date_ny": "2020-07-21",
+      "category": "no_signal"
+    },
+    {
+      "id": "cdaf696b7d34fc73",
+      "pair": "AUDUSD",
+      "model": "9am",
+      "date_ny": "2015-07-08",
+      "category": "with_trade"
+    },
+    {
+      "id": "cdfcb8ec3660d519",
+      "pair": "EURUSD",
+      "model": "1am",
+      "date_ny": "2013-12-25",
+      "category": "boundary_or_gap"
+    },
+    {
+      "id": "f5121fe78ae14e94",
+      "pair": "USDCAD",
+      "model": "9am",
+      "date_ny": "2022-09-28",
+      "category": "with_trade"
+    }
+  ]
+}

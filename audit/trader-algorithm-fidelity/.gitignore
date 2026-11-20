@@ -1,0 +1,6 @@
+runtime/
+__pycache__/
+tests/__pycache__/
+tmp*/
+tests/*fixture*.csv
+tests/journal_*.jsonl
