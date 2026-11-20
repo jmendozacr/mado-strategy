@@ -2,6 +2,7 @@ import json
 import sys
 import threading
 import unittest
+import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime, timedelta
@@ -62,6 +63,41 @@ class ApiBoundaryTests(unittest.TestCase):
         self.assertTrue(all(bar["available_at"] is None for bar in snapshot["h4"] if not bar["complete"]))
         response = json.dumps(snapshot).lower()
         for forbidden in ("hidden_trade", "category", "outcome", "selected_by", "algorithm"):
+            self.assertNotIn(forbidden, response)
+
+    def test_context_endpoint_never_reveals_future_or_algorithm_data(self):
+        self.request("/api/cases/fixture/start", "POST")
+        snapshot = self.request("/api/cases/fixture/next", "POST")
+        context = self.request("/api/cases/fixture/context?timeframe=h4&page_days=3")
+        cursor = datetime.fromisoformat(snapshot["cursor_utc"])
+        for candle in context["candles"]:
+            if candle["available_at"] is not None:
+                self.assertLessEqual(datetime.fromisoformat(candle["available_at"]), cursor)
+            if not candle["complete"]:
+                self.assertIsNone(candle["available_at"])
+        response = json.dumps(context).lower()
+        for forbidden in ("hidden_trade", "category", "outcome", "selected_by", "algorithm"):
+            self.assertNotIn(forbidden, response)
+        future = urllib.parse.quote((cursor + timedelta(hours=1)).isoformat() + "+00:00")
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request(f"/api/cases/fixture/context?timeframe=h4&before={future}")
+        self.assertEqual(error.exception.code, 400)
+
+    def test_annotation_endpoint_rejects_bad_candle_and_persists_valid_one(self):
+        self.request("/api/cases/fixture/start", "POST")
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request("/api/cases/fixture/annotations", "POST", {
+                "annotation_type": "m15_anchor", "timeframe": "m15", "source_time": "1999-01-01T00:00:00Z",
+            })
+        self.assertEqual(error.exception.code, 400)
+        saved = self.request("/api/cases/fixture/annotations", "POST", {
+            "annotation_type": "horizontal_level", "timeframe": "h4", "price": 1.1234,
+        })
+        self.assertEqual(saved["annotation_type"], "horizontal_level")
+        replay = self.request("/api/cases/fixture/replay")
+        self.assertEqual(replay["annotations"][0]["id"], saved["id"])
+        response = json.dumps(saved).lower()
+        for forbidden in ("hidden_trade", "category", "outcome", "algorithm"):
             self.assertNotIn(forbidden, response)
 
     def test_case_cannot_finish_without_human_decision(self):

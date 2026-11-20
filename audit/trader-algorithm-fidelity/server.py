@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from engine import AuditEngine
+from engine import AuditEngine, CONTEXT_DEFAULT_PAGE_DAYS
 from selection import PAIRS
 
 
@@ -47,7 +48,8 @@ def handler_for(engine: AuditEngine):
                 return
 
         def _route(self):
-            path = urlsplit(self.path).path
+            split = urlsplit(self.path)
+            path = split.path
             if path == "/api/health" and self.command == "GET":
                 return {"status": "ok"}
             if path == "/api/cases" and self.command == "GET":
@@ -58,6 +60,16 @@ def handler_for(engine: AuditEngine):
             case_id, action = segments[2:]
             if self.command == "GET" and action == "replay":
                 return engine.snapshot(case_id)
+            if self.command == "GET" and action == "context":
+                query = parse_qs(split.query)
+                timeframe = query.get("timeframe", [""])[0]
+                before_raw = query.get("before", [None])[0]
+                before = None
+                if before_raw:
+                    before = datetime.fromisoformat(before_raw.replace("Z", "+00:00")) \
+                        .astimezone(timezone.utc).replace(tzinfo=None)
+                page_days = int(query.get("page_days", [str(0)])[0]) or CONTEXT_DEFAULT_PAGE_DAYS
+                return engine.historical_context(case_id, timeframe, before, page_days)
             if self.command != "POST":
                 raise KeyError("Unknown route")
             if action == "start":
@@ -74,6 +86,14 @@ def handler_for(engine: AuditEngine):
                 if not isinstance(payload, dict):
                     raise ValueError("Decision must be an object")
                 return engine.record_decision(case_id, payload)
+            if action == "annotations":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 65536:
+                    raise ValueError("Invalid request body")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise ValueError("Annotation must be an object")
+                return engine.record_annotation(case_id, payload)
             raise KeyError("Unknown route")
 
         def do_GET(self):

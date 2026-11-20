@@ -1,0 +1,54 @@
+# Trader fidelity audit: HTF context + manual annotations (Stage 1 extension)
+
+Objective: let the human trader query sufficient causal HTF (H4/Daily) history and draw manual Key Level/anchor annotations in `audit/trader-algorithm-fidelity/`, without changing D3/C2, the detector, docs, the 30-case manifest, or any existing decision record. Branch: `detector-msnr-key-levels`. Delivery strategy: `ask-on-risk` (work-unit commits directly on this branch). Test runner: `cd audit/trader-algorithm-fidelity && python -m unittest discover -s tests -v`; frontend `cd frontend && npm run typecheck && npm test`; E2E `npm run test:e2e` (Playwright, port 8766, isolated journal).
+
+## Specs
+
+S1. "Actualmente `AuditEngine._load_bars()` carga aproximadamente 32 horas anteriores a la vela feeder... No podemos comparar sus decisiones con D3/C2 si el trader no dispone de la información de mercado necesaria para aplicar las mismas reglas." / "No fijar arbitrariamente 32 horas como máximo contexto disponible."
+
+S2. Task 1 requirements verbatim: "Inspeccionar los charters y las dependencias históricas de Key Levels. Determinar qué historial necesita visualizar el trader... Implementar una vista de contexto HTF que permita consultar velas H4 y Daily históricas." Requisitos: "Reconstruir las velas desde la fuente histórica autorizada." / "Conservar el anclaje temporal correcto." / "Respetar America/New_York y DST." / "Mostrar únicamente información disponible hasta el cursor." / "Mantener las velas en formación como provisionales cuando corresponda." / "Permitir navegar hacia atrás sin avanzar el cursor del replay." / "No cargar en el frontend velas futuras." / "No mostrar cuáles niveles seleccionó D3/C2." / "No mostrar resultados de operaciones."
+
+S3. Task 2 (annotations) verbatim: "Seleccionar una vela M15 directamente sobre el gráfico." / "Registrar su timestamp real." / "Marcar un máximo o mínimo." / "Dibujar un nivel horizontal de precio." / "Identificar manualmente un Key Level." / "Asociar el nivel con su vela de origen y tipo documentado." / "Registrar un anchor M15 sin introducir manualmente su fecha y hora." / "El backend debe seguir validando la disponibilidad causal de los eventos."
+
+S4. Task 3 (presentation) verbatim: "Utilizar New York como referencia visual principal... Permitir consultar UTC cuando sea necesario. Mostrar claramente las aperturas feeder de 9PM, 1AM, 5AM y 9AM, respetando EST/EDT. No cambiar los timestamps originales ni la lógica de almacenamiento."
+
+S5. Task 4 (tests) verbatim, 7 items: "1. Consultar historial HTF no revela información futura. 2. Ningún Key Level manual puede referenciar velas inexistentes. 3. Las velas Daily/H4 utilizan correctamente información disponible. 4. Las anotaciones persisten con su timestamp y procedencia. 5. Las decisiones humanas siguen siendo append-only. 6. La categoría oculta de selección y las decisiones de D3/C2 permanecen inaccesibles durante la revisión. 7. Las 30 sesiones originales permanecen intactas."
+
+S6. Constraints verbatim: "No modificar detector/, scanner/ ni docs/. No cambiar las reglas de trading. No ejecutar backtests. No modificar D3/C2. No regenerar ni sustituir el manifiesto original de 30 casos. No sobrescribir decisiones humanas existentes. No implementar todavía el comparador de Etapa 2." Stop after validation: "Detente después de la validación. No iniciar todavía las 30 sesiones definitivas." Smoke test instruction: "Realiza un smoke test con uno o dos escenarios reales, utilizando un journal separado del piloto."
+
+S7. Decision 1 (resolved by user): Daily convention = **17:00–17:00 New York**, `America/New_York`, EST/EDT-respecting. "No debe presentarse como una regla de los charters... Documenta esta decisión como un supuesto de ingeniería." Precaution verbatim: "No asumas que las velas Daily 17:00 NY coinciden con las Daily nativas del broker. No cambies la definición Daily de D3/C2 ni del detector. Registra la convención usada en los metadatos de las anotaciones. Deja documentada esta posible diferencia para la comparación de Etapa 2. No clasifiques automáticamente como error del detector una discrepancia que provenga de convenciones temporales distintas." / "El Daily reconstruido será contexto visual; no agregues filtros de trading ni nuevas condiciones operativas."
+
+S8. Decision 2 (resolved by user): "Elijo la opción 1: reconstruir ambas temporalidades desde M15." Requisitos verbatim: "H4 anclado a las aperturas feeder NY existentes. Daily anclado a las 17:00 NY. Reconstrucción exclusivamente desde información M15 disponible. Ninguna vela futura enviada al frontend. Velas en formación con OHLC provisional. Huecos identificados, sin inventar velas ni interpolar precios. Validación del calendario Forex, fines de semana y cambios DST. No asumir que todas las sesiones Daily contienen necesariamente 96 velas M15. Mantener intactos los timestamps y archivos originales."
+
+S9. Pagination verbatim: "Confirmo también tu propuesta de paginación hacia atrás sin límite arbitrario de antigüedad, hasta donde permitan los datos existentes. La paginación debe ser eficiente y solicitar bloques limitados de información, no cargar años completos de M15 en cada movimiento del gráfico."
+
+S10. Annotation fields verbatim: "Timestamp de origen. Timestamp de disponibilidad. Temporalidad. Convención horaria. Tipo de nivel documentado. Precio. Cursor histórico de la decisión. La selección debe validarse nuevamente en el backend."
+
+S11. Final delivery instruction verbatim: "Entrégame los hallazgos técnicos, especialmente cualquier discrepancia temporal entre Daily reconstruido y Daily nativo del broker."
+
+## Architecture decisions (engineering, not charter rules — see S7/S8)
+
+- D1. H4/Daily extended context is derived exclusively from the existing M15 CSV source (`read_m15`), reusing/generalizing the feeder-bucket logic already in `engine.py::snapshot`, NOT from the native `data/*_H4_*.csv`/`data/*_D1_*.csv` files (those use a different, non-NY-feeder anchor and would reintroduce the broker-H4-vs-feeder-H4 discrepancy that originally motivated this whole audit).
+- D2. Existing `_load_bars`/`snapshot()` shape and 32h default window are **left untouched** (it still governs the live execution replay step and all 25+5+2 existing tests). The fix for S1 is a new, separate, read-only, paginated "historical context" capability that never advances or is advanced by the replay cursor.
+- D3. Daily bucket completeness tolerates missing M15 bars that fall inside the standard forex weekend closure (Fri 17:00 NY – Sun 17:00 NY); only unexplained gaps outside that window are flagged `data_gap`. No candle is ever fabricated or interpolated.
+
+## Tasks
+
+- [x] T1 — `engine.py`: extract shared bucket-derivation helper (generalizes the inline H4 loop in `snapshot`) parameterized by anchor hours + span; add Daily anchor (17:00 NY, 24h span) + forex-weekend gap classification. Route: inline. Risk: item 3 (shared code; existing snapshot/H4 tests must keep passing unmodified). **Done**: `bucket_candles`/`bucket_close_utc`/`is_forex_weekend_ny` added; existing `snapshot()`/`_load_bars` untouched. 40/40 tests green (25 pre-existing unchanged).
+- [x] T2 — `engine.py` + `server.py`: new read-only paginated `historical_context(case_id, timeframe, before, limit_days)` method + `GET /api/cases/<id>/context` route. Causality: `before` clamped to `min(before, cursor)`; never mutates journal/cursor. Route: inline. Risk: item 3. **Done**. Note: bucket close uses NY-local-hour arithmetic (`bucket_close_utc`), not a fixed UTC timedelta — a fixed-24h assumption was caught wrong by `test_dst_spring_forward_daily_bucket_closes_23_hours_later` during T4 and fixed before commit.
+- [x] T3 — `engine.py` + `server.py`: new `annotation` journal-event kind + `record_annotation()` validation (candle/bucket must exist and be causally available; `m15_anchor` must match a real closed M15 open) + `POST /api/cases/<id>/annotations` route; `snapshot()` gains an additive `annotations` field. Decisions code path untouched. Route: inline. Risk: item 3. **Done**.
+- [x] T4 — Python tests for S5 items 1-4 and 6 (new `tests/test_context.py` + `tests/test_annotations.py`, plus 2 new cases in `tests/test_api.py`). Route: inline. **Done**: 15 new tests, 40/40 total pass (`cd audit/trader-algorithm-fidelity && python -m unittest discover -s tests -v`).
+- [ ] T5 — Frontend `model.ts`/`Chart.tsx`/`App.tsx`: paginated backward context fetch on pan (merge into local state, cursor never advances), add Daily chart, add click-to-select candle + minimal annotation form (max/min/horizontal level/key level/m15 anchor), NY/UTC toggle + feeder-open tick labels. Route: inline.
+- [ ] T6 — Frontend checks: `npm run typecheck`, `npm test` (extend `model.test.mjs` if pure logic added), E2E smoke extension only if cheap. Route: inline.
+- [ ] T7 — Smoke test with an isolated journal (`runtime/context-annotations-smoke.jsonl`) against 1-2 real cases; separately compare reconstructed 17:00-NY Daily OHLC vs native `data/EURUSD_D1_*.csv` rows and report the delta as a documented convention difference (S7/S11). Route: inline.
+- [ ] T8 — STOP for review per S6 (do not start the 30-session pilot).
+
+## Log
+
+L1 (2026-11-20): User's original request verbatim — HTF context view, manual annotations, NY/UTC presentation, and validation tests for the trader fidelity audit app, "Detente después de la validación. No iniciar todavía las 30 sesiones definitivas."
+
+L2 (2026-11-20): User's full research-context framing (hypothesis A/B/C, D3/C2 definition, success criteria, hard constraints) — persisted to Engram memory `decision/crt-trader-algorithm-fidelity-audit-hypothesis-framework-d3-c2-definition-success-criteria` (obs-5dc3283c0990eae8). Instruction: "No reemplaces sus requisitos ni amplíes el alcance sin justificación técnica."
+
+L3 (2026-11-20): Explorer mapping confirmed no charter defines a Key-Level lookback rule, and that `data/` has native H4/D1 CSVs not aligned to NY feeder hours.
+
+L4 (2026-11-20): User resolved both open design decisions — Daily = 17:00-17:00 NY (engineering assumption, not a charter rule); H4/Daily both reconstructed from M15 (not native broker files). Full text folded into S7/S8 above.

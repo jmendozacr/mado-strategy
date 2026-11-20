@@ -19,6 +19,17 @@ UTC = timezone.utc
 M15 = timedelta(minutes=15)
 H4 = timedelta(hours=4)
 FEEDER_HOURS = (1, 5, 9, 13, 17, 21)
+DAILY_HOURS = (17,)
+# Engineering assumption (not a charter rule, none defines a Daily boundary):
+# the forex trading day rolls over at 17:00 America/New_York.
+FOREX_WEEK_CLOSE_HOUR = 17  # Friday 17:00 NY
+FOREX_WEEK_OPEN_HOUR = 17  # Sunday 17:00 NY
+CONTEXT_MAX_PAGE_DAYS = 60
+CONTEXT_DEFAULT_PAGE_DAYS = 14
+CONTEXT_TIMEFRAMES = {"h4": (FEEDER_HOURS, 4), "daily": (DAILY_HOURS, 24)}
+ANNOTATION_TYPES = {"max", "min", "horizontal_level", "key_level", "m15_anchor"}
+ANNOTATION_TIMEFRAMES = {"m15", "h4", "daily"}
+ANNOTATION_TIME_CONVENTIONS = {"m15": "utc_m15_close", "h4": "ny_feeder_h4", "daily": "ny_17_00_daily"}
 
 
 def utc_text(value: datetime) -> str:
@@ -70,6 +81,82 @@ def complete_bucket(bars: list[dict], start: datetime) -> bool:
     return len(bucket) == 16 and all(bar["instant"] == start + i * M15 for i, bar in enumerate(bucket))
 
 
+def is_forex_weekend_ny(instant_utc: datetime) -> bool:
+    """Standard forex week closure: Friday 17:00 NY through Sunday 17:00 NY.
+
+    Engineering assumption used only to avoid flagging the expected weekly
+    closure as a data gap; no charter defines this boundary.
+    """
+    ny = instant_utc.replace(tzinfo=UTC).astimezone(NY)
+    weekday = ny.weekday()  # Monday = 0 ... Sunday = 6
+    if weekday == 4:
+        return ny.hour >= FOREX_WEEK_CLOSE_HOUR
+    if weekday == 5:
+        return True
+    if weekday == 6:
+        return ny.hour < FOREX_WEEK_OPEN_HOUR
+    return False
+
+
+def bucket_close_utc(day: date, hour: int, span_hours: int) -> datetime:
+    """The UTC instant `span_hours` of NY wall-clock time after NY local (day, hour).
+
+    Computed by shifting the NY-local hour/day and re-resolving through
+    `feeder_open_utc`, rather than adding a fixed UTC timedelta, so a bucket that
+    spans a DST transition still closes at the correct NY wall-clock time.
+    """
+    total = hour + span_hours
+    return feeder_open_utc(day + timedelta(days=total // 24), total % 24)
+
+
+def bucket_candles(bars: list[dict], cursor: datetime, lower_bound: datetime, upper_bound: datetime,
+                    anchor_hours: tuple[int, ...], span_hours: int) -> list[dict]:
+    """Derive HTF candles anchored at `anchor_hours` (NY local), from a causal M15
+    prefix only. Never fabricates or interpolates a missing M15 slot: a slot missing
+    for the expected weekly forex closure does not count against completeness; any
+    other missing slot is reported in `gap_slots` and the candle's `integrity`
+    becomes `"gap"` instead of `"complete"`. A candle whose window has not fully
+    elapsed yet is `"forming"` and carries no `available_at`.
+    """
+    visible = sorted((bar for bar in bars if bar["instant"] + M15 <= cursor), key=lambda bar: bar["instant"])
+    candles = []
+    day = lower_bound.date() - timedelta(days=1)
+    end_day = upper_bound.date() + timedelta(days=1)
+    while day <= end_day:
+        for hour in anchor_hours:
+            opening = feeder_open_utc(day, hour)
+            if opening < lower_bound or opening > upper_bound:
+                continue
+            closing = bucket_close_utc(day, hour, span_hours)
+            bucket = [bar for bar in visible if opening <= bar["instant"] < closing]
+            if not bucket:
+                continue
+            present = {bar["instant"] for bar in bucket}
+            missing = []
+            slot = opening
+            while slot < closing:
+                if slot not in present:
+                    missing.append(slot)
+                slot += M15
+            unexplained = [slot for slot in missing if not is_forex_weekend_ny(slot)]
+            elapsed = closing <= cursor
+            if unexplained:
+                integrity = "gap"
+            elif elapsed:
+                integrity = "complete"
+            else:
+                integrity = "forming"
+            candles.append({"time": utc_text(opening),
+                             "available_at": utc_text(closing) if integrity == "complete" else None,
+                             "open": bucket[0]["open"], "high": max(bar["high"] for bar in bucket),
+                             "low": min(bar["low"] for bar in bucket), "close": bucket[-1]["close"],
+                             "complete": integrity == "complete", "integrity": integrity,
+                             "gap_slots": [utc_text(slot) for slot in unexplained]})
+        day += timedelta(days=1)
+    candles.sort(key=lambda bar: bar["time"])
+    return candles
+
+
 class AuditEngine:
     def __init__(self, cases: list[dict], data_paths: dict[str, Path], journal: Path, rules_version: str):
         self.cases = {case["id"]: case for case in cases}
@@ -80,6 +167,7 @@ class AuditEngine:
         self.history: dict[str, list[dict]] = {case_id: [] for case_id in self.cases}
         self.datasets: dict[str, str] = {}
         self.bars: dict[str, list[dict]] = {}
+        self.dataset_starts: dict[str, datetime] = {}
         if journal.exists():
             with journal.open("r", encoding="utf-8") as stream:
                 for line in stream:
@@ -134,6 +222,33 @@ class AuditEngine:
             origin = current_open(case)
             self.bars[case_id] = read_m15(self.data_paths[case["pair"]], origin - timedelta(hours=32), origin + H4)
         return self.bars[case_id]
+
+    def _dataset_start(self, pair: str) -> datetime:
+        if pair not in self.dataset_starts:
+            with self.data_paths[pair].open("r", encoding="utf-8-sig", newline="") as stream:
+                row = next(csv.DictReader(stream, delimiter="\t"))
+            self.dataset_starts[pair] = datetime.strptime(row["<DATE>"] + " " + row["<TIME>"], "%Y.%m.%d %H:%M:%S")
+        return self.dataset_starts[pair]
+
+    def historical_context(self, case_id: str, timeframe: str, before: datetime | None, page_days: int) -> dict:
+        if timeframe not in CONTEXT_TIMEFRAMES:
+            raise ValueError("Unknown timeframe")
+        page_days = max(1, min(page_days, CONTEXT_MAX_PAGE_DAYS))
+        with self.lock:
+            cursor = self._cursor(case_id)
+            case = self.cases[case_id]
+            upper = cursor if before is None else before
+            if upper > cursor:
+                raise ValueError("Cannot request historical context beyond the replay cursor")
+            lower = upper - timedelta(days=page_days)
+            anchor_hours, span_hours = CONTEXT_TIMEFRAMES[timeframe]
+            margin = timedelta(hours=span_hours + 1)
+            path = self.data_paths[case["pair"]]
+            bars = read_m15(path, lower - margin, min(upper + margin, cursor))
+            candles = bucket_candles(bars, cursor, lower, upper, anchor_hours, span_hours)
+            exhausted = lower <= self._dataset_start(case["pair"])
+            return {"timeframe": timeframe, "candles": candles,
+                    "next_before": utc_text(lower) if not exhausted else None, "exhausted": exhausted}
 
     def _dataset_version(self, pair: str) -> str:
         if pair not in self.datasets:
@@ -222,7 +337,8 @@ class AuditEngine:
             return {"case": public_case, "cursor_utc": utc_text(cursor),
                     "cursor_ny": cursor.replace(tzinfo=UTC).astimezone(NY).isoformat(),
                     "m15": m15, "h4": h4, "reference_levels": levels, "key_levels": [],
-                    "last_available_m15": m15[-1]["time"] if m15 else None, "decisions": decisions}
+                    "last_available_m15": m15[-1]["time"] if m15 else None, "decisions": decisions,
+                    "annotations": [event["annotation"] for event in self._events(case_id, "annotation")]}
 
     def record_decision(self, case_id: str, payload: dict) -> dict:
         with self.lock:
@@ -291,6 +407,71 @@ class AuditEngine:
                         "rules_version": self.rules_version, "recorded_at": now}
             self._append({"kind": "decision", "case_id": case_id, "decision": decision})
             return decision
+
+    def _validate_annotation_source(self, case_id: str, timeframe: str, source_time: datetime,
+                                     cursor: datetime) -> datetime | None:
+        case = self.cases[case_id]
+        if source_time > cursor:
+            raise ValueError("source_time exceeds the replay cursor")
+        if timeframe == "m15":
+            bar = next((bar for bar in self._load_bars(case_id) if bar["instant"] == source_time), None)
+            if bar is None or bar["instant"] + M15 > cursor:
+                raise ValueError("source_time must identify a real closed M15 candle")
+            return bar["instant"] + M15
+        anchor_hours, span_hours = CONTEXT_TIMEFRAMES[timeframe]
+        ny = source_time.replace(tzinfo=UTC).astimezone(NY)
+        if ny.hour not in anchor_hours or feeder_open_utc(ny.date(), ny.hour) != source_time:
+            raise ValueError(f"source_time is not aligned to a {timeframe} candle open")
+        closing = bucket_close_utc(ny.date(), ny.hour, span_hours)
+        bars = read_m15(self.data_paths[case["pair"]], source_time, min(closing, cursor))
+        if not bars:
+            raise ValueError("source_time has no available market data yet")
+        return closing if closing <= cursor else None
+
+    def record_annotation(self, case_id: str, payload: dict) -> dict:
+        with self.lock:
+            if self._case_status(case_id) != "in_progress":
+                raise ValueError("Case is not active")
+            annotation_type = payload.get("annotation_type")
+            if annotation_type not in ANNOTATION_TYPES:
+                raise ValueError("Invalid annotation_type")
+            timeframe = payload.get("timeframe")
+            if timeframe not in ANNOTATION_TIMEFRAMES:
+                raise ValueError("Invalid timeframe")
+            if annotation_type == "m15_anchor" and timeframe != "m15":
+                raise ValueError("m15_anchor must be recorded on the m15 timeframe")
+            cursor = self._cursor(case_id)
+            raw_source = payload.get("source_time")
+            requires_source = annotation_type in {"max", "min", "key_level", "m15_anchor"}
+            if requires_source and not raw_source:
+                raise ValueError("source_time is required for this annotation_type")
+            source_time = source_available_at = None
+            if raw_source:
+                try:
+                    source_time = datetime.fromisoformat(raw_source.replace("Z", "+00:00")).astimezone(UTC).replace(tzinfo=None)
+                except (AttributeError, ValueError) as error:
+                    raise ValueError("Invalid source_time") from error
+                source_available_at = self._validate_annotation_source(case_id, timeframe, source_time, cursor)
+            if annotation_type != "m15_anchor":
+                price = payload.get("price")
+                if not isinstance(price, (int, float)) or not math.isfinite(price) or price <= 0:
+                    raise ValueError("price is required for this annotation_type")
+            if annotation_type == "key_level":
+                level_type = payload.get("documented_level_type")
+                if not isinstance(level_type, str) or not level_type.strip():
+                    raise ValueError("documented_level_type is required for a Key Level")
+            now = datetime.now(UTC).isoformat()
+            annotation = {"id": str(uuid.uuid4()), "case_id": case_id, "annotation_type": annotation_type,
+                          "timeframe": timeframe, "time_convention": ANNOTATION_TIME_CONVENTIONS[timeframe],
+                          "source_time": utc_text(source_time) if source_time else None,
+                          "source_available_at": utc_text(source_available_at) if source_available_at else None,
+                          "price": payload.get("price"), "documented_level_type": payload.get("documented_level_type"),
+                          "notes": payload.get("notes"), "cursor_utc": utc_text(cursor),
+                          "cursor_ny": cursor.replace(tzinfo=UTC).astimezone(NY).isoformat(),
+                          "dataset_version": self._dataset_version(self.cases[case_id]["pair"]),
+                          "rules_version": self.rules_version, "recorded_at": now}
+            self._append({"kind": "annotation", "case_id": case_id, "annotation": annotation})
+            return annotation
 
     def finish(self, case_id: str) -> dict:
         with self.lock:
