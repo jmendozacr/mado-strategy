@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import math
 import os
 import threading
 import uuid
@@ -37,6 +38,10 @@ def reference_open(case: dict) -> datetime:
 
 def current_open(case: dict) -> datetime:
     return feeder_open_utc(date.fromisoformat(case["date_ny"]), 1 if case["model"] == "1am" else 9)
+
+
+def window_end(case: dict) -> datetime:
+    return current_open(case) + H4
 
 
 def read_m15(path: Path, lower: datetime, upper: datetime) -> list[dict]:
@@ -103,10 +108,24 @@ class AuditEngine:
             return "in_progress"
         return "not_started"
 
+    def _metric_eligible(self, case_id: str) -> bool | None:
+        finishes = self._events(case_id, "finish")
+        return finishes[-1].get("metric_eligible", False) if finishes else None
+
+    def _can_finish(self, case_id: str, integrity: str, cursor: datetime) -> bool:
+        if self._case_status(case_id) != "in_progress":
+            return False
+        decisions = self._events(case_id, "decision")
+        if integrity == "non_evaluable":
+            return any(event["decision"]["decision"] == "data_issue" for event in decisions)
+        return cursor >= window_end(self.cases[case_id]) and bool(decisions) and \
+            decisions[-1]["decision"]["cursor_utc"] == utc_text(cursor)
+
     def list_cases(self) -> list[dict]:
         with self.lock:
             return [{"id": case["id"], "pair": case["pair"], "date_ny": case["date_ny"],
-                     "model": case["model"], "status": self._case_status(case["id"])}
+                     "model": case["model"], "status": self._case_status(case["id"]),
+                     "metric_eligible": self._metric_eligible(case["id"])}
                     for case in self.cases.values()]
 
     def _load_bars(self, case_id: str) -> list[dict]:
@@ -143,7 +162,7 @@ class AuditEngine:
             if self._case_status(case_id) != "in_progress":
                 raise ValueError("Case is not active")
             cursor = self._cursor(case_id)
-            end = current_open(self.cases[case_id]) + H4
+            end = window_end(self.cases[case_id])
             candidates = [bar["instant"] + M15 for bar in self._load_bars(case_id)
                           if cursor < bar["instant"] + M15 <= end]
             if not candidates:
@@ -196,8 +215,10 @@ class AuditEngine:
             )
             public_case = {"id": case_id, "pair": case["pair"], "date_ny": case["date_ny"],
                            "model": case["model"], "status": self._case_status(case_id),
-                           "integrity": "evaluable" if levels and current_contiguous else "non_evaluable"}
+                           "integrity": "evaluable" if levels and current_contiguous else "non_evaluable",
+                           "metric_eligible": self._metric_eligible(case_id)}
             decisions = [event["decision"] for event in self._events(case_id, "decision")]
+            public_case["can_finish"] = self._can_finish(case_id, public_case["integrity"], cursor)
             return {"case": public_case, "cursor_utc": utc_text(cursor),
                     "cursor_ny": cursor.replace(tzinfo=UTC).astimezone(NY).isoformat(),
                     "m15": m15, "h4": h4, "reference_levels": levels, "key_levels": [],
@@ -207,17 +228,26 @@ class AuditEngine:
         with self.lock:
             if self._case_status(case_id) != "in_progress":
                 raise ValueError("Case is not active")
-            if payload.get("decision") not in {"buy", "sell", "wait", "discard"}:
+            if payload.get("decision") not in {"buy", "sell", "wait", "discard", "data_issue"}:
                 raise ValueError("Invalid decision")
             if not isinstance(payload.get("reason"), str) or not payload["reason"].strip():
                 raise ValueError("Reason is required")
             if payload["decision"] in {"buy", "sell"}:
                 for field in ("entry_price", "stop_loss", "take_profit"):
-                    if not isinstance(payload.get(field), (int, float)) or payload[field] <= 0:
+                    if not isinstance(payload.get(field), (int, float)) or not math.isfinite(payload[field]) or payload[field] <= 0:
                         raise ValueError(f"{field} is required for a trade")
+                entry, stop, target = (payload[field] for field in ("entry_price", "stop_loss", "take_profit"))
+                valid_geometry = stop < entry < target if payload["decision"] == "buy" else target < entry < stop
+                if not valid_geometry:
+                    raise ValueError("Trade prices must place entry between stop loss and take profit in the trade direction")
             if payload["decision"] == "discard" and not payload.get("discard_reason"):
                 raise ValueError("discard_reason is required")
+            if payload["decision"] == "data_issue" and not isinstance(payload.get("data_issue_reason"), str):
+                raise ValueError("A data issue reason is required")
+            if payload["decision"] == "data_issue" and not payload["data_issue_reason"].strip():
+                raise ValueError("A data issue reason is required")
             cursor = self._cursor(case_id).replace(tzinfo=UTC)
+            parsed_times = {}
             for field in ("sweep_confirmed_at", "key_level_available_at", "model1_anchor_at", "model1_confirmed_at"):
                 value = payload.get(field)
                 if not value:
@@ -229,6 +259,23 @@ class AuditEngine:
                 available_at = instant + M15 if field == "model1_anchor_at" else instant
                 if instant.tzinfo is None or available_at.astimezone(UTC) > cursor:
                     raise ValueError(f"{field} exceeds replay cursor")
+                parsed_times[field] = instant.astimezone(UTC).replace(tzinfo=None)
+            if "model1_anchor_at" in parsed_times:
+                anchor = parsed_times["model1_anchor_at"]
+                matching_bar = next((bar for bar in self._load_bars(case_id) if bar["instant"] == anchor), None)
+                if matching_bar is None or anchor + M15 > cursor.replace(tzinfo=None):
+                    raise ValueError("model1_anchor_at must identify a real closed M15 candle")
+            if "model1_anchor_at" in parsed_times and "model1_confirmed_at" in parsed_times:
+                if parsed_times["model1_confirmed_at"] < parsed_times["model1_anchor_at"] + M15:
+                    raise ValueError("model1_confirmed_at cannot precede the anchor candle close")
+            if "sweep_confirmed_at" in parsed_times and "model1_anchor_at" in parsed_times:
+                if parsed_times["sweep_confirmed_at"] > parsed_times["model1_anchor_at"]:
+                    raise ValueError("sweep confirmation cannot follow the Model #1 anchor")
+            if "key_level_available_at" in parsed_times and "model1_anchor_at" in parsed_times:
+                if parsed_times["key_level_available_at"] > parsed_times["model1_anchor_at"]:
+                    raise ValueError("Key Level cannot be available after the Model #1 anchor")
+            if self.snapshot(case_id)["case"]["integrity"] == "non_evaluable" and payload["decision"] != "data_issue":
+                raise ValueError("Non-evaluable cases require a data issue, not a signal judgment")
             existing = [event["decision"]["id"] for event in self._events(case_id, "decision")]
             if payload.get("supersedes") and payload["supersedes"] not in existing:
                 raise ValueError("Correction target not found")
@@ -249,7 +296,18 @@ class AuditEngine:
         with self.lock:
             if self._case_status(case_id) != "in_progress":
                 raise ValueError("Case is not active")
-            if not self._events(case_id, "decision"):
-                raise ValueError("At least one human decision is required")
-            self._append({"kind": "finish", "case_id": case_id, "recorded_at": datetime.now(UTC).isoformat()})
-            return {"id": case_id, "status": "finished"}
+            snapshot = self.snapshot(case_id)
+            decisions = self._events(case_id, "decision")
+            non_evaluable = snapshot["case"]["integrity"] == "non_evaluable"
+            data_issue = any(event["decision"]["decision"] == "data_issue" for event in decisions)
+            if non_evaluable and not data_issue:
+                raise ValueError("Non-evaluable case requires a recorded data issue")
+            if not non_evaluable:
+                if self._cursor(case_id) < window_end(self.cases[case_id]):
+                    raise ValueError("Cannot finish before the documented review window end")
+                if not decisions or decisions[-1]["decision"]["cursor_utc"] != snapshot["cursor_utc"]:
+                    raise ValueError("A decision at the window end is required")
+            metric_eligible = not non_evaluable and not data_issue
+            self._append({"kind": "finish", "case_id": case_id, "metric_eligible": metric_eligible,
+                          "recorded_at": datetime.now(UTC).isoformat()})
+            return {"id": case_id, "status": "finished", "metric_eligible": metric_eligible}

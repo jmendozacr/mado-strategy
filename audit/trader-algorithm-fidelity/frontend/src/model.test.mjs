@@ -21,6 +21,8 @@ describe('causal replay view', () => {
     assert.equal(isDecisionReady({ final_decision: 'wait' }), false);
     assert.equal(isDecisionReady({ final_decision: 'buy', notes: 'Valid', entry_price: '1.2', stop_loss: '1.1' }), false);
     assert.equal(isDecisionReady({ final_decision: 'wait', notes: 'No confirmation yet' }), true);
+    assert.equal(isDecisionReady({ final_decision: 'data_issue', notes: 'Some note' }), false);
+    assert.equal(isDecisionReady({ final_decision: 'data_issue', data_issue_reason: 'M15 gap at 14:15 UTC' }), true);
   });
 
   it('rejects a forming M15 anchor and normalizes the saved payload', () => {
@@ -28,5 +30,17 @@ describe('causal replay view', () => {
     const payload = decisionPayload({ final_decision: 'buy', notes: 'Confirmed', entry_price: '1.2', stop_loss: '1.1', take_profit: '1.4' }, '2025-01-07T14:15:00+00:00');
     assert.equal(payload.entry_price, 1.2);
     assert.equal(payload.reason, 'Confirmed');
+  });
+
+  it('records data issues as a distinct non-judgment and interprets entered wall time as UTC', () => {
+    const payload = decisionPayload({
+      final_decision: 'data_issue',
+      data_issue_reason: 'Missing M15 candle at 14:15 UTC',
+      sweep_confirmed_at: '2025-01-07T14:00',
+    }, '2025-01-07T14:15:00+00:00');
+    assert.equal(payload.decision, 'data_issue');
+    assert.equal(payload.data_issue_reason, 'Missing M15 candle at 14:15 UTC');
+    assert.equal(payload.reason, 'Missing M15 candle at 14:15 UTC');
+    assert.equal(payload.sweep_confirmed_at, '2025-01-07T14:00:00.000Z');
   });
 });

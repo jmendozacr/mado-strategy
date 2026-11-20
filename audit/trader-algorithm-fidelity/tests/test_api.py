@@ -54,7 +54,7 @@ class ApiBoundaryTests(unittest.TestCase):
 
     def test_api_never_delivers_future_bars_or_selection_metadata(self):
         listing = self.request("/api/cases")
-        self.assertEqual(set(listing[0]), {"id", "pair", "date_ny", "model", "status"})
+        self.assertEqual(set(listing[0]), {"id", "pair", "date_ny", "model", "status", "metric_eligible"})
         self.request("/api/cases/fixture/start", "POST")
         snapshot = self.request("/api/cases/fixture/next", "POST")
         cursor = datetime.fromisoformat(snapshot["cursor_utc"])
@@ -79,6 +79,78 @@ class ApiBoundaryTests(unittest.TestCase):
             })
         self.assertEqual(error.exception.code, 400)
 
+    def test_api_rejects_missing_and_off_grid_anchors(self):
+        self.request("/api/cases/fixture/start", "POST")
+        self.request("/api/cases/fixture/next", "POST")
+        self.request("/api/cases/fixture/next", "POST")
+        for anchor in ("2015-01-07T14:16:00+00:00", "2015-01-07T14:30:00+00:00", "2015-01-07T14:01:00+00:00"):
+            with self.subTest(anchor=anchor), self.assertRaises(urllib.error.HTTPError) as error:
+                self.request("/api/cases/fixture/decisions", "POST", {
+                    "decision": "wait", "reason": "Observed", "model1_anchor_at": anchor,
+                })
+            self.assertEqual(error.exception.code, 400)
+
+    def test_api_requires_terminal_decision_and_non_evaluable_data_issue(self):
+        snapshot = self.request("/api/cases/fixture/start", "POST")
+        self.assertFalse(snapshot["case"]["can_finish"])
+        self.request("/api/cases/fixture/decisions", "POST", {"decision": "wait", "reason": "Still observing"})
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request("/api/cases/fixture/finish", "POST")
+        self.assertEqual(error.exception.code, 400)
+        for _ in range(16):
+            self.request("/api/cases/fixture/next", "POST")
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request("/api/cases/fixture/finish", "POST")
+        self.assertEqual(error.exception.code, 400)
+        self.request("/api/cases/fixture/decisions", "POST", {"decision": "wait", "reason": "No trade by close"})
+        self.assertTrue(self.request("/api/cases/fixture/replay")["case"]["can_finish"])
+        result = self.request("/api/cases/fixture/finish", "POST")
+        self.assertTrue(result["metric_eligible"])
+
+    def test_api_records_non_evaluable_data_issue_without_calling_it_no_signal(self):
+        lines = self.csv.read_text(encoding="utf-8").splitlines()
+        self.csv.write_text("\n".join(line for line in lines if "2015.01.07\t14:15:00" not in line) + "\n", encoding="utf-8")
+        self.original = self.csv.read_bytes()
+        self.request("/api/cases/fixture/start", "POST")
+        self.request("/api/cases/fixture/next", "POST")
+        snapshot = self.request("/api/cases/fixture/next", "POST")
+        self.assertEqual(snapshot["case"]["integrity"], "non_evaluable")
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request("/api/cases/fixture/decisions", "POST", {
+                "decision": "wait", "reason": "Observed", "model1_anchor_at": "2015-01-07T14:15:00+00:00",
+            })
+        self.assertEqual(error.exception.code, 400)
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request("/api/cases/fixture/decisions", "POST", {"decision": "wait", "reason": "No signal"})
+        self.assertEqual(error.exception.code, 400)
+        issue = self.request("/api/cases/fixture/decisions", "POST", {
+            "decision": "data_issue", "reason": "Missing candle; no signal conclusion",
+            "data_issue_reason": "M15 14:15 UTC candle is absent",
+        })
+        self.assertEqual(issue["decision"], "data_issue")
+        self.assertTrue(self.request("/api/cases/fixture/replay")["case"]["can_finish"])
+        result = self.request("/api/cases/fixture/finish", "POST")
+        self.assertFalse(result["metric_eligible"])
+        self.assertFalse(self.request("/api/cases")[0]["metric_eligible"])
+        persisted = AuditEngine(self.engine.cases.values(), {"EURUSD": self.csv}, self.journal, "rules-v1")
+        self.assertEqual(persisted.snapshot("fixture")["decisions"][0]["decision"], "data_issue")
+        self.assertFalse(persisted.list_cases()[0]["metric_eligible"])
+
+    def test_api_rejects_invalid_geometry_and_event_order(self):
+        self.request("/api/cases/fixture/start", "POST")
+        invalid = [
+            {"decision": "buy", "reason": "Read", "entry_price": 1.2, "stop_loss": 1.25, "take_profit": 1.3},
+            {"decision": "sell", "reason": "Read", "entry_price": 1.2, "stop_loss": 1.1, "take_profit": 1.3},
+            {"decision": "wait", "reason": "Read", "model1_anchor_at": "2015-01-07T14:00:00+00:00",
+             "model1_confirmed_at": "2015-01-07T14:10:00+00:00"},
+            {"decision": "wait", "reason": "Read", "sweep_confirmed_at": "2015-01-07T14:30:00+00:00",
+             "model1_anchor_at": "2015-01-07T14:15:00+00:00"},
+        ]
+        for payload in invalid:
+            with self.subTest(payload=payload), self.assertRaises(urllib.error.HTTPError) as error:
+                self.request("/api/cases/fixture/decisions", "POST", payload)
+            self.assertEqual(error.exception.code, 400)
+
     def test_api_server_does_not_serve_frontend_or_private_files(self):
         self.assertEqual(self.request("/api/health"), {"status": "ok"})
         for path in ("/", "/app.js", "/pilot_manifest.json", "/runtime/events.jsonl", "/selection.py",
@@ -95,6 +167,9 @@ class ApiBoundaryTests(unittest.TestCase):
             "entry_price": 1.15, "stop_loss": 1.14, "take_profit": 1.18,
         })
         self.assertEqual(decision["decision"], "buy")
+        for _ in range(16):
+            self.request("/api/cases/fixture/next", "POST")
+        self.request("/api/cases/fixture/decisions", "POST", {"decision": "wait", "reason": "No opportunity remains"})
         self.assertEqual(self.request("/api/cases/fixture/finish", "POST")["status"], "finished")
 
 

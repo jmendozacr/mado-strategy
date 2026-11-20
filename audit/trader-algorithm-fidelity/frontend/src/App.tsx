@@ -141,14 +141,14 @@ export function App() {
         <button id="next" type="button" disabled={busy || !active} onClick={() => void action('next')}>Next M15 candle →</button>
         <button id="play" type="button" disabled={busy || !active || playing} onClick={() => { if (playTimer.current === null) playTimer.current = window.setInterval(() => void action('next'), 1100); setPlaying(true); }}>Play</button>
         <button id="pause" type="button" disabled={!playing} onClick={stopPlayback}>Pause</button>
-        <button id="finish" type="button" disabled={busy || !active || !replay?.decisions.length} onClick={() => void action('finish')}>Finish case</button>
+        <button id="finish" type="button" disabled={busy || !active || !replay?.case.can_finish} onClick={() => void action('finish')}>Finish case</button>
       </div><div className="replay-caption" id="last-m15">{replay ? `Last closed M15 open · ${replay.last_available_m15 ?? 'none'} UTC` : 'Start a case to reveal the first closed candle'}</div></section>
       <div className="workspace-grid"><div className="charts-column">
         <Chart id="h4" title="H4 · NY feeder" subtitle={`NY-anchored grid · key opens 9PM / 1AM / 5AM / 9AM · ${replay?.h4.at(-1)?.complete === false ? 'current candle forming' : 'closed candles'}`} bars={replay ? barsThrough(replay.h4, replay.cursor_utc) : []} markers={markers} end={end} span={span} onPan={pan} onZoom={zoom} />
         <Chart id="m15" title="M15 · execution" subtitle="A candle enters the chart only after its close" bars={replay ? barsThrough(replay.m15, replay.cursor_utc) : []} markers={markers} end={end} span={span} onPan={pan} onZoom={zoom} />
         <div className="manual-level"><label htmlFor="manual-price">Your price marker</label><input id="manual-price" type="number" step="any" placeholder="Enter a level to inspect on both charts" value={manualPrice} onChange={event => setManualPrice(event.target.value)} /><button id="clear-price" type="button" onClick={() => setManualPrice('')}>Clear</button></div>
       </div>
-      <DecisionForm key={caseId} active={active} busy={busy} decisions={replay?.decisions ?? []} onSave={saveDecision} />
+      <DecisionForm key={caseId} active={active} busy={busy} integrity={replay?.case.integrity ?? 'evaluable'} decisions={replay?.decisions ?? []} onSave={saveDecision} />
       </div>
     </main>
   </div>;

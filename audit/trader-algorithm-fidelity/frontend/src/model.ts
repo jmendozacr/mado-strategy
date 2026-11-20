@@ -5,6 +5,8 @@ export type CaseSummary = {
   model: string;
   status: 'not_started' | 'in_progress' | 'finished';
   integrity?: 'evaluable' | 'non_evaluable';
+  metric_eligible: boolean | null;
+  can_finish?: boolean;
 };
 
 export type Bar = {
@@ -53,6 +55,7 @@ export function barsThrough<T extends { time: string; available_at: string | nul
 export function isDecisionReady(decision: DecisionFields): boolean {
   if (!decision.final_decision) return false;
   if (decision.final_decision === 'discard') return Boolean(decision.discard_reason);
+  if (decision.final_decision === 'data_issue') return Boolean(decision.data_issue_reason?.trim());
   if (!decision.notes?.trim()) return false;
   if (decision.final_decision === 'buy' || decision.final_decision === 'sell') {
     return ['entry_price', 'stop_loss', 'take_profit'].every(field => Number(decision[field]) > 0);
@@ -65,7 +68,9 @@ export function decisionPayload(decision: DecisionFields, cursor: string): Recor
   const payload: Record<string, string | number | null | undefined> = {
     ...decision,
     decision: decision.final_decision,
-    reason: decision.final_decision === 'discard' ? decision.discard_reason : decision.notes!.trim(),
+    reason: decision.final_decision === 'discard' ? decision.discard_reason
+      : decision.final_decision === 'data_issue' ? decision.data_issue_reason!.trim()
+        : decision.notes!.trim(),
   };
   for (const field of ['sweep_confirmed_at', 'key_level_available_at', 'model1_anchor_at', 'model1_confirmed_at']) {
     const value = payload[field];

@@ -12,7 +12,7 @@ test('a real case stays causal and its human decision survives reload', async ({
 
   const cases = await (await request.get(`${api}/api/cases`)).json();
   expect(cases).toHaveLength(30);
-  expect(Object.keys(cases[0]).sort()).toEqual(['date_ny', 'id', 'model', 'pair', 'status']);
+  expect(Object.keys(cases[0]).sort()).toEqual(['date_ny', 'id', 'metric_eligible', 'model', 'pair', 'status']);
   await expect(page.locator('#case-select option')).toHaveCount(30);
 
   const selected = cases.find((item: { pair: string; model: string; date_ny: string }) =>
@@ -41,11 +41,22 @@ test('a real case stays causal and its human decision survives reload', async ({
   const saved = await (await request.get(replayUrl)).json();
   expect(saved.decisions[0]).toMatchObject({ case_id: selected.id, decision: 'wait', cursor_utc: after.cursor_utc });
 
+  await expect(page.locator('#finish')).toBeDisabled();
+  for (let step = 0; step < 15; step += 1) {
+    const cursor = await page.locator('#cursor-utc').textContent();
+    await page.locator('#next').click();
+    await expect.poll(() => page.locator('#cursor-utc').textContent()).not.toBe(cursor);
+  }
+  await page.locator('#final-decision').selectOption('wait');
+  await page.locator('textarea[name="notes"]').fill('No trade by the end of the review window.');
+  await page.locator('#save').click();
+  await expect(page.locator('#decision-count')).toHaveText('2');
+  await expect(page.locator('#finish')).toBeEnabled();
   await page.locator('#finish').click();
   await expect.poll(async () => (await (await request.get(replayUrl)).json()).case.status).toBe('finished');
   await page.reload();
   await page.locator('#case-select').selectOption(selected.id);
-  await expect(page.locator('#decision-count')).toHaveText('1');
+  await expect(page.locator('#decision-count')).toHaveText('2');
   await expect(page.locator('#case-select option:checked')).toContainText('finished');
 });
 
