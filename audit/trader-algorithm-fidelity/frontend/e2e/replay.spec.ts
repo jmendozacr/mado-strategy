@@ -115,6 +115,81 @@ test('a real case stays causal and its human decision survives reload', async ({
   await expect(page.locator('#case-select option:checked')).toContainText('finished');
 });
 
+test('a slow context response for a previous case never contaminates the one switched to', async ({ page, request }) => {
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url());
+    url.port = '8766';
+    return route.continue({ url: url.toString() });
+  });
+  await page.goto('/');
+
+  const cases = await (await request.get(`${api}/api/cases`)).json();
+  const eurusd = cases.find((item: { pair: string }) => item.pair === 'EURUSD');
+  const usdcad = cases.find((item: { pair: string }) => item.pair === 'USDCAD');
+  expect(eurusd).toBeTruthy();
+  expect(usdcad).toBeTruthy();
+
+  // The poison candle's time must land inside USDCAD's own default visible
+  // window, or Chart's own time-range filter would hide it regardless of
+  // whether it actually contaminated state -- so it's computed from USDCAD's
+  // real cursor once known, just before the held EURUSD response is released.
+  let poisonTime = '';
+  let intercepted = false;
+  let releaseEurusdResponse = () => {};
+  const eurusdGate = new Promise<void>(resolve => { releaseEurusdResponse = resolve; });
+  await page.route(`**/api/cases/${eurusd.id}/context*`, async route => {
+    intercepted = true;
+    await eurusdGate; // held open until the test explicitly releases it, below -- no timing guesswork
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        timeframe: 'h4',
+        candles: [{ time: poisonTime, available_at: poisonTime, open: 1, high: 1, low: 1, close: 1, complete: true, integrity: 'complete', gap_slots: [] }],
+        next_before: null,
+        exhausted: true,
+      }),
+    });
+  });
+
+  await page.locator('#case-select').selectOption(eurusd.id);
+  await page.locator('#start').click();
+  await expect(page.locator('#next')).toBeEnabled();
+  await page.locator('#next').click();
+  await expect.poll(() => intercepted).toBe(true); // the slow EURUSD context request is now in flight
+
+  // Switch to USDCAD before that slow EURUSD response arrives.
+  await page.locator('#case-select').selectOption(usdcad.id);
+  await page.locator('#start').click();
+  await expect(page.locator('#next')).toBeEnabled();
+  const usdcadStart = await page.locator('#cursor-utc').textContent();
+  await page.locator('#next').click();
+  await expect.poll(() => page.locator('#cursor-utc').textContent()).not.toBe(usdcadStart);
+  const usdcadCursor = await page.locator('#cursor-utc').textContent();
+  poisonTime = new Date(Date.parse(usdcadCursor!) - 2 * 60 * 60 * 1000).toISOString().replace('Z', '+00:00');
+
+  // USDCAD is now fully active and settled; only now let the held EURUSD
+  // response land, proving the race is resolved regardless of machine speed.
+  const eurusdResponse = page.waitForResponse(resp => resp.url().includes(`/cases/${eurusd.id}/context`));
+  releaseEurusdResponse();
+  await eurusdResponse;
+  await page.waitForTimeout(300); // let the resolved promise's .then/setState chain flush
+
+  expect(await page.locator('#cursor-utc').textContent()).toBe(usdcadCursor);
+  const h4Times = await page.locator('#h4-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
+  expect(h4Times).not.toContain(poisonTime);
+
+  // The user can still request further USDCAD pages (the stale response must not
+  // have left this case's fetching flag permanently stuck).
+  for (let i = 0; i < 4; i += 1) await page.locator('button[aria-label="Zoom out H4"]').click();
+  const beforeOldest = await page.locator('#h4-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
+  await page.locator('button[aria-label="Review earlier H4 candles"]').click();
+  await expect.poll(async () => {
+    const after = await page.locator('#h4-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
+    return after.length !== beforeOldest.length || after.some(t => !beforeOldest.includes(t!));
+  }, { timeout: 10000 }).toBe(true);
+});
+
 test('an unavailable API reports its 502 error clearly', async ({ page }) => {
   await page.route('**/api/cases', route => route.fulfill({
     status: 502,

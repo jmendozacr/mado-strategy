@@ -65,6 +65,7 @@ export function App() {
     setArmedTimeframe(null);
     setAnnotationError(null);
     oldestFetched.current = { h4: null, daily: null };
+    fetchingContext.current = { h4: false, daily: false };
     if (!id || available.find(item => item.id === id)?.status === 'not_started') return;
     try {
       const snapshot = await request<Replay>(`/api/cases/${encodeURIComponent(id)}/replay`);
@@ -146,11 +147,14 @@ export function App() {
 
   async function fetchOlderContext(timeframe: 'h4' | 'daily') {
     if (!replay || !caseId || fetchingContext.current[timeframe] || contextExhausted[timeframe]) return;
+    const token = selectionToken.current;
+    const requestCaseId = caseId;
     fetchingContext.current[timeframe] = true;
     try {
       const before = oldestFetched.current[timeframe] ?? replay.cursor_utc;
       const page = await request<HistoricalContext>(
-        `/api/cases/${encodeURIComponent(caseId)}/context?timeframe=${timeframe}&before=${encodeURIComponent(before)}&page_days=14`);
+        `/api/cases/${encodeURIComponent(requestCaseId)}/context?timeframe=${timeframe}&before=${encodeURIComponent(before)}&page_days=14`);
+      if (selectionToken.current !== token) return; // the user switched case while this was in flight; discard
       if (page.candles.length) {
         if (timeframe === 'h4') setExtraH4(previous => mergeOlderBars(previous, page.candles));
         else setExtraDaily(previous => mergeOlderBars(previous, page.candles));
@@ -160,7 +164,7 @@ export function App() {
     } catch {
       // Leave state as-is; panning further will retry.
     } finally {
-      fetchingContext.current[timeframe] = false;
+      if (selectionToken.current === token) fetchingContext.current[timeframe] = false;
     }
   }
 
