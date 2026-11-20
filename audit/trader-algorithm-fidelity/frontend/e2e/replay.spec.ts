@@ -48,6 +48,20 @@ test('a real case stays causal and its human decision survives reload', async ({
   await page.locator('#annotation-price').fill('1.11111');
   await page.locator('#save-annotation').click();
   await expect(page.locator('#annotation-count')).toHaveText('1');
+
+  // Problem C regression: pick H4 as the timeframe for a Key Level, then switch
+  // the type to an M15 anchor -- the stale "h4" timeframe must not survive the
+  // switch, and the M15 anchor must save correctly by clicking a real candle.
+  await page.locator('#annotation-type').selectOption('key_level');
+  await page.locator('#annotation-type').selectOption('m15_anchor');
+  await expect(page.locator('#arm-annotation-source')).toHaveText('Select on chart');
+  await page.locator('#arm-annotation-source').click();
+  await expect(page.locator('#arm-annotation-source')).toHaveText(/Click a candle/);
+  await page.locator('#m15-chart rect[fill="transparent"]').last().click();
+  await expect(page.locator('#arm-annotation-source')).toContainText('Selected');
+  await page.locator('#save-annotation').click();
+  await expect(page.locator('#annotation-count')).toHaveText('2');
+
   const saved = await (await request.get(replayUrl)).json();
   expect(saved.decisions[0]).toMatchObject({ case_id: selected.id, decision: 'wait', cursor_utc: after.cursor_utc });
 

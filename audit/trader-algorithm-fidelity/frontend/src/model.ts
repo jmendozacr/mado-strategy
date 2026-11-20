@@ -108,6 +108,15 @@ export function isDecisionReady(decision: DecisionFields): boolean {
   return true;
 }
 
+export function changeAnnotationType(draft: AnnotationDraft, nextType: AnnotationType): AnnotationDraft {
+  return {
+    ...draft,
+    annotation_type: nextType,
+    timeframe: nextType === 'm15_anchor' ? 'm15' : draft.timeframe,
+    source_time: undefined,
+  };
+}
+
 export function mergeOlderBars(current: Bar[], older: Bar[]): Bar[] {
   const seen = new Set(current.map(bar => bar.time));
   const merged = [...older.filter(bar => !seen.has(bar.time)), ...current];

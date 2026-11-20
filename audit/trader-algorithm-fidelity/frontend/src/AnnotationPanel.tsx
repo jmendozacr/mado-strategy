@@ -1,4 +1,4 @@
-import type { Annotation, AnnotationDraft, AnnotationType } from './model.ts';
+import { changeAnnotationType, type Annotation, type AnnotationDraft, type AnnotationType } from './model.ts';
 
 type Props = {
   active: boolean;
@@ -30,7 +30,7 @@ export function AnnotationPanel({ active, busy, draft, armed, annotations, error
     <div className="annotation-form">
       <label className="field"><span>Type</span>
         <select id="annotation-type" value={draft.annotation_type} disabled={!active || busy}
-          onChange={event => onChange({ ...draft, annotation_type: event.target.value as AnnotationType, source_time: undefined })}>
+          onChange={event => onChange(changeAnnotationType(draft, event.target.value as AnnotationType))}>
           {TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
         </select>
       </label>
@@ -42,7 +42,7 @@ export function AnnotationPanel({ active, busy, draft, armed, annotations, error
       </label>}
       {needsSource(draft.annotation_type) && <div className="field">
         <span>Source candle</span>
-        <button type="button" className={armed ? 'button-primary' : ''} disabled={!active || busy} onClick={onArm}>
+        <button type="button" id="arm-annotation-source" className={armed ? 'button-primary' : ''} disabled={!active || busy} onClick={onArm}>
           {armed ? 'Click a candle on the chart…' : draft.source_time ? `Selected · ${draft.source_time}` : 'Select on chart'}
         </button>
       </div>}

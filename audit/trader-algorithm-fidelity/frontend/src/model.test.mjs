@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { annotationPayload, barsThrough, decisionPayload, feederLabel, formatClock, isDecisionReady, mergeOlderBars } from './model.ts';
+import { annotationPayload, barsThrough, changeAnnotationType, decisionPayload, feederLabel, formatClock, isDecisionReady, mergeOlderBars } from './model.ts';
 
 describe('causal replay view', () => {
   const bars = [
@@ -72,5 +72,17 @@ describe('causal replay view', () => {
     const payload = annotationPayload({ annotation_type: 'horizontal_level', timeframe: 'h4', price: '1.2345' });
     assert.equal(payload.price, 1.2345);
     assert.equal(payload.source_time, undefined);
+  });
+
+  it('forces the m15 timeframe and clears a stale source candle when switching to an M15 anchor', () => {
+    const fromH4 = { annotation_type: 'key_level', timeframe: 'h4', source_time: '2025-01-07T14:00:00+00:00', price: '1.2' };
+    const switched = changeAnnotationType(fromH4, 'm15_anchor');
+    assert.equal(switched.timeframe, 'm15');
+    assert.equal(switched.source_time, undefined);
+    assert.equal(switched.price, '1.2');
+
+    const backToKeyLevel = changeAnnotationType(switched, 'key_level');
+    assert.equal(backToKeyLevel.timeframe, 'm15');
+    assert.equal(backToKeyLevel.source_time, undefined);
   });
 });

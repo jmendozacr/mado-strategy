@@ -33,10 +33,24 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, zone, sel
   const candleWidth = Math.max(3, Math.min(35, (visible.length > 1 ? x(visible[1].time) - x(visible[0].time) : plotWidth / 20) * 0.58));
 
   function endDrag(event: PointerEvent<SVGSVGElement>) {
-    if (dragStart.current !== null) {
-      onPan((event.clientX - dragStart.current) / event.currentTarget.clientWidth * span);
-      dragStart.current = null;
+    if (dragStart.current === null) return;
+    const movedPx = event.clientX - dragStart.current;
+    onPan(movedPx / event.currentTarget.clientWidth * span);
+    // setPointerCapture (below) redirects the native click event's target to this
+    // <svg>, so per-candle onClick handlers never fire. A near-zero-movement
+    // pointerup is a tap/click: resolve the nearest visible candle ourselves from
+    // the release position instead of relying on candle-level click handlers.
+    if (Math.abs(movedPx) < 4 && onSelectCandle && visible.length) {
+      const box = event.currentTarget.getBoundingClientRect();
+      const svgX = (event.clientX - box.left) / box.width * width;
+      const targetTime = start + ((svgX - left) / plotWidth) * span;
+      const nearest = visible.reduce((best, bar) => {
+        const diff = Math.abs(utcMs(bar.time) - targetTime);
+        return diff < best.diff ? { bar, diff } : best;
+      }, { bar: visible[0], diff: Infinity });
+      onSelectCandle(nearest.bar);
     }
+    dragStart.current = null;
   }
 
   function wheel(event: WheelEvent<SVGSVGElement>) {
@@ -87,7 +101,7 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, zone, sel
           return <g key={bar.time}
             onPointerEnter={() => setTooltip(`${label} ${zone.toUpperCase()} · O ${bar.open.toFixed(5)} H ${bar.high.toFixed(5)} L ${bar.low.toFixed(5)} C ${bar.close.toFixed(5)}${bar.complete === false ? ' · forming' : ''}${bar.integrity === 'gap' ? ' · data gap' : ''}`)}
             onPointerLeave={() => setTooltip('Hover a candle for OHLC')}
-            onClick={() => onSelectCandle?.(bar)} style={{ cursor: selecting ? 'crosshair' : 'default' }}>
+            style={{ cursor: selecting ? 'crosshair' : 'default' }}>
             <line x1={middle} y1={y(bar.high)} x2={middle} y2={y(bar.low)} stroke={color} strokeWidth="2" />
             <rect x={middle - candleWidth / 2} y={Math.min(y(bar.open), y(bar.close))} width={candleWidth} height={Math.max(2, Math.abs(y(bar.open) - y(bar.close)))} fill={color} opacity={bar.complete === false ? 0.64 : 1} stroke={bar.complete === false ? '#f8d18b' : 'none'} />
             <rect x={middle - Math.max(7, candleWidth / 2)} y={top} width={Math.max(14, candleWidth)} height={plotHeight} fill="transparent" />
