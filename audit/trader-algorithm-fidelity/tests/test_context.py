@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engine import AuditEngine, bucket_close_utc, feeder_open_utc
+from engine import AuditEngine, bucket_candles, bucket_close_utc, feeder_open_utc
 
 
 def write_range(path, start, end, step=timedelta(minutes=15)):
@@ -49,6 +49,44 @@ class HistoricalContextTests(unittest.TestCase):
                 self.assertLessEqual(datetime.fromisoformat(candle["available_at"]).replace(tzinfo=None), cursor)
             if not candle["complete"]:
                 self.assertIsNone(candle["available_at"])
+            for slot in candle["gap_slots"]:
+                self.assertLessEqual(datetime.fromisoformat(slot).replace(tzinfo=None) + timedelta(minutes=15), cursor)
+
+    def test_fully_elapsed_h4_bucket_with_no_missing_data_is_complete(self):
+        result = self.engine.historical_context("fixture", "h4", before=None, page_days=5)
+        friday_morning = next(c for c in result["candles"] if c["time"] == feeder_open_utc(date(2015, 1, 9), 9).isoformat() + "+00:00")
+        self.assertEqual(friday_morning["integrity"], "complete")
+        self.assertEqual(friday_morning["gap_slots"], [])
+        self.assertIsNotNone(friday_morning["available_at"])
+
+    def test_clean_week_produces_no_gap_candles_across_the_weekend(self):
+        # page_days=3 stays inside the fixture's own written range (Jan 5-9); a
+        # wider page would hit the fixture's arbitrary start boundary itself,
+        # which is a fixture artifact, not a weekend or data gap.
+        result = self.engine.historical_context("fixture", "h4", before=None, page_days=3)
+        self.assertFalse(any(candle["integrity"] == "gap" for candle in result["candles"]))
+
+    def test_dst_transition_bucket_classifies_through_bucket_candles(self):
+        # Integration-level check (not just bucket_close_utc in isolation): a Daily
+        # bucket whose NY-local span is 23h due to spring-forward must still use the
+        # correct (shorter) slot count rather than assuming a fixed 96-slot day.
+        csv_path = self.root / f"EURUSD_M15_dst_{uuid.uuid4().hex}.csv"
+        write_range(csv_path, datetime(2015, 3, 7, 0), datetime(2015, 3, 9, 0))
+        bars = []
+        with csv_path.open("r", encoding="utf-8") as stream:
+            next(stream)
+            for line in stream:
+                day, time_, open_, high, low, close = line.strip().split("\t")
+                instant = datetime.strptime(f"{day} {time_}", "%Y.%m.%d %H:%M:%S")
+                bars.append({"instant": instant, "open": float(open_), "high": float(high),
+                              "low": float(low), "close": float(close)})
+        cursor = feeder_open_utc(date(2015, 3, 9), 0)  # well past the bucket's 23h close
+        candles = bucket_candles(bars, cursor, feeder_open_utc(date(2015, 3, 7), 0),
+                                  feeder_open_utc(date(2015, 3, 8), 20), (17,), 24)
+        dst_candle = next(c for c in candles if c["time"] == feeder_open_utc(date(2015, 3, 7), 17).isoformat() + "+00:00")
+        self.assertEqual(dst_candle["integrity"], "complete")
+        self.assertEqual(dst_candle["gap_slots"], [])
+        csv_path.unlink(missing_ok=True)
 
     def test_request_beyond_cursor_is_rejected(self):
         cursor = self.engine._cursor("fixture")
@@ -87,6 +125,32 @@ class HistoricalContextTests(unittest.TestCase):
         result = self.engine.historical_context("fixture", "h4", before=None, page_days=30)
         self.assertTrue(result["exhausted"])
         self.assertIsNone(result["next_before"])
+
+    def test_forming_bucket_has_no_future_gap_slots(self):
+        # Reproduces Problem B: query the instant the 9AM-1PM H4 bucket and the
+        # Jan-9 Daily bucket have only their first M15 candle closed. Both are
+        # genuinely still "forming" (their close is long after the cursor) and
+        # must report zero gap_slots -- a slot that simply hasn't happened yet
+        # is not a data gap.
+        fresh_journal = self.root / f"journal_forming_{uuid.uuid4().hex}.jsonl"
+        engine = AuditEngine([self.case], {"EURUSD": self.csv}, fresh_journal, "rules-v1")
+        engine.start("fixture")
+        engine.next("fixture")  # cursor now 2015-01-09T14:15:00+00:00, 15 min into the window
+        cursor = engine._cursor("fixture")
+
+        h4 = engine.historical_context("fixture", "h4", before=None, page_days=5)
+        forming_h4 = next(c for c in h4["candles"] if c["time"] == feeder_open_utc(date(2015, 1, 9), 9).isoformat() + "+00:00")
+        self.assertEqual(forming_h4["integrity"], "forming")
+        self.assertEqual(forming_h4["gap_slots"], [])
+        self.assertIsNone(forming_h4["available_at"])
+
+        daily = engine.historical_context("fixture", "daily", before=None, page_days=5)
+        forming_daily = next(c for c in daily["candles"] if c["time"] == feeder_open_utc(date(2015, 1, 8), 17).isoformat() + "+00:00")
+        self.assertEqual(forming_daily["integrity"], "forming")
+        self.assertEqual(forming_daily["gap_slots"], [])
+        for slot in forming_daily["gap_slots"]:
+            self.assertLessEqual(datetime.fromisoformat(slot).replace(tzinfo=None) + timedelta(minutes=15), cursor)
+        fresh_journal.unlink(missing_ok=True)
 
     def test_pagination_chains_to_an_older_page(self):
         first = self.engine.historical_context("fixture", "h4", before=None, page_days=1)

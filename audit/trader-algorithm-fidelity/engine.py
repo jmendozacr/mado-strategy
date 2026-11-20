@@ -135,7 +135,8 @@ def bucket_candles(bars: list[dict], cursor: datetime, lower_bound: datetime, up
             missing = []
             slot = opening
             while slot < closing:
-                if slot not in present:
+                due = slot + M15 <= cursor  # a slot that hasn't closed yet is not missing, it just hasn't happened
+                if due and slot not in present:
                     missing.append(slot)
                 slot += M15
             unexplained = [slot for slot in missing if not is_forex_weekend_ny(slot)]
