@@ -9,6 +9,7 @@ import {
 } from './model.ts';
 
 const initialSpan = 24 * 60 * 60 * 1000;
+const initialAnnotationDraft: AnnotationDraft = { annotation_type: 'key_level', timeframe: 'h4' };
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -38,7 +39,7 @@ export function App() {
   const [extraDaily, setExtraDaily] = useState<Bar[]>([]);
   const [contextExhausted, setContextExhausted] = useState({ h4: false, daily: false });
   const [armedTimeframe, setArmedTimeframe] = useState<AnnotationDraft['timeframe'] | null>(null);
-  const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft>({ annotation_type: 'key_level', timeframe: 'h4' });
+  const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft>(initialAnnotationDraft);
   const [annotationError, setAnnotationError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const playTimer = useRef<number | null>(null);
@@ -64,6 +65,8 @@ export function App() {
     setContextExhausted({ h4: false, daily: false });
     setArmedTimeframe(null);
     setAnnotationError(null);
+    setAnnotationDraft(initialAnnotationDraft);
+    setManualPrice('');
     oldestFetched.current = { h4: null, daily: null };
     fetchingContext.current = { h4: false, daily: false };
     if (!id || available.find(item => item.id === id)?.status === 'not_started') return;

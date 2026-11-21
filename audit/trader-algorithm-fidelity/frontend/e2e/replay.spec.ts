@@ -124,8 +124,8 @@ test('a slow context response for a previous case never contaminates the one swi
   await page.goto('/');
 
   const cases = await (await request.get(`${api}/api/cases`)).json();
-  const eurusd = cases.find((item: { pair: string }) => item.pair === 'EURUSD');
-  const usdcad = cases.find((item: { pair: string }) => item.pair === 'USDCAD');
+  const eurusd = cases.find((item: { pair: string; status: string }) => item.pair === 'EURUSD' && item.status === 'not_started');
+  const usdcad = cases.find((item: { pair: string; status: string }) => item.pair === 'USDCAD' && item.status === 'not_started');
   expect(eurusd).toBeTruthy();
   expect(usdcad).toBeTruthy();
 
@@ -188,6 +188,64 @@ test('a slow context response for a previous case never contaminates the one swi
     const after = await page.locator('#h4-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
     return after.length !== beforeOldest.length || after.some(t => !beforeOldest.includes(t!));
   }, { timeout: 10000 }).toBe(true);
+});
+
+test('switching cases clears an unsaved annotation draft and the manual price marker', async ({ page, request }) => {
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url());
+    url.port = '8766';
+    return route.continue({ url: url.toString() });
+  });
+  await page.goto('/');
+
+  const cases = await (await request.get(`${api}/api/cases`)).json();
+  const eurusd = cases.find((item: { pair: string; status: string }) => item.pair === 'EURUSD' && item.status === 'not_started');
+  const usdcad = cases.find((item: { pair: string; status: string }) => item.pair === 'USDCAD' && item.status === 'not_started');
+  expect(eurusd).toBeTruthy();
+  expect(usdcad).toBeTruthy();
+
+  await page.locator('#case-select').selectOption(eurusd.id);
+  await page.locator('#start').click();
+  await expect(page.locator('#next')).toBeEnabled();
+
+  // A saved EURUSD annotation, to prove switching never deletes it.
+  await page.locator('#annotation-type').selectOption('horizontal_level');
+  await page.locator('#annotation-price').fill('1.23456');
+  await page.locator('#save-annotation').click();
+  await expect(page.locator('#annotation-count')).toHaveText('1');
+
+  // An UNSAVED EURUSD draft: a historical H4 candle selected, a price and a
+  // documented level type typed, plus the manual price marker -- none saved.
+  await page.locator('#annotation-type').selectOption('key_level');
+  await page.locator('#arm-annotation-source').click();
+  await page.locator('#h4-chart g[data-time]').first().click();
+  await page.locator('#annotation-price').fill('1.3579');
+  await page.locator('#annotation-level-type').fill('Order Block (unsaved draft)');
+  await page.locator('#manual-price').fill('1.4242');
+  await expect(page.locator('#arm-annotation-source')).toContainText('Selected');
+
+  // Switch to USDCAD before saving any of that.
+  await page.locator('#case-select').selectOption(usdcad.id);
+  await page.locator('#start').click();
+  await expect(page.locator('#next')).toBeEnabled();
+
+  await expect(page.locator('#annotation-price')).toHaveValue('');
+  await expect(page.locator('#manual-price')).toHaveValue('');
+  // key_level is the panel's default type, so the level-type field is visible again.
+  await expect(page.locator('#annotation-level-type')).toHaveValue('');
+  await expect(page.locator('#arm-annotation-source')).toHaveText('Select on chart');
+  await expect(page.locator('#annotation-count')).toHaveText('0');
+
+  // USDCAD can still create its own annotation.
+  await page.locator('#annotation-type').selectOption('horizontal_level');
+  await page.locator('#annotation-price').fill('1.11111');
+  await page.locator('#save-annotation').click();
+  await expect(page.locator('#annotation-count')).toHaveText('1');
+
+  // EURUSD's saved annotation from earlier is untouched.
+  const eurusdReplay = await (await request.get(`${api}/api/cases/${eurusd.id}/replay`)).json();
+  expect(eurusdReplay.annotations).toHaveLength(1);
+  expect(eurusdReplay.annotations[0].price).toBe(1.23456);
 });
 
 test('an unavailable API reports its 502 error clearly', async ({ page }) => {

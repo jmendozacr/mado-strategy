@@ -50,7 +50,7 @@ export function AnnotationPanel({ active, busy, draft, armed, annotations, error
         <input id="annotation-price" type="number" step="any" value={draft.price ?? ''} disabled={!active || busy}
           onChange={event => onChange({ ...draft, price: event.target.value })} /></label>}
       {draft.annotation_type === 'key_level' && <label className="field"><span>Documented level type</span>
-        <input placeholder="FVG, Order Block, Breaker…" value={draft.documented_level_type ?? ''} disabled={!active || busy}
+        <input id="annotation-level-type" placeholder="FVG, Order Block, Breaker…" value={draft.documented_level_type ?? ''} disabled={!active || busy}
           onChange={event => onChange({ ...draft, documented_level_type: event.target.value })} /></label>}
       <label className="field notes-field"><span>Notes</span>
         <textarea rows={2} value={draft.notes ?? ''} disabled={!active || busy}
