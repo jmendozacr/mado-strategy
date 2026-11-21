@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnnotationPanel } from './AnnotationPanel.tsx';
 import { Chart } from './Chart.tsx';
 import { DecisionForm } from './DecisionForm.tsx';
+import { dictionaries, type Lang } from './i18n.ts';
 import {
   annotationPayload, barsThrough, decisionPayload, earliestPannableMs, formatClock, mergeOlderBars, utcMs,
   type AnnotationDraft, type Bar, type CaseSummary, type DecisionFields, type HistoricalContext,
@@ -19,12 +20,14 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(payload.error || `Request failed: ${response.status}`);
+    throw new Error(payload.error || `__status__${response.status}`);
   }
   return await response.json() as T;
 }
 
 export function App() {
+  const [lang, setLang] = useState<Lang>('es');
+  const t = dictionaries[lang];
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [caseId, setCaseId] = useState('');
   const [replay, setReplay] = useState<Replay | null>(null);
@@ -46,6 +49,16 @@ export function App() {
   const selectionToken = useRef(0);
   const oldestFetched = useRef<{ h4: string | null; daily: string | null }>({ h4: null, daily: null });
   const fetchingContext = useRef<{ h4: boolean; daily: boolean }>({ h4: false, daily: false });
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  function describeError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const match = /^__status__(\d+)$/.exec(message);
+    return match ? t.errors.requestFailed(Number(match[1])) : message;
+  }
 
   function stopPlayback() {
     if (playTimer.current !== null) window.clearInterval(playTimer.current);
@@ -74,7 +87,7 @@ export function App() {
       const snapshot = await request<Replay>(`/api/cases/${encodeURIComponent(id)}/replay`);
       if (selectionToken.current === token) setReplay(snapshot);
     } catch (error) {
-      if (selectionToken.current === token) setNotice({ message: String(error), error: true });
+      if (selectionToken.current === token) setNotice({ message: describeError(error), error: true });
     }
   }
 
@@ -82,10 +95,11 @@ export function App() {
     void request<CaseSummary[]>('/api/cases').then(items => {
       setCases(items);
       if (items.length) void selectCase(items[0].id, items);
-    }).catch(error => setNotice({ message: String(error), error: true }));
+    }).catch(error => setNotice({ message: describeError(error), error: true }));
     return () => {
       if (playTimer.current !== null) window.clearInterval(playTimer.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function action(name: 'start' | 'next' | 'finish') {
@@ -98,7 +112,7 @@ export function App() {
         const result = await request<{ status: CaseSummary['status'] }>(`/api/cases/${encodeURIComponent(caseId)}/finish`, 'POST');
         stopPlayback();
         setReplay(current => current && { ...current, case: { ...current.case, status: result.status } });
-        setNotice({ message: 'Case finished. Your recorded decisions remain available for review.', error: false });
+        setNotice({ message: t.errors.caseFinished, error: false });
       } else {
         const result = await request<Replay>(`/api/cases/${encodeURIComponent(caseId)}/${name}`, 'POST');
         setReplay(result);
@@ -107,7 +121,7 @@ export function App() {
       setCases(await request<CaseSummary[]>('/api/cases'));
     } catch (error) {
       stopPlayback();
-      setNotice({ message: String(error), error: true });
+      setNotice({ message: describeError(error), error: true });
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -123,10 +137,10 @@ export function App() {
       const payload = decisionPayload(fields, replay.cursor_utc);
       await request(`/api/cases/${encodeURIComponent(caseId)}/decisions`, 'POST', payload);
       setReplay(await request<Replay>(`/api/cases/${encodeURIComponent(caseId)}/replay`));
-      setNotice({ message: 'Decision saved as a new immutable record.', error: false });
+      setNotice({ message: t.errors.decisionSaved, error: false });
       return true;
     } catch (error) {
-      setNotice({ message: String(error), error: true });
+      setNotice({ message: describeError(error), error: true });
       return false;
     } finally {
       busyRef.current = false;
@@ -198,7 +212,7 @@ export function App() {
       setReplay(await request<Replay>(`/api/cases/${encodeURIComponent(caseId)}/replay`));
       setAnnotationDraft({ annotation_type: annotationDraft.annotation_type, timeframe: annotationDraft.timeframe });
     } catch (error) {
-      setAnnotationError(String(error));
+      setAnnotationError(describeError(error));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -214,12 +228,14 @@ export function App() {
   const h4All = replay ? mergeOlderBars(barsThrough(replay.h4, replay.cursor_utc), extraH4) : [];
   const dailyAll = replay ? barsThrough(extraDaily, replay.cursor_utc) : [];
   const markers: PriceLevel[] = [...(replay?.reference_levels ?? [])];
-  if (manualPrice && Number.isFinite(Number(manualPrice))) markers.push({ price: Number(manualPrice), label: 'Your level' });
+  if (manualPrice && Number.isFinite(Number(manualPrice))) markers.push({ price: Number(manualPrice), label: t.chart.yourLevel });
   for (const annotation of replay?.annotations ?? []) {
     if (annotation.price != null) {
       markers.push({ price: annotation.price, label: `${annotation.annotation_type}${annotation.documented_level_type ? ` · ${annotation.documented_level_type}` : ''}` });
     }
   }
+  const statusLabel = (value: CaseSummary['status']) =>
+    value === 'finished' ? t.session.statusFinished : value === 'in_progress' ? t.session.statusInProgress : t.session.statusNotStarted;
 
   useEffect(() => {
     if (!replay || !active) return;
@@ -233,45 +249,88 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [end, span, replay?.cursor_utc, caseId, active]);
 
+  const h4Suffix = `${replay?.h4.at(-1)?.complete === false ? t.chart.forming : t.chart.closed}${contextExhausted.h4 ? t.chart.fullHistory : ''}`;
+  const dailySuffix = contextExhausted.daily ? t.chart.fullHistory : '';
+
   return <div className="app-shell">
-    <header className="app-header"><div className="brand"><div className="brand-mark">CR</div><div><span className="eyebrow">LOCAL RESEARCH WORKSPACE</span><h1>CRT Fidelity Audit</h1></div></div>
+    <header className="app-header">
+      <div className="brand">
+        <div className="brand-mark">CR</div>
+        <div><p className="brand-tagline">{t.app.tagline}</p><h1>{t.app.brand}</h1></div>
+      </div>
       <div className="header-tools">
-        <div className="zone-toggle" role="group" aria-label="Time reference">
-          <button type="button" id="zone-ny" className={zone === 'ny' ? 'button-primary' : ''} onClick={() => setZone('ny')}>New York</button>
+        <div className="toggle-group" role="group" aria-label="Language">
+          <button type="button" id="lang-es" className={lang === 'es' ? 'button-primary' : ''} onClick={() => setLang('es')}>ES</button>
+          <button type="button" id="lang-en" className={lang === 'en' ? 'button-primary' : ''} onClick={() => setLang('en')}>EN</button>
+        </div>
+        <div className="toggle-group" role="group" aria-label="Time reference">
+          <button type="button" id="zone-ny" className={zone === 'ny' ? 'button-primary' : ''} onClick={() => setZone('ny')}>NY</button>
           <button type="button" id="zone-utc" className={zone === 'utc' ? 'button-primary' : ''} onClick={() => setZone('utc')}>UTC</button>
         </div>
-        <div className="header-status"><span className="status-dot" /> Human review · Stage 1</div>
-      </div></header>
+        <div className="header-status"><span className="status-dot" />{t.app.statusReview}</div>
+      </div>
+    </header>
     <main>
-      <section className="intro"><div><span className="eyebrow">BLIND HISTORICAL REPLAY</span><h2>Read the market, one closed candle at a time.</h2><p>Record your reasoning before any algorithm comparison is available.</p></div><span className="privacy-chip">Future data locked</span></section>
-      <section className="case-toolbar"><label className="case-picker"><span>Historical case</span><select id="case-select" value={caseId} disabled={busy} onChange={event => void selectCase(event.target.value)}>{cases.map(item => <option key={item.id} value={item.id}>{item.pair} · {item.date_ny} · {item.model.toUpperCase()} · {item.status}</option>)}</select></label><div className="case-metadata"><div><span>PAIR</span><strong id="pair">{item?.pair ?? '—'}</strong></div><div><span>MODEL</span><strong id="model">{item?.model.toUpperCase() ?? '—'}</strong></div><div><span>DATE · NY</span><strong id="date-ny">{item?.date_ny ?? '—'}</strong></div><div><span>REPLAY TIME · {zone.toUpperCase()}</span><strong id="cursor-primary">{replay ? formatClock(replay.cursor_utc, zone) : '—'}</strong></div><div><span>UTC</span><strong id="cursor-utc">{replay?.cursor_utc ?? '—'}</strong></div></div></section>
+      <section className="intro">
+        <div><h2>{t.app.subtitle}</h2></div>
+        <span className="privacy-chip">{t.app.futureLocked}</span>
+      </section>
+
+      <section className="case-toolbar">
+        <label className="case-picker" htmlFor="case-select">
+          <span className="field-label">{t.session.label}<span className="field-hint" tabIndex={0} title={t.session.hint} aria-label={t.session.hint} role="note">?</span></span>
+          <select id="case-select" value={caseId} disabled={busy} onChange={event => void selectCase(event.target.value)}>
+            {cases.map(option => <option key={option.id} value={option.id} data-status={option.status}>
+              {option.pair} · {option.date_ny} · {option.model.toUpperCase()} · {statusLabel(option.status)}
+            </option>)}
+          </select>
+        </label>
+        <div className="case-metadata">
+          <div><span>{t.session.pair}</span><strong id="pair" className="mono">{item?.pair ?? '—'}</strong></div>
+          <div><span>{t.session.model}</span><strong id="model" className="mono">{item?.model.toUpperCase() ?? '—'}</strong></div>
+          <div><span>{t.session.dateNy}</span><strong id="date-ny" className="mono">{item?.date_ny ?? '—'}</strong></div>
+          <div><span>{t.session.replayTime} · {zone.toUpperCase()}</span><strong id="cursor-primary" className="mono">{replay ? formatClock(replay.cursor_utc, zone) : '—'}</strong></div>
+          <div><span>{t.session.utc}</span><strong id="cursor-utc" className="mono">{replay?.cursor_utc ?? '—'}</strong></div>
+        </div>
+      </section>
+
       {notice && <div id="notice" className={`notice ${notice.error ? 'error' : 'success'}`} role="status">{notice.message}</div>}
-      {replay?.case.integrity === 'non_evaluable' && <div id="integrity-notice" className="notice error">This case has an incomplete data bucket. Record the data gap, and do not assess strategy fidelity from this case.</div>}
-      <section className="replay-controls" aria-label="Replay controls"><div className="control-group">
-        <button id="start" className="button-primary" type="button" disabled={busy || status !== 'not_started'} onClick={() => void action('start')}>Start case</button>
-        <button id="next" type="button" disabled={busy || !active} onClick={() => void action('next')}>Next M15 candle →</button>
-        <button id="play" type="button" disabled={busy || !active || playing} onClick={() => { if (playTimer.current === null) playTimer.current = window.setInterval(() => void action('next'), 1100); setPlaying(true); }}>Play</button>
-        <button id="pause" type="button" disabled={!playing} onClick={stopPlayback}>Pause</button>
-        <button id="finish" type="button" disabled={busy || !active || !replay?.case.can_finish} onClick={() => void action('finish')}>Finish case</button>
-      </div><div className="replay-caption" id="last-m15">{replay ? `Last closed M15 open · ${replay.last_available_m15 ?? 'none'} UTC` : 'Start a case to reveal the first closed candle'}</div></section>
-      <div className="workspace-grid"><div className="charts-column">
-        <Chart id="h4" title="H4 · NY feeder" subtitle={`NY-anchored grid · key opens 9PM / 1AM / 5AM / 9AM · ${replay?.h4.at(-1)?.complete === false ? 'current candle forming' : 'closed candles'}${contextExhausted.h4 ? ' · full history loaded' : ''}`}
-          bars={h4All} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'h4'}
-          onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('h4', bar)} />
-        <Chart id="daily" title="Daily · 17:00 NY (engineering convention)" subtitle={`Reconstructed from M15 only · not the broker's native Daily${contextExhausted.daily ? ' · full history loaded' : ''}`}
-          bars={dailyAll} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'daily'}
-          onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('daily', bar)} />
-        <Chart id="m15" title="M15 · execution" subtitle="A candle enters the chart only after its close"
-          bars={replay ? barsThrough(replay.m15, replay.cursor_utc) : []} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'm15'}
-          onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('m15', bar)} />
-        <div className="manual-level"><label htmlFor="manual-price">Your price marker</label><input id="manual-price" type="number" step="any" placeholder="Enter a level to inspect on all charts" value={manualPrice} onChange={event => setManualPrice(event.target.value)} /><button id="clear-price" type="button" onClick={() => setManualPrice('')}>Clear</button></div>
-      </div>
-      <div className="side-column">
-        <DecisionForm key={caseId} active={active} busy={busy} integrity={replay?.case.integrity ?? 'evaluable'} decisions={replay?.decisions ?? []} onSave={saveDecision} />
-        <AnnotationPanel active={active} busy={busy} draft={annotationDraft} armed={armedTimeframe === annotationDraft.timeframe}
-          annotations={replay?.annotations ?? []} error={annotationError} onChange={setAnnotationDraft}
-          onArm={armAnnotationSelection} onSave={() => void saveAnnotation()} />
-      </div>
+      {replay?.case.integrity === 'non_evaluable' && <div id="integrity-notice" className="notice error">{t.session.noticeNonEvaluable}</div>}
+
+      <section className="replay-controls" aria-label="Replay controls">
+        <div className="control-group">
+          <button id="start" className="button-primary" type="button" title={t.controls.startHint} disabled={busy || status !== 'not_started'} onClick={() => void action('start')}>{t.controls.start}</button>
+          <button id="next" type="button" title={t.controls.nextHint} disabled={busy || !active} onClick={() => void action('next')}>{t.controls.next}</button>
+          <button id="play" type="button" title={t.controls.playHint} disabled={busy || !active || playing} onClick={() => { if (playTimer.current === null) playTimer.current = window.setInterval(() => void action('next'), 1100); setPlaying(true); }}>{t.controls.play}</button>
+          <button id="pause" type="button" title={t.controls.pauseHint} disabled={!playing} onClick={stopPlayback}>{t.controls.pause}</button>
+          <button id="finish" type="button" title={t.controls.finishHint} disabled={busy || !active || !replay?.case.can_finish} onClick={() => void action('finish')}>{t.controls.finish}</button>
+        </div>
+        <div className="replay-caption" id="last-m15">{replay ? t.controls.lastM15(replay.last_available_m15 ?? t.controls.lastM15Empty) : t.controls.none}</div>
+      </section>
+
+      <div className="workspace-grid">
+        <div className="charts-column">
+          <Chart id="h4" lang={lang} title={t.chart.h4Title} subtitle={t.chart.h4Subtitle(h4Suffix)}
+            bars={h4All} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'h4'}
+            onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('h4', bar)} />
+          <Chart id="daily" lang={lang} title={t.chart.dailyTitle} subtitle={t.chart.dailySubtitle(dailySuffix)}
+            bars={dailyAll} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'daily'}
+            onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('daily', bar)} />
+          <Chart id="m15" lang={lang} title={t.chart.m15Title} subtitle={t.chart.m15Subtitle}
+            bars={replay ? barsThrough(replay.m15, replay.cursor_utc) : []} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'm15'}
+            onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('m15', bar)} />
+          <div className="manual-level">
+            <span className="field-label">{t.manualLevel.label}<span className="field-hint" tabIndex={0} title={t.manualLevel.hint} aria-label={t.manualLevel.hint} role="note">?</span></span>
+            <input id="manual-price" type="number" step="any" placeholder={t.manualLevel.placeholder} value={manualPrice} onChange={event => setManualPrice(event.target.value)} />
+            <button id="clear-price" type="button" onClick={() => setManualPrice('')}>{t.manualLevel.clear}</button>
+          </div>
+        </div>
+        <div className="side-column">
+          <DecisionForm key={caseId} t={t} active={active} busy={busy} integrity={replay?.case.integrity ?? 'evaluable'} decisions={replay?.decisions ?? []} onSave={saveDecision} />
+          <AnnotationPanel t={t} active={active} busy={busy} draft={annotationDraft} armed={armedTimeframe === annotationDraft.timeframe}
+            annotations={replay?.annotations ?? []} error={annotationError} onChange={setAnnotationDraft}
+            onArm={armAnnotationSelection} onSave={() => void saveAnnotation()} />
+        </div>
       </div>
     </main>
   </div>;

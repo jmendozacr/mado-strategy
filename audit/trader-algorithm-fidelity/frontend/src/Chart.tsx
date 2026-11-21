@@ -1,8 +1,10 @@
 import { useRef, useState, type PointerEvent, type WheelEvent } from 'react';
+import { dictionaries, type Lang } from './i18n.ts';
 import { feederLabel, formatClock, utcMs, type Bar, type PriceLevel } from './model.ts';
 
 type Props = {
   id: 'h4' | 'm15' | 'daily';
+  lang: Lang;
   title: string;
   subtitle: string;
   bars: Bar[];
@@ -16,8 +18,9 @@ type Props = {
   onSelectCandle?: (bar: Bar) => void;
 };
 
-export function Chart({ id, title, subtitle, bars, markers, end, span, zone, selecting, onPan, onZoom, onSelectCandle }: Props) {
-  const [tooltip, setTooltip] = useState('Hover a candle for OHLC');
+export function Chart({ id, lang, title, subtitle, bars, markers, end, span, zone, selecting, onPan, onZoom, onSelectCandle }: Props) {
+  const t = dictionaries[lang].chart;
+  const [tooltip, setTooltip] = useState(t.hoverHint);
   const dragStart = useRef<number | null>(null);
   const left = 14, right = 80, top = 16, bottom = 30, width = 1000, height = 260;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
@@ -58,15 +61,17 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, zone, sel
     onZoom(event.deltaY < 0 ? 0.8 : 1.25);
   }
 
+  const tf = id.toUpperCase();
+
   return <section className="chart-card" aria-label={`${title} candlestick chart`}>
     <div className="chart-heading"><div><h2>{title}</h2><span>{subtitle}</span></div><div className="chart-tools">
-      <button type="button" aria-label={`Review earlier ${id.toUpperCase()} candles`} onClick={() => onPan(span * 0.3)}>←</button>
-      <button type="button" aria-label={`Zoom in ${id.toUpperCase()}`} onClick={() => onZoom(0.7)}>+</button>
-      <button type="button" aria-label={`Zoom out ${id.toUpperCase()}`} onClick={() => onZoom(1.4)}>−</button>
-      <button type="button" aria-label={`Review later ${id.toUpperCase()} candles`} onClick={() => onPan(-span * 0.3)}>→</button>
+      <button type="button" data-action="pan-earlier" data-chart={id} aria-label={t.panEarlier(tf)} title={t.panEarlier(tf)} onClick={() => onPan(span * 0.3)}>←</button>
+      <button type="button" data-action="zoom-in" data-chart={id} aria-label={t.zoomIn(tf)} title={t.zoomIn(tf)} onClick={() => onZoom(0.7)}>+</button>
+      <button type="button" data-action="zoom-out" data-chart={id} aria-label={t.zoomOut(tf)} title={t.zoomOut(tf)} onClick={() => onZoom(1.4)}>−</button>
+      <button type="button" data-action="pan-later" data-chart={id} aria-label={t.panLater(tf)} title={t.panLater(tf)} onClick={() => onPan(-span * 0.3)}>→</button>
     </div></div>
     <div className="chart-surface">
-      <svg id={`${id}-chart`} viewBox="0 0 1000 260" role="img" aria-label={`Available ${id.toUpperCase()} candles`}
+      <svg id={`${id}-chart`} viewBox="0 0 1000 260" role="img" aria-label={t.availableCandles(tf)}
         onWheel={wheel} onPointerDown={event => { dragStart.current = event.clientX; event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerUp={endDrag} onPointerCancel={() => { dragStart.current = null; }}>
         <rect x="0" y="0" width={width} height={height} fill="#0d1724" />
@@ -82,25 +87,30 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, zone, sel
           const tickX = left + plotWidth * index / 5;
           return <g key={`time-${index}`}>
             <line x1={tickX} y1={top} x2={tickX} y2={height - bottom} stroke="#1c2c3a" />
-            <text x={tickX} y={height - 8} textAnchor="middle" className="axis-label">{formatClock(new Date(time).toISOString(), zone)}</text>
+            <text x={tickX} y={height - 8} textAnchor="middle" className="axis-label mono">{formatClock(new Date(time).toISOString(), zone)}</text>
           </g>;
         })}
         {(id === 'h4' || id === 'm15') && visible.map(bar => {
+          // feederLabel matches by NY hour alone; on M15 every quarter-hour inside
+          // that hour would repeat the same label, overlapping. Minutes are
+          // identical in NY and UTC (offsets are whole hours), so this stays
+          // timezone-safe while only marking the exact feeder-open candle.
+          if (new Date(utcMs(bar.time)).getUTCMinutes() !== 0) return null;
           const label = feederLabel(bar.time);
           if (!label) return null;
-          return <text key={`feeder-${bar.time}`} x={x(bar.time)} y={top - 4} textAnchor="middle" className="feeder-label">{label}</text>;
+          return <text key={`feeder-${bar.time}`} x={x(bar.time)} y={top - 4} textAnchor="middle" className="feeder-label mono">{label}</text>;
         })}
         {markers.map((marker, index) => <g key={`${marker.label}-${index}`}>
           <line x1={left} y1={y(marker.price)} x2={width - right} y2={y(marker.price)} stroke="#e8b96b" strokeDasharray="6 4" />
-          <text x={left + 6} y={y(marker.price) - 5} className="marker-label">{marker.label} · {marker.price.toFixed(5)}</text>
+          <text x={left + 6} y={y(marker.price) - 5} className="marker-label mono">{marker.label} · {marker.price.toFixed(5)}</text>
         </g>)}
         {visible.map(bar => {
           const middle = x(bar.time);
           const color = bar.integrity === 'gap' ? '#9a6b2f' : bar.close >= bar.open ? '#48c6a7' : '#ef7583';
           const label = formatClock(bar.time, zone);
           return <g key={bar.time} data-time={bar.time}
-            onPointerEnter={() => setTooltip(`${label} ${zone.toUpperCase()} · O ${bar.open.toFixed(5)} H ${bar.high.toFixed(5)} L ${bar.low.toFixed(5)} C ${bar.close.toFixed(5)}${bar.complete === false ? ' · forming' : ''}${bar.integrity === 'gap' ? ' · data gap' : ''}`)}
-            onPointerLeave={() => setTooltip('Hover a candle for OHLC')}
+            onPointerEnter={() => setTooltip(t.tooltip(label, zone.toUpperCase(), bar.open.toFixed(5), bar.high.toFixed(5), bar.low.toFixed(5), bar.close.toFixed(5), bar.complete === false, bar.integrity === 'gap'))}
+            onPointerLeave={() => setTooltip(t.hoverHint)}
             style={{ cursor: selecting ? 'crosshair' : 'default' }}>
             <line x1={middle} y1={y(bar.high)} x2={middle} y2={y(bar.low)} stroke={color} strokeWidth="2" />
             <rect x={middle - candleWidth / 2} y={Math.min(y(bar.open), y(bar.close))} width={candleWidth} height={Math.max(2, Math.abs(y(bar.open) - y(bar.close)))} fill={color} opacity={bar.complete === false ? 0.64 : 1} stroke={bar.complete === false ? '#f8d18b' : 'none'} />
@@ -108,8 +118,8 @@ export function Chart({ id, title, subtitle, bars, markers, end, span, zone, sel
           </g>;
         })}
       </svg>
-      <div id={`${id}-empty`} className="empty-chart" hidden={visible.length > 0}>No candles in this view</div>
+      <div id={`${id}-empty`} className="empty-chart" hidden={visible.length > 0}>{t.empty}</div>
     </div>
-    <div className="chart-footer"><span>{selecting ? 'Click a candle to use it as the annotation source' : 'Drag or use arrows to review · Scroll or use +/- to zoom'}</span><span id={`${id}-tooltip`}>{tooltip}</span></div>
+    <div className="chart-footer"><span>{selecting ? t.selectingHint : t.reviewHint}</span><span id={`${id}-tooltip`} className="mono">{tooltip}</span></div>
   </section>;
 }

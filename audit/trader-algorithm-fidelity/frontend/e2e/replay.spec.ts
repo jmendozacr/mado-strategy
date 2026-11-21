@@ -55,11 +55,11 @@ test('a real case stays causal and its human decision survives reload', async ({
   // switch, and the M15 anchor must save correctly by clicking a real candle.
   await page.locator('#annotation-type').selectOption('key_level');
   await page.locator('#annotation-type').selectOption('m15_anchor');
-  await expect(page.locator('#arm-annotation-source')).toHaveText('Select on chart');
+  await expect(page.locator('#arm-annotation-source')).toHaveAttribute('data-state', 'idle');
   await page.locator('#arm-annotation-source').click();
-  await expect(page.locator('#arm-annotation-source')).toHaveText(/Click a candle/);
+  await expect(page.locator('#arm-annotation-source')).toHaveAttribute('data-state', 'armed');
   await page.locator('#m15-chart rect[fill="transparent"]').last().click();
-  await expect(page.locator('#arm-annotation-source')).toContainText('Selected');
+  await expect(page.locator('#arm-annotation-source')).toHaveAttribute('data-state', 'selected');
   await page.locator('#save-annotation').click();
   await expect(page.locator('#annotation-count')).toHaveText('2');
 
@@ -77,7 +77,7 @@ test('a real case stays causal and its human decision survives reload', async ({
   // extending correctly over many pages, several months back, using a fast
   // synthetic fixture.
   const cursorBeforePan = await page.locator('#cursor-utc').textContent();
-  for (let i = 0; i < 6; i += 1) await page.locator('button[aria-label="Zoom out H4"]').click();
+  for (let i = 0; i < 6; i += 1) await page.locator('button[data-action="zoom-out"][data-chart="h4"]').click();
   const oldestVisible = async (chart: string) => {
     const times = await page.locator(`#${chart}-chart g[data-time]`).evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
     return times.length ? Math.min(...times.map(t => Date.parse(t!))) : Infinity;
@@ -88,7 +88,7 @@ test('a real case stays causal and its human decision survives reload', async ({
     const [oldestH4, oldestDaily] = await Promise.all([oldestVisible('h4'), oldestVisible('daily')]);
     if (oldestH4 < target && oldestDaily < target) break;
     const nextH4 = page.waitForResponse(resp => resp.url().includes('timeframe=h4'), { timeout: 15000 }).catch(() => null);
-    await page.locator('button[aria-label="Review earlier H4 candles"]').click();
+    await page.locator('button[data-action="pan-earlier"][data-chart="h4"]').click();
     await nextH4;
   }
   const [finalH4, finalDaily] = await Promise.all([oldestVisible('h4'), oldestVisible('daily')]);
@@ -112,7 +112,7 @@ test('a real case stays causal and its human decision survives reload', async ({
   await page.reload();
   await page.locator('#case-select').selectOption(selected.id);
   await expect(page.locator('#decision-count')).toHaveText('2');
-  await expect(page.locator('#case-select option:checked')).toContainText('finished');
+  await expect(page.locator('#case-select option:checked')).toHaveAttribute('data-status', 'finished');
 });
 
 test('a slow context response for a previous case never contaminates the one switched to', async ({ page, request }) => {
@@ -181,9 +181,9 @@ test('a slow context response for a previous case never contaminates the one swi
 
   // The user can still request further USDCAD pages (the stale response must not
   // have left this case's fetching flag permanently stuck).
-  for (let i = 0; i < 4; i += 1) await page.locator('button[aria-label="Zoom out H4"]').click();
+  for (let i = 0; i < 4; i += 1) await page.locator('button[data-action="zoom-out"][data-chart="h4"]').click();
   const beforeOldest = await page.locator('#h4-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
-  await page.locator('button[aria-label="Review earlier H4 candles"]').click();
+  await page.locator('button[data-action="pan-earlier"][data-chart="h4"]').click();
   await expect.poll(async () => {
     const after = await page.locator('#h4-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
     return after.length !== beforeOldest.length || after.some(t => !beforeOldest.includes(t!));
@@ -222,7 +222,7 @@ test('switching cases clears an unsaved annotation draft and the manual price ma
   await page.locator('#annotation-price').fill('1.3579');
   await page.locator('#annotation-level-type').fill('Order Block (unsaved draft)');
   await page.locator('#manual-price').fill('1.4242');
-  await expect(page.locator('#arm-annotation-source')).toContainText('Selected');
+  await expect(page.locator('#arm-annotation-source')).toHaveAttribute('data-state', 'selected');
 
   // Switch to USDCAD before saving any of that.
   await page.locator('#case-select').selectOption(usdcad.id);
@@ -233,7 +233,7 @@ test('switching cases clears an unsaved annotation draft and the manual price ma
   await expect(page.locator('#manual-price')).toHaveValue('');
   // key_level is the panel's default type, so the level-type field is visible again.
   await expect(page.locator('#annotation-level-type')).toHaveValue('');
-  await expect(page.locator('#arm-annotation-source')).toHaveText('Select on chart');
+  await expect(page.locator('#arm-annotation-source')).toHaveAttribute('data-state', 'idle');
   await expect(page.locator('#annotation-count')).toHaveText('0');
 
   // USDCAD can still create its own annotation.
@@ -255,5 +255,5 @@ test('an unavailable API reports its 502 error clearly', async ({ page }) => {
     body: 'Bad Gateway',
   }));
   await page.goto('/');
-  await expect(page.locator('#notice')).toContainText('Request failed: 502');
+  await expect(page.locator('#notice')).toContainText('502');
 });

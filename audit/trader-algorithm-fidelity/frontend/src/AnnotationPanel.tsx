@@ -1,6 +1,9 @@
+import { Field } from './Field.tsx';
+import type { Dict } from './i18n.ts';
 import { changeAnnotationType, type Annotation, type AnnotationDraft, type AnnotationType } from './model.ts';
 
 type Props = {
+  t: Dict;
   active: boolean;
   busy: boolean;
   draft: AnnotationDraft;
@@ -12,58 +15,62 @@ type Props = {
   onSave: () => void;
 };
 
-const TYPES: { value: AnnotationType; label: string }[] = [
-  { value: 'key_level', label: 'Key Level (documented type)' },
-  { value: 'max', label: 'Max (swing high)' },
-  { value: 'min', label: 'Min (swing low)' },
-  { value: 'm15_anchor', label: 'Model #1 anchor (M15)' },
-  { value: 'horizontal_level', label: 'Horizontal price level' },
-];
-
 const needsSource = (type: AnnotationType) => type === 'max' || type === 'min' || type === 'key_level' || type === 'm15_anchor';
 const needsPrice = (type: AnnotationType) => type !== 'm15_anchor';
 
-export function AnnotationPanel({ active, busy, draft, armed, annotations, error, onChange, onArm, onSave }: Props) {
+export function AnnotationPanel({ t, active, busy, draft, armed, annotations, error, onChange, onArm, onSave }: Props) {
+  const a = t.annotation;
+  const types: { value: AnnotationType; label: string }[] = [
+    { value: 'key_level', label: a.typeKeyLevel },
+    { value: 'max', label: a.typeMax },
+    { value: 'min', label: a.typeMin },
+    { value: 'm15_anchor', label: a.typeM15Anchor },
+    { value: 'horizontal_level', label: a.typeHorizontal },
+  ];
+  const sourceState = armed ? 'armed' : draft.source_time ? 'selected' : 'idle';
+  const sourceLabel = armed ? a.sourceArmed : draft.source_time ? a.sourceSelected(draft.source_time) : a.sourceIdle;
+
   return <section className="annotation-panel" aria-label="Manual annotations">
-    <div className="panel-heading"><span className="eyebrow">YOUR KEY LEVELS &amp; ANCHORS</span><h2>Mark what you see</h2>
-      <p>Independent of D3/C2. Timestamps and timeframe convention are recorded with every entry.</p></div>
+    <div className="panel-heading"><h2>{a.heading}</h2><p>{a.hint}</p></div>
     <div className="annotation-form">
-      <label className="field"><span>Type</span>
+      <Field label={a.type} hint={a.typeHint}>
         <select id="annotation-type" value={draft.annotation_type} disabled={!active || busy}
           onChange={event => onChange(changeAnnotationType(draft, event.target.value as AnnotationType))}>
-          {TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+          {types.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
         </select>
-      </label>
-      {draft.annotation_type !== 'm15_anchor' && <label className="field"><span>Timeframe</span>
+      </Field>
+      {draft.annotation_type !== 'm15_anchor' && <Field label={a.timeframe} hint={a.timeframeHint}>
         <select value={draft.timeframe} disabled={!active || busy}
           onChange={event => onChange({ ...draft, timeframe: event.target.value as AnnotationDraft['timeframe'], source_time: undefined })}>
           <option value="m15">M15</option><option value="h4">H4</option><option value="daily">Daily</option>
         </select>
-      </label>}
-      {needsSource(draft.annotation_type) && <div className="field">
-        <span>Source candle</span>
-        <button type="button" id="arm-annotation-source" className={armed ? 'button-primary' : ''} disabled={!active || busy} onClick={onArm}>
-          {armed ? 'Click a candle on the chart…' : draft.source_time ? `Selected · ${draft.source_time}` : 'Select on chart'}
+      </Field>}
+      {needsSource(draft.annotation_type) && <Field label={a.sourceCandle} hint={a.sourceCandleHint}>
+        <button type="button" id="arm-annotation-source" data-state={sourceState} className={armed ? 'button-primary' : ''} disabled={!active || busy} onClick={onArm}>
+          {sourceLabel}
         </button>
-      </div>}
-      {needsPrice(draft.annotation_type) && <label className="field"><span>Price</span>
-        <input id="annotation-price" type="number" step="any" value={draft.price ?? ''} disabled={!active || busy}
-          onChange={event => onChange({ ...draft, price: event.target.value })} /></label>}
-      {draft.annotation_type === 'key_level' && <label className="field"><span>Documented level type</span>
-        <input id="annotation-level-type" placeholder="FVG, Order Block, Breaker…" value={draft.documented_level_type ?? ''} disabled={!active || busy}
-          onChange={event => onChange({ ...draft, documented_level_type: event.target.value })} /></label>}
-      <label className="field notes-field"><span>Notes</span>
+      </Field>}
+      {needsPrice(draft.annotation_type) && <Field label={a.price} hint={a.priceHint}>
+        <input id="annotation-price" type="number" step="any" className="mono" value={draft.price ?? ''} disabled={!active || busy}
+          onChange={event => onChange({ ...draft, price: event.target.value })} />
+      </Field>}
+      {draft.annotation_type === 'key_level' && <Field label={a.levelType} hint={a.levelTypeHint}>
+        <input id="annotation-level-type" placeholder={a.levelTypePlaceholder} value={draft.documented_level_type ?? ''} disabled={!active || busy}
+          onChange={event => onChange({ ...draft, documented_level_type: event.target.value })} />
+      </Field>}
+      <Field label={a.notes} hint={a.notesHint} wide>
         <textarea rows={2} value={draft.notes ?? ''} disabled={!active || busy}
-          onChange={event => onChange({ ...draft, notes: event.target.value })} /></label>
+          onChange={event => onChange({ ...draft, notes: event.target.value })} />
+      </Field>
       {error && <p className="notice error" role="alert">{error}</p>}
-      <button type="button" id="save-annotation" className="button-primary" disabled={!active || busy} onClick={onSave}>Save annotation</button>
+      <button type="button" id="save-annotation" className="button-primary" disabled={!active || busy} onClick={onSave}>{a.save}</button>
     </div>
-    <div className="decision-history"><h3>Recorded annotations <span id="annotation-count">{annotations.length}</span></h3>
+    <div className="decision-history"><h3>{a.historyTitle} <span id="annotation-count">{annotations.length}</span></h3>
       <ol id="annotation-list">{annotations.map(entry => <li key={entry.id}>
         <strong>{entry.annotation_type}{entry.documented_level_type ? ` · ${entry.documented_level_type}` : ''}</strong>
-        <span>{entry.timeframe} · {entry.price ?? '—'} · {entry.source_time ?? entry.cursor_utc}</span>
+        <span className="mono">{entry.timeframe} · {entry.price ?? '—'} · {entry.source_time ?? entry.cursor_utc}</span>
       </li>)}</ol>
-      {annotations.length === 0 && <p>No annotation recorded for this case.</p>}
+      {annotations.length === 0 && <p>{a.historyEmpty}</p>}
     </div>
   </section>;
 }
