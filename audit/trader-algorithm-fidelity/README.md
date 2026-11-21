@@ -59,3 +59,7 @@ The Playwright CLI test starts an isolated API on port 8766 with a separate jour
 ## Scope
 
 Stage 1 contains replay, charts, case selection, and human decision capture. Algorithm comparison, discrepancy classification, statistics, and exports are reserved for Stages 2 and 3.
+
+## Running the human pilot
+
+See [`PILOT_PROTOCOL.md`](PILOT_PROTOCOL.md) for the step-by-step protocol: starting a session, using the H4/Daily context, recording decisions and annotations, finishing, resuming, and the rules that keep the pilot's fidelity judgment uncontaminated by future outcomes or D3/C2.
