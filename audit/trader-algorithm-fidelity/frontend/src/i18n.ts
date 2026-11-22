@@ -7,6 +7,8 @@ export type Dict = {
     subtitle: string;
     futureLocked: string;
     statusReview: string;
+    themeDark: string;
+    themeLight: string;
   };
   session: {
     label: string;
@@ -76,6 +78,13 @@ export type Dict = {
     feederReference: string;
     feederReferenceHint: string;
     feederReferencePlaceholder: string;
+    useFeederReference: string;
+    useFeederReferenceHint: string;
+    pickOnChart: string;
+    pickOnChartHint: string;
+    pickOnChartM15: string;
+    pickOnChartM15Hint: string;
+    pickArmed: string;
     sweptSide: string;
     sweptSideHint: string;
     sweepConfirmedAt: string;
@@ -193,6 +202,8 @@ const es: Dict = {
     subtitle: 'Leé el mercado, una vela cerrada a la vez.',
     futureLocked: 'Datos futuros bloqueados',
     statusReview: 'Revisión humana · Etapa 1',
+    themeDark: 'Oscuro',
+    themeLight: 'Claro',
   },
   session: {
     label: 'Sesión histórica',
@@ -263,6 +274,13 @@ const es: Dict = {
     feederReference: 'Apertura feeder de referencia (hora local NY)',
     feederReferenceHint: 'Escribí la hora que verías en un reloj de Nueva York (no la hora de tu computadora). El EST/EDT se resuelve solo con la fecha del caso.',
     feederReferencePlaceholder: 'AAAA-MM-DD HH:MM',
+    useFeederReference: 'Usar vela de referencia',
+    useFeederReferenceHint: 'Completa automáticamente con la apertura real de la vela feeder de referencia que ya calculó el servidor, en hora NY — podés corregirla si tu lectura difiere.',
+    pickOnChart: 'Elegir en el gráfico',
+    pickOnChartHint: 'Hacé click en una vela de H4, Daily o M15 y se completa sola con su hora UTC real.',
+    pickOnChartM15: 'Elegir en M15',
+    pickOnChartM15Hint: 'Tiene que ser una vela M15 real y cerrada — hacé click directamente sobre el gráfico M15.',
+    pickArmed: 'Hacé click en una vela…',
     sweptSide: 'Lado barrido',
     sweptSideHint: '¿La vela de activación barrió el máximo, el mínimo, ambos o ninguno del rango de referencia?',
     sweepConfirmedAt: 'Barrido confirmado a las (UTC)',
@@ -380,6 +398,8 @@ const en: Dict = {
     subtitle: 'Read the market, one closed candle at a time.',
     futureLocked: 'Future data locked',
     statusReview: 'Human review · Stage 1',
+    themeDark: 'Dark',
+    themeLight: 'Light',
   },
   session: {
     label: 'Historical case',
@@ -450,6 +470,13 @@ const en: Dict = {
     feederReference: 'Reference feeder open (New York local time)',
     feederReferenceHint: "Enter the clock time you'd see in New York (not your computer's time). EST/EDT is resolved from the case date alone.",
     feederReferencePlaceholder: 'YYYY-MM-DD HH:MM',
+    useFeederReference: 'Use reference candle',
+    useFeederReferenceHint: "Fills in the real open of the reference feeder candle the server already computed, in NY time — you can still correct it if your own reading differs.",
+    pickOnChart: 'Select on chart',
+    pickOnChartHint: 'Click a candle on H4, Daily, or M15 and it fills in with its real UTC time.',
+    pickOnChartM15: 'Select on M15',
+    pickOnChartM15Hint: 'Must be a real, closed M15 candle — click directly on the M15 chart.',
+    pickArmed: 'Click a candle…',
     sweptSide: 'Swept side',
     sweptSideHint: 'Did the activation candle sweep the high, the low, both, or neither of the reference range?',
     sweepConfirmedAt: 'Sweep confirmed at (UTC)',

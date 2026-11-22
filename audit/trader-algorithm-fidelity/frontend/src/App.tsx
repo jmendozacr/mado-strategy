@@ -4,13 +4,33 @@ import { Chart } from './Chart.tsx';
 import { DecisionForm } from './DecisionForm.tsx';
 import { dictionaries, type Lang } from './i18n.ts';
 import {
-  annotationPayload, barsThrough, decisionPayload, earliestPannableMs, formatClock, mergeOlderBars, utcMs,
-  type AnnotationDraft, type Bar, type CaseSummary, type DecisionFields, type HistoricalContext,
-  type PriceLevel, type Replay,
+  annotationPayload, barsThrough, decisionPayload, earliestPannableMs, formatClock, mergeOlderBars, utcMs, utcToDatetimeLocal,
+  type AnnotationDraft, type Bar, type CaseSummary, type DecisionFields, type DecisionFillField, type DecisionTimeField,
+  type HistoricalContext, type PriceLevel, type Replay,
 } from './model.ts';
+
+type Theme = 'dark' | 'light';
+type ArmedTarget =
+  | { kind: 'annotation'; timeframe: AnnotationDraft['timeframe'] }
+  | { kind: 'decision'; field: DecisionTimeField };
 
 const initialSpan = 24 * 60 * 60 * 1000;
 const initialAnnotationDraft: AnnotationDraft = { annotation_type: 'key_level', timeframe: 'h4' };
+const THEME_STORAGE_KEY = 'crt-fidelity-theme';
+
+function readInitialTheme(): Theme {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'dark' || stored === 'light') return stored;
+  } catch {
+    // Private browsing / blocked storage: fall through to the system preference.
+  }
+  try {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -28,6 +48,7 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
 export function App() {
   const [lang, setLang] = useState<Lang>('es');
   const t = dictionaries[lang];
+  const [theme, setThemeState] = useState<Theme>(() => readInitialTheme());
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [caseId, setCaseId] = useState('');
   const [replay, setReplay] = useState<Replay | null>(null);
@@ -41,9 +62,10 @@ export function App() {
   const [extraH4, setExtraH4] = useState<Bar[]>([]);
   const [extraDaily, setExtraDaily] = useState<Bar[]>([]);
   const [contextExhausted, setContextExhausted] = useState({ h4: false, daily: false });
-  const [armedTimeframe, setArmedTimeframe] = useState<AnnotationDraft['timeframe'] | null>(null);
+  const [armed, setArmed] = useState<ArmedTarget | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft>(initialAnnotationDraft);
   const [annotationError, setAnnotationError] = useState<string | null>(null);
+  const [decisionFill, setDecisionFill] = useState<{ field: DecisionFillField; value: string } | null>(null);
   const busyRef = useRef(false);
   const playTimer = useRef<number | null>(null);
   const selectionToken = useRef(0);
@@ -53,6 +75,19 @@ export function App() {
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  function setTheme(next: Theme) {
+    setThemeState(next);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // Private browsing / blocked storage: the choice just won't survive a reload.
+    }
+  }
 
   function describeError(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
@@ -76,9 +111,10 @@ export function App() {
     setExtraH4([]);
     setExtraDaily([]);
     setContextExhausted({ h4: false, daily: false });
-    setArmedTimeframe(null);
+    setArmed(null);
     setAnnotationError(null);
     setAnnotationDraft(initialAnnotationDraft);
+    setDecisionFill(null);
     setManualPrice('');
     oldestFetched.current = { h4: null, daily: null };
     fetchingContext.current = { h4: false, daily: false };
@@ -186,13 +222,41 @@ export function App() {
   }
 
   function selectCandle(timeframe: AnnotationDraft['timeframe'], bar: Bar) {
-    if (armedTimeframe !== timeframe) return;
-    setAnnotationDraft(previous => ({ ...previous, timeframe, source_time: bar.time }));
-    setArmedTimeframe(null);
+    if (!armed) return;
+    if (armed.kind === 'annotation') {
+      if (armed.timeframe !== timeframe) return;
+      setAnnotationDraft(previous => ({ ...previous, timeframe, source_time: bar.time }));
+      setArmed(null);
+      return;
+    }
+    // model1_anchor_at is validated server-side against a real M15 candle only.
+    if (armed.field === 'model1_anchor_at' && timeframe !== 'm15') return;
+    setDecisionFill({ field: armed.field, value: utcToDatetimeLocal(bar.time) });
+    setArmed(null);
   }
 
   function armAnnotationSelection() {
-    setArmedTimeframe(annotationDraft.timeframe);
+    setArmed({ kind: 'annotation', timeframe: annotationDraft.timeframe });
+  }
+
+  function armDecisionField(field: DecisionTimeField) {
+    setArmed({ kind: 'decision', field });
+  }
+
+  function fillFeederReference() {
+    const reference = replay?.reference_levels[0];
+    if (!reference?.time) return;
+    // reference_levels carries the reference feeder's *close* (available_at);
+    // its open -- the instant this field actually asks for -- is 4h earlier.
+    const openingMs = utcMs(reference.time) - 4 * 60 * 60 * 1000;
+    setDecisionFill({ field: 'feeder_reference', value: formatClock(new Date(openingMs).toISOString(), 'ny') });
+  }
+
+  function isArmedForChart(chartId: 'h4' | 'daily' | 'm15'): boolean {
+    if (!armed) return false;
+    if (armed.kind === 'annotation') return armed.timeframe === chartId;
+    if (armed.field === 'model1_anchor_at') return chartId === 'm15';
+    return true;
   }
 
   async function saveAnnotation() {
@@ -259,6 +323,10 @@ export function App() {
         <div><p className="brand-tagline">{t.app.tagline}</p><h1>{t.app.brand}</h1></div>
       </div>
       <div className="header-tools">
+        <div className="toggle-group" role="group" aria-label="Theme">
+          <button type="button" id="theme-dark" className={theme === 'dark' ? 'button-primary' : ''} onClick={() => setTheme('dark')}>{t.app.themeDark}</button>
+          <button type="button" id="theme-light" className={theme === 'light' ? 'button-primary' : ''} onClick={() => setTheme('light')}>{t.app.themeLight}</button>
+        </div>
         <div className="toggle-group" role="group" aria-label="Language">
           <button type="button" id="lang-es" className={lang === 'es' ? 'button-primary' : ''} onClick={() => setLang('es')}>ES</button>
           <button type="button" id="lang-en" className={lang === 'en' ? 'button-primary' : ''} onClick={() => setLang('en')}>EN</button>
@@ -310,14 +378,14 @@ export function App() {
 
       <div className="workspace-grid">
         <div className="charts-column">
-          <Chart id="h4" lang={lang} title={t.chart.h4Title} subtitle={t.chart.h4Subtitle(h4Suffix)}
-            bars={h4All} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'h4'}
+          <Chart id="h4" lang={lang} theme={theme} title={t.chart.h4Title} subtitle={t.chart.h4Subtitle(h4Suffix)}
+            bars={h4All} markers={markers} end={end} span={span} zone={zone} selecting={isArmedForChart('h4')}
             onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('h4', bar)} />
-          <Chart id="daily" lang={lang} title={t.chart.dailyTitle} subtitle={t.chart.dailySubtitle(dailySuffix)}
-            bars={dailyAll} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'daily'}
+          <Chart id="daily" lang={lang} theme={theme} title={t.chart.dailyTitle} subtitle={t.chart.dailySubtitle(dailySuffix)}
+            bars={dailyAll} markers={markers} end={end} span={span} zone={zone} selecting={isArmedForChart('daily')}
             onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('daily', bar)} />
-          <Chart id="m15" lang={lang} title={t.chart.m15Title} subtitle={t.chart.m15Subtitle}
-            bars={replay ? barsThrough(replay.m15, replay.cursor_utc) : []} markers={markers} end={end} span={span} zone={zone} selecting={armedTimeframe === 'm15'}
+          <Chart id="m15" lang={lang} theme={theme} title={t.chart.m15Title} subtitle={t.chart.m15Subtitle}
+            bars={replay ? barsThrough(replay.m15, replay.cursor_utc) : []} markers={markers} end={end} span={span} zone={zone} selecting={isArmedForChart('m15')}
             onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('m15', bar)} />
           <div className="manual-level">
             <span className="field-label">{t.manualLevel.label}<span className="field-hint" tabIndex={0} title={t.manualLevel.hint} aria-label={t.manualLevel.hint} role="note">?</span></span>
@@ -326,8 +394,11 @@ export function App() {
           </div>
         </div>
         <div className="side-column">
-          <DecisionForm key={caseId} t={t} active={active} busy={busy} integrity={replay?.case.integrity ?? 'evaluable'} decisions={replay?.decisions ?? []} onSave={saveDecision} />
-          <AnnotationPanel t={t} active={active} busy={busy} draft={annotationDraft} armed={armedTimeframe === annotationDraft.timeframe}
+          <DecisionForm key={caseId} t={t} active={active} busy={busy} integrity={replay?.case.integrity ?? 'evaluable'} decisions={replay?.decisions ?? []} onSave={saveDecision}
+            fill={decisionFill} onFillApplied={() => setDecisionFill(null)}
+            armedField={armed?.kind === 'decision' ? armed.field : null} onArmField={armDecisionField}
+            onFillFeederReference={fillFeederReference} canFillFeederReference={Boolean(replay?.reference_levels.length)} />
+          <AnnotationPanel t={t} active={active} busy={busy} draft={annotationDraft} armed={armed?.kind === 'annotation' && armed.timeframe === annotationDraft.timeframe}
             annotations={replay?.annotations ?? []} error={annotationError} onChange={setAnnotationDraft}
             onArm={armAnnotationSelection} onSave={() => void saveAnnotation()} />
         </div>

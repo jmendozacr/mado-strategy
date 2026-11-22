@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { annotationPayload, barsThrough, changeAnnotationType, decisionPayload, earliestPannableMs, feederLabel, formatClock, isDecisionReady, mergeOlderBars } from './model.ts';
+import { annotationPayload, barsThrough, changeAnnotationType, decisionPayload, earliestPannableMs, feederLabel, formatClock, isDecisionReady, mergeOlderBars, utcToDatetimeLocal } from './model.ts';
 
 describe('causal replay view', () => {
   const bars = [
@@ -97,5 +97,12 @@ describe('causal replay view', () => {
     assert.equal(earliestPannableMs({ h4: [], daily: [], m15 }, fallback), Date.parse(m15[0].time));
     assert.equal(earliestPannableMs({ h4, daily: [], m15 }, fallback), Date.parse(h4[0].time));
     assert.equal(earliestPannableMs({ h4, daily, m15 }, fallback), Date.parse(daily[0].time));
+  });
+
+  it('formats a picked candle as UTC wall-clock digits for a datetime-local field', () => {
+    assert.equal(utcToDatetimeLocal('2015-01-07T14:15:00+00:00'), '2015-01-07T14:15');
+    // A candle's real timestamp always carries full minute precision already,
+    // but the formatter must still zero-pad single-digit months/days/hours.
+    assert.equal(utcToDatetimeLocal('2015-01-07T04:05:00+00:00'), '2015-01-07T04:05');
   });
 });

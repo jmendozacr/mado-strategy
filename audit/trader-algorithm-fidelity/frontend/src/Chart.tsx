@@ -2,9 +2,15 @@ import { useRef, useState, type PointerEvent, type WheelEvent } from 'react';
 import { dictionaries, type Lang } from './i18n.ts';
 import { feederLabel, formatClock, utcMs, type Bar, type PriceLevel } from './model.ts';
 
+const PALETTE = {
+  dark: { bg: '#0d1724', gridMajor: '#253544', gridMinor: '#1c2c3a', bull: '#48c6a7', bear: '#ef7583', gap: '#9a6b2f', forming: '#f8d18b', marker: '#e8b96b' },
+  light: { bg: '#FAFCFE', gridMajor: '#D7E1E8', gridMinor: '#E7EEF3', bull: '#1E8F66', bear: '#C9333F', gap: '#9A6B2F', forming: '#B97A1E', marker: '#B9790E' },
+} as const;
+
 type Props = {
   id: 'h4' | 'm15' | 'daily';
   lang: Lang;
+  theme: 'dark' | 'light';
   title: string;
   subtitle: string;
   bars: Bar[];
@@ -18,8 +24,9 @@ type Props = {
   onSelectCandle?: (bar: Bar) => void;
 };
 
-export function Chart({ id, lang, title, subtitle, bars, markers, end, span, zone, selecting, onPan, onZoom, onSelectCandle }: Props) {
+export function Chart({ id, lang, theme, title, subtitle, bars, markers, end, span, zone, selecting, onPan, onZoom, onSelectCandle }: Props) {
   const t = dictionaries[lang].chart;
+  const palette = PALETTE[theme];
   const [tooltip, setTooltip] = useState(t.hoverHint);
   const dragStart = useRef<number | null>(null);
   const left = 14, right = 80, top = 16, bottom = 30, width = 1000, height = 260;
@@ -74,11 +81,11 @@ export function Chart({ id, lang, title, subtitle, bars, markers, end, span, zon
       <svg id={`${id}-chart`} viewBox="0 0 1000 260" role="img" aria-label={t.availableCandles(tf)}
         onWheel={wheel} onPointerDown={event => { dragStart.current = event.clientX; event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerUp={endDrag} onPointerCancel={() => { dragStart.current = null; }}>
-        <rect x="0" y="0" width={width} height={height} fill="#0d1724" />
+        <rect x="0" y="0" width={width} height={height} fill={palette.bg} />
         {Array.from({ length: 5 }, (_, index) => {
           const price = floor + (ceiling - floor) * index / 4;
           return <g key={`price-${index}`}>
-            <line x1={left} y1={y(price)} x2={width - right} y2={y(price)} stroke="#253544" strokeDasharray="3 5" />
+            <line x1={left} y1={y(price)} x2={width - right} y2={y(price)} stroke={palette.gridMajor} strokeDasharray="3 5" />
             <text x={width - right + 9} y={y(price) + 4} className="axis-label">{price.toFixed(5)}</text>
           </g>;
         })}
@@ -86,7 +93,7 @@ export function Chart({ id, lang, title, subtitle, bars, markers, end, span, zon
           const time = start + span * index / 5;
           const tickX = left + plotWidth * index / 5;
           return <g key={`time-${index}`}>
-            <line x1={tickX} y1={top} x2={tickX} y2={height - bottom} stroke="#1c2c3a" />
+            <line x1={tickX} y1={top} x2={tickX} y2={height - bottom} stroke={palette.gridMinor} />
             <text x={tickX} y={height - 8} textAnchor="middle" className="axis-label mono">{formatClock(new Date(time).toISOString(), zone)}</text>
           </g>;
         })}
@@ -101,19 +108,19 @@ export function Chart({ id, lang, title, subtitle, bars, markers, end, span, zon
           return <text key={`feeder-${bar.time}`} x={x(bar.time)} y={top - 4} textAnchor="middle" className="feeder-label mono">{label}</text>;
         })}
         {markers.map((marker, index) => <g key={`${marker.label}-${index}`}>
-          <line x1={left} y1={y(marker.price)} x2={width - right} y2={y(marker.price)} stroke="#e8b96b" strokeDasharray="6 4" />
+          <line x1={left} y1={y(marker.price)} x2={width - right} y2={y(marker.price)} stroke={palette.marker} strokeDasharray="6 4" />
           <text x={left + 6} y={y(marker.price) - 5} className="marker-label mono">{marker.label} · {marker.price.toFixed(5)}</text>
         </g>)}
         {visible.map(bar => {
           const middle = x(bar.time);
-          const color = bar.integrity === 'gap' ? '#9a6b2f' : bar.close >= bar.open ? '#48c6a7' : '#ef7583';
+          const color = bar.integrity === 'gap' ? palette.gap : bar.close >= bar.open ? palette.bull : palette.bear;
           const label = formatClock(bar.time, zone);
           return <g key={bar.time} data-time={bar.time}
             onPointerEnter={() => setTooltip(t.tooltip(label, zone.toUpperCase(), bar.open.toFixed(5), bar.high.toFixed(5), bar.low.toFixed(5), bar.close.toFixed(5), bar.complete === false, bar.integrity === 'gap'))}
             onPointerLeave={() => setTooltip(t.hoverHint)}
             style={{ cursor: selecting ? 'crosshair' : 'default' }}>
             <line x1={middle} y1={y(bar.high)} x2={middle} y2={y(bar.low)} stroke={color} strokeWidth="2" />
-            <rect x={middle - candleWidth / 2} y={Math.min(y(bar.open), y(bar.close))} width={candleWidth} height={Math.max(2, Math.abs(y(bar.open) - y(bar.close)))} fill={color} opacity={bar.complete === false ? 0.64 : 1} stroke={bar.complete === false ? '#f8d18b' : 'none'} />
+            <rect x={middle - candleWidth / 2} y={Math.min(y(bar.open), y(bar.close))} width={candleWidth} height={Math.max(2, Math.abs(y(bar.open) - y(bar.close)))} fill={color} opacity={bar.complete === false ? 0.64 : 1} stroke={bar.complete === false ? palette.forming : 'none'} />
             <rect x={middle - Math.max(7, candleWidth / 2)} y={top} width={Math.max(14, candleWidth)} height={plotHeight} fill="transparent" />
           </g>;
         })}

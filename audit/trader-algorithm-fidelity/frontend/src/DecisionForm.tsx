@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Field } from './Field.tsx';
 import type { Dict } from './i18n.ts';
-import { isDecisionReady, type DecisionFields, type SavedDecision } from './model.ts';
+import { isDecisionReady, type DecisionFields, type DecisionFillField, type DecisionTimeField, type SavedDecision } from './model.ts';
 
 type Props = {
   t: Dict;
@@ -10,13 +10,37 @@ type Props = {
   integrity: 'evaluable' | 'non_evaluable';
   decisions: SavedDecision[];
   onSave: (fields: DecisionFields) => Promise<boolean>;
+  fill: { field: DecisionFillField; value: string } | null;
+  onFillApplied: () => void;
+  armedField: DecisionTimeField | null;
+  onArmField: (field: DecisionTimeField) => void;
+  onFillFeederReference: () => void;
+  canFillFeederReference: boolean;
 };
 
-export function DecisionForm({ t, active, busy, integrity, decisions, onSave }: Props) {
+/** Sets a native input's value the way a real user typing would, so the
+ * existing form-level onChange (reading FormData) picks it up -- the input
+ * stays uncontrolled, no React value/onChange wiring needed per field. */
+function applyNativeValue(el: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  setter ? setter.call(el, value) : (el.value = value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+export function DecisionForm({ t, active, busy, integrity, decisions, onSave, fill, onFillApplied, armedField, onArmField, onFillFeederReference, canFillFeederReference }: Props) {
   const d = t.decision;
   const yesNo = [['', d.unspecified], ['yes', d.yes], ['no', d.no], ['uncertain', d.uncertain]] as const;
   const [fields, setFields] = useState<DecisionFields>({});
   const decision = fields.final_decision ?? '';
+  const fieldRefs = useRef<Partial<Record<DecisionFillField, HTMLInputElement | null>>>({});
+
+  useEffect(() => {
+    if (!fill) return;
+    const el = fieldRefs.current[fill.field];
+    if (el) applyNativeValue(el, fill.value);
+    onFillApplied();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fill]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,6 +52,14 @@ export function DecisionForm({ t, active, busy, integrity, decisions, onSave }: 
     }
   }
 
+  function PickButton({ field, m15Only }: { field: DecisionTimeField; m15Only?: boolean }) {
+    const armedHere = armedField === field;
+    return <button type="button" className="pick-button" data-state={armedHere ? 'armed' : 'idle'}
+      title={m15Only ? d.pickOnChartM15Hint : d.pickOnChartHint} disabled={!active || busy} onClick={() => onArmField(field)}>
+      {armedHere ? d.pickArmed : m15Only ? d.pickOnChartM15 : d.pickOnChart}
+    </button>;
+  }
+
   return <aside className="decision-panel">
     <div className="panel-heading"><h2>{d.heading}</h2><p>{d.hint}</p></div>
     <form id="decision-form" onChange={event => setFields(Object.fromEntries(new FormData(event.currentTarget)) as DecisionFields)} onSubmit={event => void submit(event)}>
@@ -37,7 +69,12 @@ export function DecisionForm({ t, active, busy, integrity, decisions, onSave }: 
           <select name="crt_valid">{yesNo.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         </Field>
         <Field label={d.feederReference} hint={d.feederReferenceHint} wide>
-          <input name="feeder_reference" placeholder={d.feederReferencePlaceholder} className="mono" />
+          <div className="pick-row">
+            <input name="feeder_reference" placeholder={d.feederReferencePlaceholder} className="mono"
+              ref={el => { fieldRefs.current.feeder_reference = el; }} />
+            <button type="button" className="pick-button" data-state="idle" title={d.useFeederReferenceHint}
+              disabled={!active || busy || !canFillFeederReference} onClick={onFillFeederReference}>{d.useFeederReference}</button>
+          </div>
         </Field>
         <Field label={d.sweptSide} hint={d.sweptSideHint}>
           <select name="swept_side">
@@ -49,7 +86,11 @@ export function DecisionForm({ t, active, busy, integrity, decisions, onSave }: 
           </select>
         </Field>
         <Field label={d.sweepConfirmedAt} hint={d.sweepConfirmedAtHint}>
-          <input name="sweep_confirmed_at" type="datetime-local" className="mono" />
+          <div className="pick-row">
+            <input name="sweep_confirmed_at" type="datetime-local" className="mono"
+              ref={el => { fieldRefs.current.sweep_confirmed_at = el; }} />
+            <PickButton field="sweep_confirmed_at" />
+          </div>
         </Field>
       </fieldset>
 
@@ -65,7 +106,11 @@ export function DecisionForm({ t, active, busy, integrity, decisions, onSave }: 
           <input name="key_level_price" type="number" step="any" className="mono" />
         </Field>
         <Field label={d.keyLevelAvailableAt} hint={d.keyLevelAvailableAtHint}>
-          <input name="key_level_available_at" type="datetime-local" className="mono" />
+          <div className="pick-row">
+            <input name="key_level_available_at" type="datetime-local" className="mono"
+              ref={el => { fieldRefs.current.key_level_available_at = el; }} />
+            <PickButton field="key_level_available_at" />
+          </div>
         </Field>
         <Field label={d.keyLevelTouchValid} hint={d.keyLevelTouchValidHint}>
           <select name="key_level_touch_valid">{yesNo.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -81,7 +126,11 @@ export function DecisionForm({ t, active, busy, integrity, decisions, onSave }: 
           <select name="model1_exists">{yesNo.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         </Field>
         <Field label={d.model1AnchorAt} hint={d.model1AnchorAtHint}>
-          <input name="model1_anchor_at" type="datetime-local" className="mono" />
+          <div className="pick-row">
+            <input name="model1_anchor_at" type="datetime-local" className="mono"
+              ref={el => { fieldRefs.current.model1_anchor_at = el; }} />
+            <PickButton field="model1_anchor_at" m15Only />
+          </div>
         </Field>
         <Field label={d.direction} hint={d.directionHint}>
           <select name="direction">
@@ -92,7 +141,11 @@ export function DecisionForm({ t, active, busy, integrity, decisions, onSave }: 
           </select>
         </Field>
         <Field label={d.model1ConfirmedAt} hint={d.model1ConfirmedAtHint}>
-          <input name="model1_confirmed_at" type="datetime-local" className="mono" />
+          <div className="pick-row">
+            <input name="model1_confirmed_at" type="datetime-local" className="mono"
+              ref={el => { fieldRefs.current.model1_confirmed_at = el; }} />
+            <PickButton field="model1_confirmed_at" />
+          </div>
         </Field>
       </fieldset>
 

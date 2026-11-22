@@ -124,6 +124,20 @@ export function earliestPannableMs(bars: { h4: Bar[]; daily: Bar[]; m15: Bar[] }
   return candidates.length ? Math.min(...candidates) : fallback;
 }
 
+export type DecisionTimeField = 'sweep_confirmed_at' | 'key_level_available_at' | 'model1_anchor_at' | 'model1_confirmed_at';
+export type DecisionFillField = DecisionTimeField | 'feeder_reference';
+
+/** The UTC wall-clock numbers of a candle's real timestamp, formatted for a
+ * `datetime-local` input -- matching this app's existing convention that a
+ * typed "UTC" field means the literal clock digits, not the browser's own
+ * timezone. Picking a candle should produce exactly what the user would have
+ * had to type by hand. */
+export function utcToDatetimeLocal(iso: string): string {
+  const date = new Date(utcMs(iso));
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+}
+
 export function mergeOlderBars(current: Bar[], older: Bar[]): Bar[] {
   const seen = new Set(current.map(bar => bar.time));
   const merged = [...older.filter(bar => !seen.has(bar.time)), ...current];

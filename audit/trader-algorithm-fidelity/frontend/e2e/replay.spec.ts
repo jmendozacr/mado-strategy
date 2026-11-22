@@ -248,6 +248,66 @@ test('switching cases clears an unsaved annotation draft and the manual price ma
   expect(eurusdReplay.annotations[0].price).toBe(1.23456);
 });
 
+test('decision time fields can be filled by picking a candle or the reference feeder', async ({ page, request }) => {
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url());
+    url.port = '8766';
+    return route.continue({ url: url.toString() });
+  });
+  await page.goto('/');
+
+  const cases = await (await request.get(`${api}/api/cases`)).json();
+  const selected = cases.find((item: { pair: string; status: string }) => item.pair === 'EURUSD' && item.status === 'not_started');
+  expect(selected).toBeTruthy();
+  await page.locator('#case-select').selectOption(selected.id);
+  await page.locator('#start').click();
+  await expect(page.locator('#next')).toBeEnabled();
+  await page.locator('#next').click();
+  await page.locator('#next').click();
+  await expect(page.locator('#m15-chart rect[fill="transparent"]')).not.toHaveCount(0);
+
+  // Theme toggle: switches the root attribute the CSS tokens key off of.
+  // (Initial theme depends on the browser's own color-scheme preference, so
+  // this only asserts that toggling actually changes it, not a fixed default.)
+  await page.locator('#theme-dark').click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
+  await page.locator('#theme-light').click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
+  await page.locator('#theme-dark').click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
+
+  // Reference feeder: auto-fills from the server-computed value, no typing.
+  const feederReference = page.locator('input[name="feeder_reference"]');
+  await expect(feederReference).toHaveValue('');
+  await page.locator('button', { hasText: /vela de referencia|reference candle/i }).click();
+  await expect(feederReference).not.toHaveValue('');
+  await expect(feederReference).toHaveValue(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+
+  // model1_anchor_at must come from clicking a real M15 candle specifically.
+  const anchorRow = page.locator('input[name="model1_anchor_at"]').locator('..');
+  await anchorRow.getByRole('button').click();
+  await expect(anchorRow.getByRole('button')).toHaveAttribute('data-state', 'armed');
+  await page.locator('#m15-chart rect[fill="transparent"]').last().click();
+  await expect(page.locator('input[name="model1_anchor_at"]')).toHaveValue(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  const anchorValue = await page.locator('input[name="model1_anchor_at"]').inputValue();
+
+  // sweep_confirmed_at has no M15-only restriction: clicking H4 must work too.
+  const sweepRow = page.locator('input[name="sweep_confirmed_at"]').locator('..');
+  await sweepRow.getByRole('button').click();
+  await page.locator('#h4-chart g[data-time]').first().click();
+  await expect(page.locator('input[name="sweep_confirmed_at"]')).toHaveValue(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+  // The picked anchor must be a real, backend-accepted M15 open.
+  await page.locator('#final-decision').selectOption('wait');
+  await page.locator('textarea[name="notes"]').fill('Anchor picked from the M15 chart, not typed by hand.');
+  await page.locator('#save').click();
+  await expect(page.locator('#decision-count')).toHaveText('1');
+  const saved = await (await request.get(`${api}/api/cases/${selected.id}/replay`)).json();
+  // Compare instants, not string formats: the backend round-trips the same
+  // UTC moment as "...+00:00" (no milliseconds), not JS's "...Z" ISO style.
+  expect(Date.parse(saved.decisions[0].model1_anchor_at)).toBe(Date.parse(`${anchorValue}:00Z`));
+});
+
 test('an unavailable API reports its 502 error clearly', async ({ page }) => {
   await page.route('**/api/cases', route => route.fulfill({
     status: 502,
