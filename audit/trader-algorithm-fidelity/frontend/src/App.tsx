@@ -53,7 +53,10 @@ export function App() {
   const [caseId, setCaseId] = useState('');
   const [replay, setReplay] = useState<Replay | null>(null);
   const [viewEnd, setViewEnd] = useState<number | null>(null);
-  const [span, setSpan] = useState(initialSpan);
+  // Panning (viewEnd) stays shared across the three charts -- they all center
+  // on the same instant, so you can correlate structure across timeframes.
+  // Zoom (span) is independent per chart: zooming H4 must not also zoom Daily/M15.
+  const [spans, setSpans] = useState<{ h4: number; daily: number; m15: number }>({ h4: initialSpan, daily: initialSpan, m15: initialSpan });
   const [manualPrice, setManualPrice] = useState('');
   const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -184,18 +187,21 @@ export function App() {
     }
   }
 
-  function pan(delta: number) {
+  function pan(delta: number, callerSpan: number) {
     const cursor = replay ? utcMs(replay.cursor_utc) : Date.now();
-    const fallback = replay?.m15.length ? utcMs(replay.m15[0].time) : cursor - span;
+    const fallback = replay?.m15.length ? utcMs(replay.m15[0].time) : cursor - callerSpan;
     // H4/Daily can keep paging back toward the real dataset start; M15 keeps its
     // original short execution window (Problem A) -- the pan floor is whichever
     // of the three currently-loaded series reaches furthest back.
     const earliest = earliestPannableMs({ h4: h4All, daily: dailyAll, m15: replay?.m15 ?? [] }, fallback);
-    setViewEnd(previous => Math.min(cursor, Math.max(earliest + span * 0.2, (previous ?? cursor) - delta)));
+    setViewEnd(previous => Math.min(cursor, Math.max(earliest + callerSpan * 0.2, (previous ?? cursor) - delta)));
   }
 
-  function zoom(factor: number) {
-    setSpan(previous => Math.min(7 * initialSpan, Math.max(4 * 60 * 60 * 1000, previous * factor)));
+  function zoom(chartId: 'h4' | 'daily' | 'm15', factor: number) {
+    setSpans(previous => ({
+      ...previous,
+      [chartId]: Math.min(7 * initialSpan, Math.max(4 * 60 * 60 * 1000, previous[chartId] * factor)),
+    }));
   }
 
   async function fetchOlderContext(timeframe: 'h4' | 'daily') {
@@ -303,15 +309,16 @@ export function App() {
 
   useEffect(() => {
     if (!replay || !active) return;
-    const start = end - span;
+    const h4Start = end - spans.h4;
+    const dailyStart = end - spans.daily;
     const h4Earliest = h4All.length ? utcMs(h4All[0].time) : Infinity;
     const dailyEarliest = dailyAll.length ? utcMs(dailyAll[0].time) : Infinity;
-    if (!contextExhausted.h4 && start < h4Earliest + span * 0.5) void fetchOlderContext('h4');
-    if (!contextExhausted.daily && start < dailyEarliest + span * 0.5) void fetchOlderContext('daily');
+    if (!contextExhausted.h4 && h4Start < h4Earliest + spans.h4 * 0.5) void fetchOlderContext('h4');
+    if (!contextExhausted.daily && dailyStart < dailyEarliest + spans.daily * 0.5) void fetchOlderContext('daily');
     // h4All/dailyAll/fetchOlderContext are derived from replay/extraH4/extraDaily each render; re-running on those
     // directly would refetch mid-flight, so this effect only reacts to the view window and case identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [end, span, replay?.cursor_utc, caseId, active]);
+  }, [end, spans.h4, spans.daily, replay?.cursor_utc, caseId, active]);
 
   const h4Suffix = `${replay?.h4.at(-1)?.complete === false ? t.chart.forming : t.chart.closed}${contextExhausted.h4 ? t.chart.fullHistory : ''}`;
   const dailySuffix = contextExhausted.daily ? t.chart.fullHistory : '';
@@ -379,14 +386,14 @@ export function App() {
       <div className="workspace-grid">
         <div className="charts-column">
           <Chart id="h4" lang={lang} theme={theme} title={t.chart.h4Title} subtitle={t.chart.h4Subtitle(h4Suffix)}
-            bars={h4All} markers={markers} end={end} span={span} zone={zone} selecting={isArmedForChart('h4')}
-            onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('h4', bar)} />
+            bars={h4All} markers={markers} end={end} span={spans.h4} zone={zone} selecting={isArmedForChart('h4')}
+            onPan={delta => pan(delta, spans.h4)} onZoom={factor => zoom('h4', factor)} onSelectCandle={bar => selectCandle('h4', bar)} />
           <Chart id="daily" lang={lang} theme={theme} title={t.chart.dailyTitle} subtitle={t.chart.dailySubtitle(dailySuffix)}
-            bars={dailyAll} markers={markers} end={end} span={span} zone={zone} selecting={isArmedForChart('daily')}
-            onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('daily', bar)} />
+            bars={dailyAll} markers={markers} end={end} span={spans.daily} zone={zone} selecting={isArmedForChart('daily')}
+            onPan={delta => pan(delta, spans.daily)} onZoom={factor => zoom('daily', factor)} onSelectCandle={bar => selectCandle('daily', bar)} />
           <Chart id="m15" lang={lang} theme={theme} title={t.chart.m15Title} subtitle={t.chart.m15Subtitle}
-            bars={replay ? barsThrough(replay.m15, replay.cursor_utc) : []} markers={markers} end={end} span={span} zone={zone} selecting={isArmedForChart('m15')}
-            onPan={pan} onZoom={zoom} onSelectCandle={bar => selectCandle('m15', bar)} />
+            bars={replay ? barsThrough(replay.m15, replay.cursor_utc) : []} markers={markers} end={end} span={spans.m15} zone={zone} selecting={isArmedForChart('m15')}
+            onPan={delta => pan(delta, spans.m15)} onZoom={factor => zoom('m15', factor)} onSelectCandle={bar => selectCandle('m15', bar)} />
           <div className="manual-level">
             <span className="field-label">{t.manualLevel.label}<span className="field-hint" tabIndex={0} title={t.manualLevel.hint} aria-label={t.manualLevel.hint} role="note">?</span></span>
             <input id="manual-price" type="number" step="any" placeholder={t.manualLevel.placeholder} value={manualPrice} onChange={event => setManualPrice(event.target.value)} />

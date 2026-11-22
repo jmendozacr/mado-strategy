@@ -141,3 +141,12 @@ S22. User-reported friction, verbatim: "en los campos de Barrido confirmado a la
 ## Log (continued further)
 
 L10 (2026-11-22): Pick-on-chart for the 4 time-validated decision fields + one-click reference-feeder fill, built on the existing annotation click-to-select mechanism (generalized, not duplicated). Dark/light theme added, defaulting to OS preference, manual toggle persisted to localStorage. 45/45 Python, typecheck clean, 12/12 unit, 5/5 E2E, visual review in both themes.
+
+## Per-chart zoom round (2026-11-22)
+
+S23. User-reported friction, verbatim: "cuando le doy click a acercar o alejar que sea en el grafico en el que estoy haciendo click, actualmente todos los graficos se acercan o se alejan y no me gusta ese comportamiento". Scoped precisely to what was named: only zoom ("acercar o alejar"), not pan — pan was left shared across charts so H4/Daily/M15 keep centering on the same instant for cross-timeframe correlation; only each chart's own zoom level became independent.
+
+- [x] T29 — `App.tsx`: replaced the single shared `span` state with a per-chart `spans: {h4, daily, m15}` record; `zoom(chartId, factor)` updates only that chart's entry. `pan(delta, callerSpan)` takes the triggering chart's own span as an explicit second argument (used only for the pan-floor buffer margin) since `viewEnd` itself stays a single shared value. The H4/Daily historical-context pagination-trigger effect now checks each timeframe's own span independently instead of one shared threshold.
+- [x] T30 (verification) — Updated the one existing E2E assertion that relied on zoom being shared (the Problem-A deep-pan proof zoomed only H4 before, now zooms H4 and Daily independently, as the new behavior requires) and fixed an unrelated test-timing race discovered while adding coverage (4 rapid `#next` clicks without waiting for each to land could silently drop some, since `action()` ignores a click while the previous one is still in flight — fixed by polling the cursor between clicks, the same pattern already used elsewhere in the suite). Added a dedicated test proving: zooming H4 changes only H4's visible candles (Daily/M15 byte-for-byte unaffected); zoom in/out actually changes H4's own window size; panning, by contrast, still shifts Daily/M15 too, with the replay cursor never moving. 45/45 Python (unaffected), typecheck clean, 12/12 unit, 6/6 E2E.
+
+**Verdict: `READY_FOR_HUMAN_PILOT` still holds.** Pure frontend view-state change — no backend file, payload, or validation touched.

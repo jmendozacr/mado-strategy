@@ -77,7 +77,10 @@ test('a real case stays causal and its human decision survives reload', async ({
   // extending correctly over many pages, several months back, using a fast
   // synthetic fixture.
   const cursorBeforePan = await page.locator('#cursor-utc').textContent();
+  // Zoom is independent per chart (clicking H4's zoom must not zoom Daily/M15),
+  // so each chart that needs a wider window has to be zoomed out on its own.
   for (let i = 0; i < 6; i += 1) await page.locator('button[data-action="zoom-out"][data-chart="h4"]').click();
+  for (let i = 0; i < 6; i += 1) await page.locator('button[data-action="zoom-out"][data-chart="daily"]').click();
   const oldestVisible = async (chart: string) => {
     const times = await page.locator(`#${chart}-chart g[data-time]`).evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
     return times.length ? Math.min(...times.map(t => Date.parse(t!))) : Infinity;
@@ -306,6 +309,55 @@ test('decision time fields can be filled by picking a candle or the reference fe
   // Compare instants, not string formats: the backend round-trips the same
   // UTC moment as "...+00:00" (no milliseconds), not JS's "...Z" ISO style.
   expect(Date.parse(saved.decisions[0].model1_anchor_at)).toBe(Date.parse(`${anchorValue}:00Z`));
+});
+
+test('zooming one chart never changes the others, but panning still moves all three', async ({ page, request }) => {
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url());
+    url.port = '8766';
+    return route.continue({ url: url.toString() });
+  });
+  await page.goto('/');
+
+  const cases = await (await request.get(`${api}/api/cases`)).json();
+  const selected = cases.find((item: { pair: string; status: string }) => item.pair === 'EURUSD' && item.status === 'not_started');
+  expect(selected).toBeTruthy();
+  await page.locator('#case-select').selectOption(selected.id);
+  await page.locator('#start').click();
+  await expect(page.locator('#next')).toBeEnabled();
+  for (let i = 0; i < 4; i += 1) {
+    const cursor = await page.locator('#cursor-utc').textContent();
+    await page.locator('#next').click();
+    await expect.poll(() => page.locator('#cursor-utc').textContent()).not.toBe(cursor);
+  }
+
+  const visibleCount = (chart: string) => page.locator(`#${chart}-chart g[data-time]`).count();
+  const [m15Before, dailyBefore] = await Promise.all([visibleCount('m15'), visibleCount('daily')]);
+
+  // Zoom out H4 only, several times.
+  for (let i = 0; i < 5; i += 1) await page.locator('button[data-action="zoom-out"][data-chart="h4"]').click();
+
+  // Daily and M15 must be completely unaffected by H4's own zoom.
+  expect(await visibleCount('daily')).toBe(dailyBefore);
+  expect(await visibleCount('m15')).toBe(m15Before);
+
+  // H4 itself must have actually zoomed (more candles visible in its own wider window).
+  const h4AfterZoomOut = await visibleCount('h4');
+  for (let i = 0; i < 5; i += 1) await page.locator('button[data-action="zoom-in"][data-chart="h4"]').click();
+  const h4AfterZoomIn = await visibleCount('h4');
+  expect(h4AfterZoomOut).toBeGreaterThan(h4AfterZoomIn);
+
+  // Panning, by contrast, is still shared: moving H4's view also moves Daily/M15's
+  // (the visible *set* shifts, even if the candle count in a same-width window
+  // happens to stay similar).
+  const m15TimesBefore = await page.locator('#m15-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
+  const cursorBefore = await page.locator('#cursor-utc').textContent();
+  await page.locator('button[data-action="pan-earlier"][data-chart="h4"]').click();
+  await expect.poll(async () => {
+    const after = await page.locator('#m15-chart g[data-time]').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-time')));
+    return JSON.stringify(after) !== JSON.stringify(m15TimesBefore);
+  }).toBe(true);
+  expect(await page.locator('#cursor-utc').textContent()).toBe(cursorBefore); // pan never moves the replay cursor
 });
 
 test('an unavailable API reports its 502 error clearly', async ({ page }) => {
