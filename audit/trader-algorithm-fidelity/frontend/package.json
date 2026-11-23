@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:lan": "vite --host",
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-isolation=none src/model.test.mjs",
     "test:e2e": "playwright test"
