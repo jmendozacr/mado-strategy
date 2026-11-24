@@ -10,8 +10,10 @@ conclusions.
 
 ## Status
 
-Phase 1 (data & event audit) — see `../../odd/tasks/loss-pattern-discovery.md` for the live task
-list and `docs/06-limitations-and-decisions-log.md` for the running decision log.
+Phase 3 (control-group + post-stop-metric corrections, recovery-to-entry analysis) — see
+`../../odd/tasks/loss-pattern-discovery.md` for the live task list,
+`docs/06-limitations-and-decisions-log.md` for the running decision log, and
+`docs/17-verdict-and-checkpoint.md` for the current verdict (`NO_DIFFERENTIAL_RECOVERY_EVIDENCE`).
 
 ## Layout
 
@@ -31,12 +33,17 @@ research/loss-pattern-discovery/
     10-control-comparison.md              Deliverable C (matched control comparison results)
     11-research-findings.md               Deliverable E (confirmed/descriptive/hypotheses/inconclusive)
     12-next-research-unit-recommendation.md
+    13-phase3-corrections-report.md       Deliverable A (Phase 3 defect root-causes, RED/GREEN proofs)
+    14-atlas-corrected-vs-original.md     Deliverable B (explicit before/after comparison)
+    15-control-group-audit.md             Deliverable C (match-quality evidence)
+    16-recovery-to-entry-analysis.md       Deliverable D (H1/H0, primary + secondary endpoints)
+    17-verdict-and-checkpoint.md          Deliverable E/F (verdict + checkpoint)
   schema/      event dataclasses (features_pre_entry / features_at_stop / post_stop_outcomes)
   extract/     reproducible extractors from source experiments into the event schema
   eligibility/ stop-event eligibility classification (Phase 2, Unit A)
-  behavior/    richer post-stop-loss behavior metrics (Phase 2, Unit B)
-  control/     matched control-group sampling (Phase 2, Unit C)
-  common/      shared utilities (e.g. a cached OHLCSeries timestamp index)
+  behavior/    post-stop-loss behavior metrics (Phase 2, Unit B) + recovery_analysis.py (Phase 3, Deliverable D)
+  control/     matched control-group sampling, NY-hour matched (Phase 3 fix)
+  common/      shared utilities (cached OHLCSeries timestamp index; `ny_time.py` NY wall-clock conversion)
   validate/    integrity, chronology, causality and provenance validators
   stats/       descriptive statistics, bootstrap, the Atlas orchestration script, visualizations
   tests/       pytest suite for every module above

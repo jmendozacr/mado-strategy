@@ -26,7 +26,7 @@ HORIZON_ORDER = ("1h", "4h", "1d", "3d")
 
 
 def _load_atlas() -> dict:
-    path = LAB_ROOT / "artifacts" / "phase2_atlas.json"
+    path = LAB_ROOT / "artifacts" / "phase3_atlas_corrected.json"
     if not path.exists():
         raise FileNotFoundError(f"{path} not found -- run stats/atlas.py first")
     return json.loads(path.read_text(encoding="utf-8"))["atlas"]

@@ -52,34 +52,58 @@ def build_report(records: list[EventRecord]) -> dict:
 
     eligible = by_category.get(StopEligibility.CONFIRMED_STOP.value, 0) + \
         by_category.get(StopEligibility.STOP_AFTER_PARTIAL.value, 0)
+    confirmed = by_category.get(StopEligibility.CONFIRMED_STOP.value, 0)
+    open_censored = by_category.get(StopEligibility.OPEN_CENSORED.value, 0)
+    total_losses_only = total_loss_open - open_censored  # Phase-3 Defect 3 fix: name both denominators explicitly
 
     return {
         "total_win": total_win,
         "total_loss_or_open": total_loss_open,
+        "total_losses_only": total_losses_only,
         "by_category": dict(by_category),
-        "by_category_pct": (
+        # Phase-3 Defect 3 fix: Phase 2 printed "99.4%" in sentences that
+        # named "1,265 losses" as the denominator, but 99.4% is actually
+        # confirmed / (losses + open) = 1262/1269. Both percentages are now
+        # reported explicitly, each tagged with its own denominator, so no
+        # sentence can silently mix them again.
+        "by_category_pct_over_losses_plus_open": (
             {k: v / total_loss_open for k, v in by_category.items()} if total_loss_open else {}
         ),
+        "confirmed_rate_over_losses_only": (confirmed / total_losses_only) if total_losses_only else None,
+        "confirmed_rate_over_losses_plus_open": (confirmed / total_loss_open) if total_loss_open else None,
         "by_instrument_category": {k: dict(v) for k, v in by_instrument_category.items()},
         "confidence_by_category": confidence_by_category,
         "sample_reasons": sample_reasons,
         "eligible_for_atlas": eligible,
         "sensitivity_only_ambiguous": by_category.get(StopEligibility.AMBIGUOUS_STOP.value, 0),
-        "open_censored": by_category.get(StopEligibility.OPEN_CENSORED.value, 0),
+        "open_censored": open_censored,
     }
 
 
 def render_markdown(report: dict) -> str:
-    lines = ["# Stop Event Eligibility Report (Phase 2, Unit A)", ""]
+    lines = ["# Stop Event Eligibility Report", ""]
     lines.append(f"Wins (outside this taxonomy's scope): {report['total_win']}")
-    lines.append(f"Losses + open-censored, classified: {report['total_loss_or_open']}")
+    lines.append(f"Losses only (excluding open-censored): {report['total_losses_only']}")
+    lines.append(f"Losses + open-censored: {report['total_loss_or_open']}")
     lines.append("")
-    lines.append("## By category")
+    lines.append("## Confirmed-stop rate -- both denominators named explicitly (Phase-3 Defect 3 fix)")
+    over_losses = report["confirmed_rate_over_losses_only"]
+    over_all = report["confirmed_rate_over_losses_plus_open"]
+    lines.append(
+        f"- Confirmed / losses only: {report['by_category'].get('confirmed_stop_event', 0)} / "
+        f"{report['total_losses_only']} = {over_losses:.2%}" if over_losses is not None else "- n/a"
+    )
+    lines.append(
+        f"- Confirmed / (losses + open): {report['by_category'].get('confirmed_stop_event', 0)} / "
+        f"{report['total_loss_or_open']} = {over_all:.2%}" if over_all is not None else "- n/a"
+    )
+    lines.append("")
+    lines.append("## By category (percentage over losses + open -- see above for the losses-only rate)")
     for cat, n in report["by_category"].items():
-        pct = report["by_category_pct"].get(cat, 0)
+        pct = report["by_category_pct_over_losses_plus_open"].get(cat, 0)
         conf = report["confidence_by_category"].get(cat, {}).get("mean_confidence")
         conf_str = f"{conf:.2f}" if conf is not None else "n/a"
-        lines.append(f"- `{cat}`: {n} ({pct:.1%}), mean confidence {conf_str}")
+        lines.append(f"- `{cat}`: {n} ({pct:.1%} of losses+open), mean confidence {conf_str}")
     lines.append("")
     lines.append("## By instrument x category")
     for instrument, counts in report["by_instrument_category"].items():

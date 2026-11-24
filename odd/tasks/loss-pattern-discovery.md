@@ -220,3 +220,89 @@ leakage). T9 = final limitations/risks doc + the A-E report to the user.
   app's own files.
   (c) `data/` is gitignored and absent from the new worktree; it only exists at the main worktree's
   absolute path. Lab code must reference it by configurable absolute path, not copy it.
+- L3: User independently re-reviewed commit `4aadf26` and found 3 concrete defects before authorizing
+  Phase 3: (1) `control/sampling.py`'s candidate pool never actually filtered by NY hour despite the
+  docs claiming it did; (2) `behavior/post_stop_metrics.py` had 3 timing defects (raw_max/min seeded
+  from an out-of-window bar; candle-open used where candle-close/availability was required; `censored`
+  conflated true data exhaustion with ordinary weekend closures); (3) the eligibility report's "99.4%"
+  mixed denominators (1265 losses vs. 1269 losses+open) without saying so. Explicit instruction: fix
+  these BEFORE evaluating the recovery-to-entry phenomenon, preserve Phase 2's original numbers as
+  historical reference (never overwritten), and compare old vs. corrected explicitly.
+
+## Phase 3 specs (S27+)
+
+- S27 (premise, verbatim): "no hemos demostrado que las 1.265 pérdidas equivalgan a 1.265 Stop Loss
+  ejecutados" carried forward; now specifically: before treating the 75.4%/85.4% recovery-to-entry
+  figures as a candidate phenomenon, fix the 3 confirmed defects above, recompute, and compare against
+  the original. Recovery percentages are retrospective observations, not profitability evidence.
+- S28 (control-group fix, verbatim requirements): distinguish `origin_model` (1AM/9AM) from
+  `actual_stop_time_ny` (when the stop itself executed) and `control_reference_time_ny`; match by a
+  simple, pre-declared NY-hour convention (never invent a stop hour from the model label); keep
+  instrument/period/volatility/exclusion criteria; generate match-quality diagnostics (NY hour,
+  volatility, risk distance, instrument, period, direction); report how many controls could not be
+  matched; distinguish matched / matched-with-replacement / unmatched, never silently relaxed;
+  preserve seed/reproducibility. RED-then-GREEN test required for the naive-pool defect specifically.
+- S29 (post-stop metric fix, verbatim defects A/B/C): A -- no OHLC beyond a horizon's own boundary may
+  affect that horizon's metrics, regardless of which bar is chronologically first after exit. B --
+  distinguish candle open vs. close/availability vs. SL instant vs. first observable recovery instant
+  vs. exact horizon close; never use a still-open candle's OHLC prematurely; document and apply one
+  consistent convention. C -- distinguish fully observed / partially observed by data exhaustion /
+  unexpected gap / normal market closure / absence-of-movement-from-closed-market; never convert a
+  non-evaluable observation into "no recovery"; never call a legitimate weekly closure censored if
+  calendar time still has a valid interpretation; define calendar vs. market-effective time treatment
+  (at least as a sensitivity). 10 specific required tests enumerated in section 2 of the user's brief
+  (mapped 1:1 in `tests/test_post_stop_metrics.py`'s new tests, see `docs/13-...`).
+- S30 (re-run and compare, verbatim): re-run the Atlas with the SAME original hypotheses/thresholds
+  (never recalibrate 0.25R or horizons to recover a statistical difference); produce an explicit
+  diff table (n, hour distribution, continuation, reversal, MFE/MAE, recovery, uncertainty intervals,
+  pct censored, control quality) between `4aadf26` (original) and the corrected run; never silently
+  overwrite the original results, keep them as historical reference; if the new control materially
+  changes the ~55% continuation conclusion, document that plainly, without seeking a favorable spin.
+  Fix the denominator inconsistency (1262/1265=99.76% vs 1262/1269=99.45%) and verify the real test
+  count (commit message vs docs had drifted).
+- S31 (H1/H0, verbatim): H1 -- post-SL recovery to the original entry differs in frequency from
+  comparable controlled market moments (controlling hour, volatility, distance to target). H0 -- no
+  relevant difference. Primary endpoint: P(recovery within 24 calendar hours | confirmed SL) vs. the
+  same for a matched control, with a synthetic target placed at the control's OWN target_distance
+  (never assumed to be exactly 1R -- gap fills can make it differ from risk_price). Secondary,
+  descriptive-only metrics (never a search for the best horizon): recovery at 1h/4h/3d, time to first
+  contact, distance-to-level in ATR, cumulative incidence, non-recovering cases, weekend/gap effect,
+  by-pair/model differences. 95% CI for the primary endpoint specifically (this lab's other endpoints
+  stay at 90%), block bootstrap, absolute magnitude reported alongside significance. Explicitly: this
+  is replication/exploratory evidence within a previously-examined 2015-2026 dataset, never described
+  with out-of-sample-validation language, since the 75.4%/85.4% figures were already observed before
+  this hypothesis was written down.
+- S32 (executable-entry distinction, verbatim A-D): A Historical contact (a candle touched the level);
+  B Causal confirmation (the information needed to assert recovery is already available); C First
+  opportunity to act (the market could potentially accept an order after that confirmation); D
+  Subsequent outcome (what happens after that instant, never reusing the prior recovery move as the
+  new trade's own gain). This phase only builds A/B/C correctly. Never assume an exact fill at the
+  recovered level if the signal only confirms later. Required fields (names adapted to the existing
+  schema): `recovery_touch_bar_open`, `recovery_confirmed_at`, `recovery_first_actionable_at`,
+  intrabar-ambiguity state, gap condition, recovered reference price.
+- S33 (continue/stop criteria, verbatim): Phase 3 must be able to produce a negative result. If
+  recovery is statistically similar to the control: report H0 as not rejected (never "equivalence
+  proven"), document magnitude/precision, never turn 85.4% into a strategy, never hunt new subgroups
+  looking for a positive result. If a relevant difference appears: check stability across
+  periods/instruments, sensitivity to the control design, sensitivity to target distance/volatility,
+  verify it doesn't depend on gaps/ambiguity/calendar effects, and propose one concrete causal
+  hypothesis for a later phase -- never optimize parameters, test multiple re-entry rules, or backtest
+  a new strategy's profitability this round.
+- S34 (protection, unchanged from Phase 2's S11/S25): same read-only boundary; human-fidelity pilot and
+  `audit/trader-algorithm-fidelity/runtime/events.jsonl` untouched and unopened this phase too.
+- S35 (deliverables, verbatim): A Informe de correcciones; B Atlas corregido (explicit vs-original
+  comparison); C Auditoría del grupo de control; D Recovery-to-Entry Analysis; E Veredicto (one of
+  `NO_DIFFERENTIAL_RECOVERY_EVIDENCE` / `EXPLORATORY_DIFFERENTIAL_RECOVERY` / `INCONCLUSIVE` /
+  `METHODOLOGY_BLOCKED`); F Checkpoint (files, tests, repro commands, SHA, limitations). Stop at the
+  end of this phase -- no re-entry strategy, no bot, no parameter optimization, no model training.
+
+## Phase 3 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T17 | S28 | inline | done | `control/sampling.py` rewrite + `common/ny_time.py`; 13 tests (RED defect-proof + GREEN fix) |
+| T18 | S29 | inline | done | `behavior/post_stop_metrics.py` defects A/B/C fixed; 19 tests (10 user-specified mapped) |
+| T19 | S30 | inline (depends on T17,T18) | done | real-data re-run: `artifacts/phase3_atlas_corrected.json`; `docs/14-atlas-corrected-vs-original.md` |
+| T20 | S31,S32 | inline (depends on T18) | done | `behavior/recovery_analysis.py` + 5 tests; `docs/15-recovery-to-entry-analysis.md` |
+| T21 | S30 (denominator fix) | inline | done | `stats/eligibility_report.py` now reports both denominators explicitly |
+| T22 | S35 | inline | done | `docs/13-16`, this checkpoint |

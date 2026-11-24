@@ -21,6 +21,7 @@ groups.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -33,7 +34,8 @@ for _path in (LAB_ROOT, REPO_ROOT / "detector"):
         sys.path.insert(0, str(_path))
 
 from behavior.post_stop_metrics import PHASE2_HORIZONS, compute_post_stop_behavior  # noqa: E402
-from control.sampling import control_to_event_record, period_bucket, sample_controls  # noqa: E402
+from behavior.recovery_analysis import analyze_recovery  # noqa: E402
+from control.sampling import audit_match_quality, control_to_event_record, period_bucket, sample_controls  # noqa: E402
 from eligibility.stop_eligibility import StopEligibility, classify_all  # noqa: E402
 from extract.from_causal_lookahead_audit import extract  # noqa: E402
 from extract.post_stop_trajectory import load_m15_series  # noqa: E402
@@ -91,6 +93,20 @@ def _proportion(values: list[float]) -> float:
     return sum(values) / len(values) if values else float("nan")
 
 
+def _recovery_indicator(behavior) -> float | None:
+    """1.0 if recovery was confirmed; 0.0 if NOT recovered and the horizon
+    was fully observed (a confirmed absence); None if NOT recovered but the
+    horizon was censored (true data exhaustion) -- a censored non-recovery
+    is unknown, never counted as a confirmed absence. Phase-3 fix: Phase 2
+    used `1.0 if recovered else 0.0` unconditionally, which silently
+    treated a handful of censored events as confirmed non-recoveries."""
+    if behavior.recovered_to_entry_price:
+        return 1.0
+    if behavior.censored:
+        return None
+    return 0.0
+
+
 def _bootstrap_metric(
     records: list[EventRecord], behaviors_by_id: dict, horizon_label: str,
     value_fn: Callable, statistic: Callable = median,
@@ -126,8 +142,7 @@ def summarize_group(records: list[EventRecord], behaviors_by_id: dict, horizon_l
         lambda b: _resolved_indicator(b, "reversal"), statistic=_proportion,
     )
     p_recovered = _bootstrap_metric(
-        records, behaviors_by_id, horizon_label,
-        lambda b: 1.0 if b.recovered_to_entry_price else 0.0, statistic=_proportion,
+        records, behaviors_by_id, horizon_label, _recovery_indicator, statistic=_proportion,
     )
     n_censored = sum(
         1 for r in records
@@ -139,6 +154,11 @@ def summarize_group(records: list[EventRecord], behaviors_by_id: dict, horizon_l
         if r.identification.event_id in behaviors_by_id
         and _at_horizon(behaviors_by_id[r.identification.event_id], horizon_label).weekend_gap_spanned
     )
+    n_unexpected_gap = sum(
+        1 for r in records
+        if r.identification.event_id in behaviors_by_id
+        and _at_horizon(behaviors_by_id[r.identification.event_id], horizon_label).unexpected_gap_spanned
+    )
     return {
         "n": n,
         "mae_r_median": mae_r,
@@ -148,6 +168,7 @@ def summarize_group(records: list[EventRecord], behaviors_by_id: dict, horizon_l
         "p_reversal": p_reversal,
         "p_recovered_to_entry": p_recovered,
         "pct_censored": n_censored / n if n else None,
+        "pct_unexpected_gap_spanned": n_unexpected_gap / n if n else None,
         "pct_weekend_gap_spanned": n_weekend_gap / n if n else None,
     }
 
@@ -195,10 +216,14 @@ def run_atlas() -> dict:
     eligible_behaviors = compute_behaviors(eligible, series_by_instrument)
     ambiguous_behaviors = compute_behaviors(ambiguous, series_by_instrument)
 
-    controls = sample_controls(eligible, series_by_instrument)
+    sampling_result = sample_controls(eligible, series_by_instrument)
+    controls = sampling_result.controls
     control_records = [control_to_event_record(c, series_by_instrument[c.instrument]) for c in controls]
     control_records_by_matched_id = {c.matched_event_id: cr for c, cr in zip(controls, control_records)}
     control_behaviors = compute_behaviors(control_records, series_by_instrument)
+    eligible_by_id = {r.identification.event_id: r for r in eligible}
+    match_quality = audit_match_quality(eligible_by_id, controls)
+    recovery_result = analyze_recovery(eligible, eligible_behaviors, controls, series_by_instrument)
 
     one_way_groupers = {
         "instrument": lambda r: r.identification.instrument,
@@ -230,6 +255,13 @@ def run_atlas() -> dict:
         "n_eligible": len(eligible),
         "n_ambiguous": len(ambiguous),
         "n_controls": len(controls),
+        "n_unmatched": len(sampling_result.unmatched),
+        "unmatched_reasons": {
+            reason: sum(1 for u in sampling_result.unmatched if u.reason == reason)
+            for reason in {u.reason for u in sampling_result.unmatched}
+        },
+        "match_quality": match_quality,
+        "recovery_analysis": dataclasses.asdict(recovery_result),
     }
 
 
@@ -239,11 +271,27 @@ def _data_dir():
 
 
 def main() -> dict:
+    # Phase 3 fixed the NY-hour control-matching defect and the post-stop
+    # metric timing defects (see docs/13-phase3-corrections-report.md). The
+    # output filename changed (phase2_atlas.json -> phase3_atlas_corrected.json)
+    # deliberately, so the Phase-2 artifact this script used to write is
+    # never silently overwritten -- the Phase-2 NUMBERS are preserved as
+    # committed markdown in docs/09-11 (from commit 4aadf26), not as this
+    # gitignored JSON.
     result = run_atlas()
     artifacts_dir = LAB_ROOT / "artifacts"
     artifacts_dir.mkdir(exist_ok=True)
-    (artifacts_dir / "phase2_atlas.json").write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
-    print(f"n_eligible={result['n_eligible']} n_ambiguous={result['n_ambiguous']} n_controls={result['n_controls']}")
+    (artifacts_dir / "phase3_atlas_corrected.json").write_text(
+        json.dumps(result, indent=2, default=str), encoding="utf-8"
+    )
+    print(
+        f"n_eligible={result['n_eligible']} n_ambiguous={result['n_ambiguous']} "
+        f"n_controls={result['n_controls']} n_unmatched={result['n_unmatched']} "
+        f"unmatched_reasons={result['unmatched_reasons']}"
+    )
+    print("match_quality:", json.dumps(result["match_quality"], indent=2, default=str))
+    print("primary_recovery_endpoint (1d, 95% CI):",
+          json.dumps(result["recovery_analysis"]["primary_endpoint"], indent=2, default=str))
     return result
 
 
