@@ -69,7 +69,8 @@ uv run python ../research/loss-pattern-discovery/stats/visualize.py
 ### SHA
 
 - Base (Phase 2): `4aadf261371ad1973ebbd397030930f46789f901`.
-- This phase's commit: **PENDING_SHA**.
+- This phase's commit: `2f89de9` (fixes + analysis), this doc's own placeholder corrected in the same
+  follow-up commit that records it.
 
 ### Limitations carried forward (unresolved, not blocking this phase's verdict)
 
