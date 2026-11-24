@@ -25,6 +25,7 @@ from pathlib import Path
 from core.candle import OHLCSeries
 from ingestion.loader import load_mt5_csv
 
+from common.series_index import timestamps_for
 from schema.events import EventRecord, PostStopOutcome
 
 DEFAULT_HORIZONS: tuple[tuple[str, timedelta], ...] = (
@@ -51,9 +52,8 @@ def load_m15_series(pair: str, data_dir: Path) -> OHLCSeries:
     return load_mt5_csv(str(path), pair)
 
 
-def _bisect_after(candles: tuple, ts: datetime) -> int:
-    timestamps = [c.timestamp for c in candles]
-    return bisect.bisect_right(timestamps, ts)
+def _bisect_after(series: OHLCSeries, ts: datetime) -> int:
+    return bisect.bisect_right(timestamps_for(series), ts)
 
 
 def compute_post_stop_outcomes(
@@ -70,7 +70,7 @@ def compute_post_stop_outcomes(
         )
 
     bullish = record.identification.original_direction == "bullish"
-    start_index = _bisect_after(series.candles, exit_ts)
+    start_index = _bisect_after(series, exit_ts)
 
     if start_index >= len(series.candles):
         # No bars at all after exit_ts in this data file -- fully censored.

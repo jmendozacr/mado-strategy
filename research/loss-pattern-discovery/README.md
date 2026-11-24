@@ -25,13 +25,33 @@ research/loss-pattern-discovery/
     04-methodology-safeguards.md        anti-bias protocol (splits, purge/embargo, pre-registration)
     05-excluded-protected-artifacts.md  how the fidelity-audit pilot is excluded without leaking it
     06-limitations-and-decisions-log.md running log of defects found, decisions, open questions
+    07-phase2-stop-eligibility-and-atlas.md  Phase 2 design: eligibility taxonomy, Atlas, controls
+    08-data-quality-and-limitations-phase2.md  Deliverable D
+    09-atlas-results.md                   Deliverable B (Post-Stop-Loss Behavior Atlas results)
+    10-control-comparison.md              Deliverable C (matched control comparison results)
+    11-research-findings.md               Deliverable E (confirmed/descriptive/hypotheses/inconclusive)
+    12-next-research-unit-recommendation.md
   schema/      event dataclasses (features_pre_entry / features_at_stop / post_stop_outcomes)
   extract/     reproducible extractors from source experiments into the event schema
+  eligibility/ stop-event eligibility classification (Phase 2, Unit A)
+  behavior/    richer post-stop-loss behavior metrics (Phase 2, Unit B)
+  control/     matched control-group sampling (Phase 2, Unit C)
+  common/      shared utilities (e.g. a cached OHLCSeries timestamp index)
   validate/    integrity, chronology, causality and provenance validators
-  stats/       descriptive statistics only (no modeling) for this phase
-  tests/       pytest suite for extract/validate/schema
-  artifacts/   regenerable derived datasets (gitignored — never commit large/generated files here)
+  stats/       descriptive statistics, bootstrap, the Atlas orchestration script, visualizations
+  tests/       pytest suite for every module above
+  artifacts/   regenerable derived datasets + figures (gitignored — never commit generated files here)
   config.py    read-only pointer to the main worktree's gitignored `data/` directory
+```
+
+## Reproducing Phase 2
+
+```bash
+cd detector && uv sync --extra dev   # once, per worktree
+uv run python -m pytest ../research/loss-pattern-discovery/tests   # 55 tests
+uv run python ../research/loss-pattern-discovery/stats/eligibility_report.py   # Deliverable A
+uv run python ../research/loss-pattern-discovery/stats/atlas.py               # Deliverables B/C
+uv run python ../research/loss-pattern-discovery/stats/visualize.py           # figures
 ```
 
 ## Read-only boundary

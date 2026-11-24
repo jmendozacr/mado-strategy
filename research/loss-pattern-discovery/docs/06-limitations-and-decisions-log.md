@@ -60,3 +60,54 @@ Append-only. Each entry is dated and keeps its original reasoning even if later 
   tested against synthetic bars, and smoke-tested against real M15 data for individual events, but has
   not been run over the full 2047-event dataset.** Running it at scale is deliberately deferred — it
   starts to shade into Line B's actual analysis, which is explicitly out of scope for this round.
+  (Superseded by Phase 2: this run now happens at scale, over the eligible 1262-event population, in
+  `behavior/post_stop_metrics.py` via `stats/atlas.py`. L7 is kept here as history, not deleted.)
+
+## 2026-11-24 — Phase 2
+
+### Decisions
+
+- **D5**: `breakeven_after_partial=True` for EURUSD/USDCAD/AUDUSD in `SYMBOL_CONFIG`
+  (`detector/experimental/htf_trigger_1am_9am_backtest.py`), reused unmodified by
+  `audit/2026-11-17-causal-lookahead-audit/run_d1_d2_d3.py:239`, is a dataset-level constant for the
+  primary source — every partial-exit trade's leg-2 adverse level is `entry_price`, never the original
+  `stop_loss` column. `eligibility/stop_eligibility.py` hardcodes this (with the evidence cited in its
+  module docstring) rather than re-deriving it per row, since the CSV itself carries no such column.
+- **D6**: The eligible population for the Atlas is `confirmed_stop_event` + `stop_after_partial_exit`
+  (1262 of 1265 losses). `ambiguous_stop_event` (3) and `open_censored` (4) are excluded from the main
+  Atlas and reported only as a separate sensitivity check / their own category, per S18/S22.
+- **D7**: Horizons are measured in **calendar time** (wall-clock), not market-effective time; weekend/
+  holiday gaps are flagged (`weekend_gap_spanned`), never interpolated or silently absorbed. Chosen for
+  consistency with Phase 1's existing MFE/MAE convention rather than introducing a second time system.
+- **D8**: The continuation/reversal first-move threshold (0.25R) and the 4 period buckets
+  (2015-2017/2018-2020/2021-2023/2024-2026) were fixed in `docs/07-phase2-stop-eligibility-and-atlas.md`
+  before `stats/atlas.py` was ever run — see that file for the full pre-registration.
+- **D9**: `stop_after_partial_exit` turned out to be empirically ~0 (0 of 1262 eligible events). This
+  is a real finding (the breakeven-after-partial reward structure makes a net-loss outcome on a
+  partial-exit trade arithmetically near-impossible, not a classifier defect) — confirmed by the
+  `has_partial_exit` win-rate cross-check in `docs/07-phase2-stop-eligibility-and-atlas.md`. Recorded
+  here, not silently dropped, per the "no corrijas silenciosamente" instruction.
+
+### Known limitations / open gaps (Phase 2)
+
+- **L8 — The control group borrows direction/risk from its matched real event rather than deriving an
+  independent "what would a trade have looked like here" rule.** This avoids inventing a new,
+  unvalidated direction-detection algorithm, but means the control group is NOT a fully independent
+  simulation of "a typical trade at this moment" — it is "the same hypothetical trade parameters,
+  dropped at an otherwise-ordinary moment." Good enough to test "is post-SL behavior different from
+  ordinary market behavior at a matched moment," not strong enough to claim the control represents
+  every alternative trade design.
+- **L9 — ATR-based volatility matching uses a 400-candidate random pool per stratum, not an exhaustive
+  search.** With only 12 strata (3 instruments x 4 period buckets) this pool is large relative to most
+  strata's eligible-event count, but is still a finite, seeded sample — a different seed would produce
+  a slightly different control set (by design, for reproducibility under one fixed seed, not because
+  the matching is exact).
+- **L10 — One-way stratification (never the full cross-product) by design (S22).** A reader asking
+  "what about EURUSD 9am sell trades in 2021-2023 specifically" will not find that exact cell in this
+  phase's output — deliberately, to avoid the combinatorial subgroup search the brief warned against.
+  A future phase could examine a specific, pre-justified cell if one of this phase's one-way findings
+  motivates it.
+- **L11 — `has_partial_exit` trades are still not modeled as a separate stage** (L4 from Phase 1,
+  unchanged): the Atlas treats a partial-exit loss's post-stop trajectory starting from its FINAL
+  exit only, not from the partial leg's own exit instant. Revisit if partial-leg-specific behavior
+  becomes a question of interest.
