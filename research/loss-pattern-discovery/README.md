@@ -10,11 +10,13 @@ conclusions.
 
 ## Status
 
-Phase 4 (Failure Mode Taxonomy & Pre-Entry Feature Audit) — see
+Phase 5 (1AM vs. 9AM Failure Mechanism Analysis) — see
 `../../odd/tasks/loss-pattern-discovery.md` for the live task list,
 `docs/06-limitations-and-decisions-log.md` for the running decision log, and
-`docs/28-phase5-recommendation-and-checkpoint.md` for the current checkpoint and the Phase-5
-recommendation (the 1AM-vs-9AM mechanism, now evidenced three independent ways).
+`docs/35-research-verdict-and-checkpoint-phase5.md` for the current checkpoint. Verdict:
+`RESIDUAL_MODEL_ASSOCIATION` — the 1AM/9AM early-stop gap (+9.35pp unadjusted) does not shrink after
+standardizing for `risk_atr` (+9.93pp standardized); association, not causation (origin_model is not
+randomly assigned).
 
 ## Layout
 
@@ -49,7 +51,14 @@ research/loss-pattern-discovery/
     25-failure-mode-taxonomy.md               Deliverable C (3 independent dimensions)
     26-failure-mode-atlas.md                  Deliverable D (the 10 Atlas questions, answered)
     27-research-findings-phase4.md            Deliverable E
-    28-phase5-recommendation-and-checkpoint.md  Deliverable F/G (current checkpoint)
+    28-phase5-recommendation-and-checkpoint.md  Deliverable F/G (Phase 4 checkpoint)
+    29-phase5-design-and-pre-registration.md  H1/H2/H3, endpoint verification, standardization spec
+    30-model-population-audit.md              Deliverable A (full-population audit table)
+    31-pre-entry-comparability-report.md      Deliverable B (pre-entry distributions by model)
+    32-early-stop-loss-analysis.md            Deliverable C (H1/H2 unadjusted + standardized)
+    33-failure-mechanism-explanation.md       Deliverable D (is the integrity gap mechanical?)
+    34-secondary-behavioral-analysis.md       Deliverable E (H3, limited)
+    35-research-verdict-and-checkpoint-phase5.md  Deliverable F (Phase 5 verdict + checkpoint)
   schema/      event dataclasses (features_pre_entry / features_at_stop / post_stop_outcomes)
   extract/     reproducible extractors from source experiments into the event schema
   eligibility/ stop-event eligibility classification (Phase 2, Unit A)
@@ -57,9 +66,11 @@ research/loss-pattern-discovery/
   behavior/    post-stop-loss (Layer C) + pre-stop (Layer B) behavior metrics, recovery_analysis.py
   failure_modes/  multidimensional failure-mode classification (Phase 4, Layer B)
   control/     matched control-group sampling, NY-hour matched (Phase 3 fix)
-  common/      shared utilities (cached OHLCSeries timestamp index; `ny_time.py` NY wall-clock conversion)
+  common/      shared utilities (cached OHLCSeries timestamp index; `ny_time.py` NY wall-clock
+               conversion; `trade_timing.py` bar-index-based duration/endpoint, Phase 5)
   validate/    integrity, chronology, causality and provenance validators
-  stats/       descriptive statistics, bootstrap, Atlas orchestration scripts, visualizations
+  stats/       descriptive statistics, bootstrap, Atlas orchestration scripts, visualizations,
+               Phase-5 early-stop hypothesis + population audit + secondary behavioral adjustment
   tests/       pytest suite for every module above
   artifacts/   regenerable derived datasets + figures (gitignored — never commit generated files here)
   config.py    read-only pointer to the main worktree's gitignored `data/` directory
@@ -69,11 +80,14 @@ research/loss-pattern-discovery/
 
 ```bash
 cd detector && uv sync --extra dev   # once, per worktree
-uv run python -m pytest ../research/loss-pattern-discovery/tests   # 106 tests
+uv run python -m pytest ../research/loss-pattern-discovery/tests   # 121 tests
 uv run python ../research/loss-pattern-discovery/stats/eligibility_report.py   # Phase 2 Deliverable A
 uv run python ../research/loss-pattern-discovery/stats/atlas.py               # Phase 2/3 Deliverables B/C + recovery analysis
 uv run python ../research/loss-pattern-discovery/stats/seed_sensitivity.py    # Phase 3.1 Deliverable D (continuation seed check)
 uv run python ../research/loss-pattern-discovery/stats/failure_mode_atlas.py  # Phase 4 Deliverables A-D
+uv run python ../research/loss-pattern-discovery/stats/model_population_audit.py        # Phase 5 Deliverables A, B
+uv run python ../research/loss-pattern-discovery/stats/early_stop_hypothesis.py         # Phase 5 Deliverables C, D
+uv run python ../research/loss-pattern-discovery/stats/secondary_behavioral_adjustment.py  # Phase 5 Deliverable E
 uv run python ../research/loss-pattern-discovery/stats/visualize.py           # figures
 ```
 

@@ -445,3 +445,81 @@ feature shows a stark win/loss median separation. 1AM shows a markedly different
 integrity profile than 9AM (31.2% vs. 15.3% ambiguous/insufficient) -- a THIRD independent signal
 (after Phase 2/3's MAE and recovery findings) pointing at an unexplained 1AM/9AM mechanism, proposed
 as the priority Phase-5 hypothesis (not evaluated this phase).
+
+## Phase 5 specs (S54+)
+
+- S54 (checkpoint + two populations, verbatim): start from checkpoint `5e332c7`. Never start directly
+  from the 1262-loss population; use the full executed-trade population (778 win, 1265 loss, 4
+  open/censored) as primary, to avoid the selection bias of starting from losses alone. Two
+  populations, never mixed: primary = all evaluable executed trades; secondary = the 1262
+  confirmed-stop losses (used only to explain Phase 4's own Deliverable D figures).
+- S55 (H1/H2/H3 pre-registration, verbatim): register before running new analyses. H1 -- the
+  probability of a confirmed stop within the entry bar or the next M15 bar differs between 1AM/9AM;
+  verify actual bar indices and the fills engine's timestamp semantics, never assume
+  `duration <= 15min`; evaluate unadjusted, then adjusted for pre-entry conditions. H2 -- the gap
+  shrinks substantially when controlling for `risk_atr` (= `risk_price / pre_entry_ATR`), instrument,
+  period, prior volatility, direction -- candidate explanatory variables, never chosen by which gives
+  the best result. H3 (secondary, limited) -- Phase 2/3's MAE-post-SL/recovery gaps might be
+  partially explained by risk geometry; investigate only as secondary, not a reopened strategy
+  search.
+- S56 (standardization method, verbatim): check common support between 1AM/9AM `risk_atr`
+  distributions before matching/standardizing; never force extreme matching, never extrapolate
+  beyond common support; if insufficient overlap, conclude the dataset cannot separate model-effect
+  from stop-geometry. Simple, transparent method only (standardization or matching with balance
+  diagnostics) -- explicitly not complex ML. Document specification/calipers before inspecting the
+  adjusted result; never optimize matching to produce significance.
+- S57 (time-to-SL taxonomy, verbatim): distinguish SL-confirmed vs. TP/win vs. partial exit vs.
+  ambiguous vs. open/censored -- never treat wins or opens as independent censoring of SL without
+  justification. Use a defensible descriptive estimator; avoid survival models assuming
+  non-informative censoring when that assumption does not hold.
+- S58 (mechanism check, verbatim): investigate whether Phase 4's path-integrity gap (31.2% vs. 15.3%)
+  is a mechanical artifact of `duration_bars` rather than independent information; reconstruct the
+  funnel executed_trade -> exit_type -> duration_bars -> confirmed_stop -> path_integrity explicitly.
+- S59 (causal constraint, verbatim, section 11 of the brief): `origin_model` is not randomly
+  assigned. A difference surviving adjustment does not prove the model causes it. Separate total vs.
+  conditioned differences; document confounders vs. potential mediators; never use strong causal
+  language; never claim a residual difference demonstrates a model-specific mechanism; never force
+  NY-hour matching if models naturally operate in non-overlapping hours.
+- S60 (statistical rigor, verbatim): sample sizes, absolute differences, CIs, balance diagnostics,
+  common-support size, temporal dependence, one-way sensitivity by instrument/period only (never a
+  combined grid), competing-event counts, missing-data analysis. One primary endpoint with 95% CI,
+  everything else secondary/explanatory. No dozens of tests chasing significance. The 2015-2026
+  history remains previously-examined, not genuine out-of-sample, regardless of this phase's CIs.
+- S61 (15 required tests + full suite, verbatim): see `tests/test_phase5_requirements.py`'s
+  coverage-map docstring for the 1-15 requirement-to-test mapping; re-run the existing 106 prior
+  tests; never hide or change a test just to get green.
+- S62 (deliverables, verbatim): A Model Population Audit (full table, explicit denominators); B
+  Pre-Entry Comparability Report (distributions by model); C Early Stop-Loss Analysis (H1
+  unadjusted/adjusted); D Failure Mechanism Explanation (how much of the integrity gap is explained
+  by duration, how much remains unexplained); E Secondary Behavioral Analysis (H3, only if
+  defensible); F Research Verdict & Checkpoint -- classify into exactly one of
+  `MOSTLY_EXPLAINED_BY_RISK_GEOMETRY`, `RESIDUAL_MODEL_ASSOCIATION`, `NO_ROBUST_DIFFERENCE`,
+  `INSUFFICIENT_COMMON_SUPPORT`, `INCONCLUSIVE`, with files/tests/commands/results/sample-size-
+  changes/limitations/commits/SHAs and a recommended next hypothesis if any.
+- S63 (protection, unchanged): same read-only boundary and human-pilot protection as Phases 1-4; no
+  GUI, no AI models, no new strategies, no RR/SL/TP/entry-parameter optimization; stop at the end of
+  Phase 5, no Phase 6 without explicit authorization.
+
+## Phase 5 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T36 | S54,S55,S56 | inline | done | `common/trade_timing.py`; `docs/29-phase5-design-and-pre-registration.md` |
+| T37 | S54,S62(A,B) | inline | done | `stats/model_population_audit.py`; `docs/30-31` |
+| T38 | S55,S56,S58 | inline | done | `stats/early_stop_hypothesis.py`; `docs/32-33` |
+| T39 | S55(H3) | inline | done | `stats/secondary_behavioral_adjustment.py`; `docs/34` |
+| T40 | S61 | inline | done | `tests/test_trade_timing.py` (6), `tests/test_early_stop_hypothesis.py` (8), `tests/test_phase5_requirements.py` (1); full suite 121 passed, lint-imports 11/11 |
+| T41 | S59,S62(F) | inline | done | `docs/35-research-verdict-and-checkpoint-phase5.md` |
+
+### Phase-5 headline
+
+Using the full executed-trade population (not loss-only), the 1AM model shows a 9.35pp higher
+same-or-next-bar confirmed-stop rate than 9AM (18.90% vs. 9.55%, 95% CI [5.85, 12.77]). This gap does
+NOT shrink after standardizing for `risk_atr` (+9.93pp standardized, CI [6.30, 13.44]) -- H2 (risk
+geometry explains it) is not supported. Phase 4's path-integrity gap is confirmed to be a mechanical
+restatement of this same duration fact (0/1262 mismatches), not independent evidence. The secondary
+H3 check (MAE/recovery) also fails to be explained by `risk_atr`. Verdict: `RESIDUAL_MODEL_ASSOCIATION`
+-- a real, adjustment-robust association between model and early-stop rate, reported as association
+only (origin_model is not randomly assigned; no causal mechanism claimed). `cost_to_risk_ratio` and
+`atr_m15_at_entry` (both markedly different between models) are untested candidate explanations for a
+future unit, not evaluated this phase.
