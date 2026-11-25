@@ -10,15 +10,15 @@ conclusions.
 
 ## Status
 
-Phase 7 (Confirmation Window Mechanism Analysis) — see
+Phase 8 (Signal Funnel Integrity & Execution Selection Audit) — see
 `../../odd/tasks/loss-pattern-discovery.md` for the live task list,
 `docs/06-limitations-and-decisions-log.md` for the running decision log, and
-`docs/52-research-verdict-phase7.md` for the current checkpoint. Verdict:
-`E1_DIFFERENCE_PERSISTS_AFTER_TIMING_ADJUSTMENT` — standardizing the next-bar-SL gap on WHERE
-within its own confirmation window each signal confirmed (the one timing variable actually
-comparable between 1AM's 120-minute and 9AM's real 240-minute window — `docs/47` corrects Phase 6's
-stale 90-minute claim) leaves the gap unchanged (+5.42pp vs. +5.38pp unadjusted). Still an
-association, not a causal or tradable claim.
+`docs/63-research-verdict-phase8.md` for the current checkpoint. Verdicts:
+`FUNNEL_RECONSTRUCTED_AND_RECONCILED` (every stage reconciles exactly against the ledger, zero
+unexplained discrepancy) and `MATERIAL_EXECUTION_SELECTION_DIFFERENCE` (9AM confirms ~2.3-2.5x as
+many credited triggers into Model-1 signals as 1AM, consistently across all three pairs — the
+largest, cleanest 1AM/9AM difference found in this lab so far, though not yet tested as an
+explanation for the E1 gap). Still associations, not causal or tradable claims.
 
 ## Layout
 
@@ -79,9 +79,22 @@ research/loss-pattern-discovery/
     51-support-and-selection-audit.md          Deliverable F: funnel/candidate-count audit
     52-research-verdict-phase7.md              Deliverable G (Phase 7 verdict + checkpoint)
     53-phase8-recommendation.md                Deliverable H (next hypothesis, not evaluated)
-    54-phase7-technical-checkpoint.md          Deliverable I (checkpoint)
+    54-phase7-technical-checkpoint.md          Phase 7 Deliverable I (checkpoint)
+    55-phase7-commit-record.md                 Phase 7 commit SHA
+    56-funnel-provenance-audit.md              Deliverable A (Phase 8): candidates_built/filled pooling, traced to source
+    57-phase8-design-and-pre-registration.md   Unit B: observation units + pre-registered verdict criteria
+    58-model-specific-funnel-reconstruction.md Deliverable B: per-model/instrument funnel, reconciled
+    59-identity-and-cardinality-audit.md       Deliverable C: identifier chain, duplicates, multi-signal windows
+    60-funnel-conversion-report.md             Deliverable D: identifiable conversion rates only
+    61-execution-selection-analysis.md         Deliverable E: filled vs. never-filled covariate comparison
+    62-e1-interpretation-review.md             Deliverable F: E1 read in light of selection (no numbers changed)
+    63-research-verdict-phase8.md              Deliverable G (Phase 8 verdicts: integrity + selection)
+    64-phase9-recommendation.md                Deliverable H (next hypothesis, not evaluated)
+    65-phase8-technical-checkpoint.md          Deliverable I (checkpoint)
   schema/      event dataclasses (features_pre_entry / features_at_stop / post_stop_outcomes)
-  extract/     reproducible extractors from source experiments into the event schema
+  extract/     reproducible extractors from source experiments into the event schema;
+               `funnel_reconstruction.py` (read-only diagnostic adapter reconstructing the
+               per-model candidate/fill funnel split, Phase 8)
   eligibility/ stop-event eligibility classification (Phase 2, Unit A); `stop_timing_decomposition.py`
                (E0-E4) + `intrabar_ambiguity.py` (sequence-verifiability taxonomy), Phase 6
   features/    pre-entry (Layer A) feature extraction (Phase 4); `confirmation_window_features.py`
@@ -96,7 +109,7 @@ research/loss-pattern-discovery/
                Phase-5 early-stop hypothesis + population audit + secondary behavioral adjustment;
                Phase-6 stop-timing decomposition + intrabar-uncertainty report + sensitivity scenarios
                (S2 corrected in Phase 7); Phase-7 temporal feature dataset + confirmation timing
-               distribution + E1 timing association
+               distribution + E1 timing association; Phase-8 funnel reconciliation report
   tests/       pytest suite for every module above
   artifacts/   regenerable derived datasets + figures (gitignored — never commit generated files here)
   config.py    read-only pointer to the main worktree's gitignored `data/` directory
@@ -106,7 +119,7 @@ research/loss-pattern-discovery/
 
 ```bash
 cd detector && uv sync --extra dev   # once, per worktree
-uv run python -m pytest ../research/loss-pattern-discovery/tests   # 180 tests
+uv run python -m pytest ../research/loss-pattern-discovery/tests   # 198 tests
 uv run python ../research/loss-pattern-discovery/stats/eligibility_report.py   # Phase 2 Deliverable A
 uv run python ../research/loss-pattern-discovery/stats/atlas.py               # Phase 2/3 Deliverables B/C + recovery analysis
 uv run python ../research/loss-pattern-discovery/stats/seed_sensitivity.py    # Phase 3.1 Deliverable D (continuation seed check)
@@ -120,6 +133,8 @@ uv run python ../research/loss-pattern-discovery/stats/sensitivity_scenarios.py 
 uv run python ../research/loss-pattern-discovery/stats/temporal_feature_dataset.py       # Phase 7 Deliverable C
 uv run python ../research/loss-pattern-discovery/stats/confirmation_timing_distribution.py  # Phase 7 Deliverable D
 uv run python ../research/loss-pattern-discovery/stats/e1_timing_association.py          # Phase 7 Deliverable E
+uv run python ../research/loss-pattern-discovery/extract/funnel_reconstruction.py        # Phase 8 Deliverables A/B (heavy, ~20-30min)
+uv run python ../research/loss-pattern-discovery/stats/funnel_reconciliation_report.py    # Phase 8 Deliverables B/C/D
 uv run python ../research/loss-pattern-discovery/stats/visualize.py           # figures
 ```
 

@@ -696,3 +696,91 @@ unchanged: +5.42pp vs. +5.38pp unadjusted. Verdict: `E1_DIFFERENCE_PERSISTS_AFTE
 tested-and-ruled-out candidate. `atr_m15_at_entry` and `cost_to_risk_ratio` remain the only
 untested candidates from Phase 5's original list, recommended for Phase 8 (not evaluated this
 phase).
+
+## Phase 8 specs (S86+)
+
+- S86 (checkpoint + provenance verification, verbatim): start from checkpoint `cefc88e`. Verify, by
+  reading `run_d1_d2_d3.py`/`run_c1_c2.py` directly, exactly why `candidates_built`/`filled`/
+  `never_filled`/`skipped_no_placement` appear duplicated across the `1am`/`9am` rows of the same
+  (pair, arm) in `funnel_2015plus_run2.csv` -- never assume a column's granularity from the
+  presence of a `model` column alone. Never correct the original CSV; any fix must be a derived,
+  reproducible reconciliation inside this lab.
+- S87 (observation units, verbatim): formally define each funnel stage's TRUE observation unit
+  (window, trigger-direction, signal, candidate, trade) before computing anything; never divide
+  counts across incompatible units; distinguish windows that produce 0/1/2 triggers explicitly;
+  report an impediment rather than inventing an unidentifiable rate.
+- S88 (diagnostic adapter, verbatim): reuse `run_d_c2`/`build_stage6_population`/`fill_pass_c`
+  UNMODIFIED to recover the per-model split of stages the pooled `pop_stats` cannot provide;
+  respect D3/C2 exactly (`anchor_source="new"`, `windows_9am="new"`); never modify rules, never
+  reoptimize, never use post-entry information for a never-filled candidate; never write to
+  `audit/2026-11-17-causal-lookahead-audit/`; cross-check the reconstruction's own per-model sums
+  against the unmodified function's pooled return value before trusting it.
+- S89 (reconciliation, verbatim): sum by instrument must equal sum by model must equal the ledger
+  baseline (1AM 620/619/1, 9AM 1427/1424/3, total 2047/2043/4); E1 must still reproduce 72/619 and
+  89/1424 exactly; detect duplicate identifiers; report unresolvable identifiers explicitly; never
+  accept an unexplained discrepancy silently.
+- S90 (conversion rates, verbatim): only compute a rate when numerator/denominator share an
+  observation unit linked by a verified relationship; `P(E1 | executed trade)` is never equated
+  with `P(executed E1 | trigger)` nor with any notion of "probability of losing an opportunity that
+  never existed"; one-way comparisons only (instrument, period), never a combinatorial subgroup
+  search.
+- S91 (selection characterization, verbatim): compare confirmed/placed/never-filled/executed
+  populations using only features knowable at the instant in question; `atr_at_order_placement`/
+  `planned_risk_atr_at_order_placement` (new, computed at `order_placed_ts` with bars closed
+  strictly before it) kept explicitly distinct from Phase 4/5's `atr_m15_at_entry`/`risk_atr`
+  (computed at `entry_ts`, unavailable for never-filled candidates) -- never assumed numerically
+  identical. No predictor, classifier, or threshold search of any kind.
+- S92 (E1 interpretation, verbatim): do not alter Phases 5-7's historical E1 results; describe how
+  the funnel findings should inform (not revise) their interpretation; no new adjustment variable
+  introduced merely because its distribution looks like it might explain the gap.
+- S93 (statistics, verbatim): exact counts; rates with an explicit, unit-checked denominator;
+  checksums of every provenance source; duplicate/missing-identifier detection; one-way sensitivity
+  by instrument/period only; no CI invented where temporal dependence has not been modeled; no
+  causal language for any funnel-stage association; 2015-2026 remains previously-examined, no
+  genuine OOS.
+- S94 (25 required tests + full suite, verbatim): see `tests/test_phase8_requirements.py`'s
+  coverage-map docstring for the 1-25 requirement-to-test mapping; re-run the existing 180 tests;
+  never hide or change a test just to get green.
+- S95 (deliverables, verbatim): A Funnel Provenance Audit; B Model-Specific Funnel Reconstruction;
+  C Identity & Cardinality Audit; D Funnel Conversion Report; E Execution Selection Analysis; F E1
+  Interpretation Review; G Research Verdict -- two labels (integrity + selection) from
+  `FUNNEL_RECONSTRUCTED_AND_RECONCILED`/`MATERIAL_EXECUTION_SELECTION_DIFFERENCE`/
+  `NO_MAJOR_SELECTION_DIFFERENCE_DETECTED`/`PARTIAL_FUNNEL_RECONSTRUCTION`/
+  `INSUFFICIENT_EVENT_LEVEL_PROVENANCE`, criteria fixed before inspecting results; H Phase 9
+  Recommendation (one hypothesis, not evaluated); I Checkpoint. Commit and push to origin if
+  correct; stop at the end of Phase 8 -- no Phase 9 without explicit authorization, no predictors,
+  no ML, no new strategies, no contrafactual window re-simulation.
+
+## Phase 8 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T57 | S86 | inline | done | `docs/56-funnel-provenance-audit.md` |
+| T58 | S87 | inline | done | `docs/57-phase8-design-and-pre-registration.md` |
+| T59 | S88 (depends on T58) | inline | done | `extract/funnel_reconstruction.py`; `tests/test_funnel_reconstruction.py` (11) |
+| T60 | S89 (depends on T59) | inline | done | `stats/funnel_reconciliation_report.py`; `tests/test_funnel_reconciliation_report.py` (5); `docs/58-59` |
+| T61 | S90 | inline | done | `docs/60` |
+| T62 | S91 (depends on T59) | inline | done | `docs/61` (covariates added to `extract/funnel_reconstruction.py`) |
+| T63 | S92 | inline | done | `docs/62` |
+| T64 | S94 | inline | done | `tests/test_phase8_requirements.py` (2 + coverage map); full suite 198 passed, lint-imports 11/11 |
+| T65 | S95(G,H,I) | inline | done | `docs/63-65` |
+
+### Phase-8 headline
+
+Traced `candidates_built`/`filled`/`never_filled`/`skipped_no_placement`'s duplication across
+model rows exactly to `run_c1_c2.process_arm`'s pooled `pop_stats` dict, merged verbatim into both
+rows -- confirmed in the real CSV (EURUSD/USDCAD/AUDUSD all show byte-identical values on their
+1am/9am rows). A read-only diagnostic adapter, reusing the original D3/C2 pipeline functions
+unmodified, reconstructed the true per-model split and cross-checked its own sums against the
+unmodified pipeline's pooled output (`matches: true`, all 3 pairs) -- then reconciled EXACTLY
+against the ledger baseline (2047/2043/4, E1 72/619 and 89/1424, zero unexplained discrepancy).
+The funnel is trustworthy (`FUNNEL_RECONSTRUCTED_AND_RECONCILED`) AND the two models select
+materially different populations before a single trade executes
+(`MATERIAL_EXECUTION_SELECTION_DIFFERENCE`): 9AM confirms ~2.3-2.5x as many credited triggers into
+Model-1 signals as 1AM, consistently across all three pairs -- by far the largest, cleanest
+1AM/9AM difference found in this lab so far, plausibly linked to 9AM's longer confirmation window
+(Phase 7) but not tested causally. Fill rate given a built candidate, by contrast, is broadly
+similar between models. Phases 5-7's E1 results are unchanged; this phase adds that they compare
+two differently-selected populations, not that the comparison is invalid. Recommended for Phase 9
+(not evaluated this phase): a structural comparison of what Model-1's confirmation criterion
+filters on, using the never-confirmed population's own characteristics.
