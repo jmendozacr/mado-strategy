@@ -784,3 +784,95 @@ similar between models. Phases 5-7's E1 results are unchanged; this phase adds t
 two differently-selected populations, not that the comparison is invalid. Recommended for Phase 9
 (not evaluated this phase): a structural comparison of what Model-1's confirmation criterion
 filters on, using the never-confirmed population's own characteristics.
+
+## Phase 9 specs (S96+)
+
+- S96 (checkpoint, verbatim): start from checkpoint `cb97415`. Reconcile against the user's exact
+  baseline table (Triggers 1AM=11206/9AM=8712; Confirmations 1AM=1805/9AM=3311; Candidates
+  1AM=718/9AM=1806; Executed 1AM=620/9AM=1427; Evaluable 1AM=619/9AM=1424) matching Phase 8's own
+  reconstruction totals.
+- S97 (event-level identity, verbatim): extend identity verification to prove
+  signal_id/stable_id/entry_index/entry_price/model/instrument/direction equality between this
+  phase's reconstruction and the ledger; investigate any discrepancy before accepting it, never
+  silently.
+- S98 (Model-1 rejection mechanism, verbatim): audit `entries/model1.py`/`causal_anchor_v2.py`'s
+  real rejection mechanism, distinguishing no-anchor-found/pending/invalidated/window-exhausted;
+  verify whether `"model1_pending_or_invalidated"` conflates two distinct situations.
+- S99 (rejection taxonomy, verbatim): build a reproducible, multidimensional (never forced
+  mutually-exclusive) rejection taxonomy.
+- S100 (Stage-6 exclusion rules, verbatim): audit `detector/backtest/population.py`'s Stage-6
+  exclusion rules, distinguishing "rule available" vs. "active" vs. "applied" vs. "responsible for
+  a specific rejection"; never attribute a rejection to a rule that never evaluated.
+- S101 (instrumentation, verbatim): build isolated diagnostic instrumentation ONLY if needed,
+  reusing original functions/order/config exactly, with a MANDATORY equivalence test proving the
+  instrumented candidate set is identical (not just same length) to the original.
+- S102 (reconstruction, verbatim): reconstruct the full rejection funnel by model/instrument/period
+  (periods: 2015-2017/2018-2020/2021-2023/2024-2026), reconciling exactly against the stated
+  baseline numbers with no unexplained discrepancy.
+- S103 (structural comparison, verbatim): compare 1AM vs. 9AM structurally without attributing the
+  confirmation-rate gap causally to window duration (no contrafactual re-simulation).
+- S104 (causal-availability dictionary, verbatim): build a causal-availability dictionary (Layer 1
+  At Trigger / Layer 2 During Confirmation / Layer 3 At Order Placement / Layer 4 After Fill); a
+  variable observed after a rejection can never be used as a predictor of that rejection.
+- S105 (E1 interpretation, verbatim): review what this means for E1 interpretation WITHOUT
+  changing Phases 5-8's historical numbers.
+- S106 (25 required tests + full suite, verbatim): see `tests/test_phase9_requirements.py`'s
+  coverage-map docstring for the 1-25 requirement-to-test mapping; re-run the existing 198 tests;
+  never hide or change a test just to get green; synthetic cases required: successful
+  confirmation, no anchor, pending, invalidation, expiration, two directions in one window,
+  deduplication, geometry rejection, simultaneous rejections, accepted confirmation producing no
+  candidate, candidate never filled.
+- S107 (deliverables, verbatim): A Event-Level Identity Reconciliation; B Model-1 Rejection
+  Taxonomy; C Stage-6 Candidate Attrition Audit; D Reconstructed Rejection Funnel; E Structural
+  Comparison 1AM vs. 9AM; F Causal Availability Dictionary; G E1 Interpretation Update; H Research
+  Verdict -- two independent dimensions: Integrity
+  (`EVENT_LEVEL_RECONCILED`/`PARTIAL_IDENTITY_RECONCILIATION`/`UNRESOLVED_IDENTITY_MISMATCH`) and
+  Selection (`CONFIRMATION_REJECTIONS_DOMINATE`/`STAGE6_ATTRITION_MATERIAL`/
+  `MULTIPLE_SELECTION_MECHANISMS`/`INSUFFICIENT_REJECTION_PROVENANCE`/`NO_MAJOR_NEW_DIFFERENCE`),
+  criteria defined BEFORE inspecting results; I Phase 10 Recommendation (one hypothesis, not
+  evaluated); J Technical Checkpoint. Run full suite + lint-imports; review with the usual
+  harness; commit and push to origin if correct; stop at the end of Phase 9 -- no Phase 10 without
+  explicit authorization, no predictors, no ML, no new strategies, no contrafactual window
+  re-simulation.
+
+## Phase 9 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T66 | S96,S98 | inline | done | `docs/67-phase9-design-and-pre-registration.md` |
+| T67 | S97 | inline | done | `extract/event_identity_reconciliation.py`; `tests/test_event_identity_reconciliation.py` (8); `stats/event_identity_reconciliation_report.py`; `docs/68` |
+| T68 | S98,S99 (depends on T66) | inline | done | `extract/model1_rejection_diagnostics.py`; `tests/test_model1_rejection_diagnostics.py` (7); `docs/69` |
+| T69 | S100,S101 (depends on T66) | inline | done | `extract/stage6_attrition_diagnostics.py`; `tests/test_stage6_attrition_diagnostics.py` (5); `docs/70` |
+| T70 | S102 (depends on T68,T69) | inline | done | `extract/funnel_reconstruction.py` (extended); `docs/71` |
+| T71 | S103 | inline | done | `docs/72` |
+| T72 | S104 | inline | done | `docs/73` |
+| T73 | S105 (depends on T70) | inline | done | `docs/74` |
+| T74 | S106 | inline | done | `tests/test_phase9_requirements.py` (4 + coverage map); full suite 223 passed, lint-imports 11/11 |
+| T75 | S107(H,I,J) | inline | done | `docs/75-77` |
+
+### Phase-9 headline
+
+Proved, both analytically (code trace) and empirically (a deterministic regression test on the
+real unmodified functions), that `confirm_in_ltf_window_v2`'s retry loop can never return
+INVALIDATED as a terminal status -- `"model1_pending_or_invalidated"` is a misnomer for D3: it is
+ALWAYS PENDING. Proved all five `_population_cuts` exclusion categories are structurally
+impossible for D3/C2, and that `_kill_zone_cut` is available-but-inactive
+(`kill_zone_gated=False`): **100% of Stage-6 candidate attrition, for both models, across all
+three pairs, is `_rr_floor_cut` alone** -- zero dedup, zero kill-zone. Full event-level identity
+reconciliation via `stable_id` matched exactly (2047/2047, zero mismatches); a separate,
+investigated finding showed 3 `signal_id` values collide harmlessly across instruments
+(`entries/model1.py`'s ID formula carries no instrument/date component) -- explained, with zero
+impact on any prior phase. The full rejection funnel reconciled exactly to the user's stated
+baseline, and the 1AM/9AM confirmation-rate gap (~16% vs. ~38%) is stable across all four periods
+and all three instruments -- not a single-era or single-pair artifact. Verdicts (two independent
+dimensions): Integrity = `PARTIAL_IDENTITY_RECONCILIATION` (the strict zero-duplicate-signal_id
+bar is not met, though the true primary key reconciles perfectly and the collision is fully
+explained); Selection = `MULTIPLE_SELECTION_MECHANISMS` (confirmation-stage rejection dominates in
+absolute count for both models, AND Stage-6's RR floor independently removes a material share --
+60.2% of 1AM's confirmed signals, 45.5% of 9AM's). Phases 5-8's historical numbers are unchanged;
+this phase adds that the two models' EXECUTED populations were already selected at a ~2.4x
+differential rate before any trade-level dynamics begin, so the E1 gap can no longer be
+interpreted as comparing two comparably-selected samples. Recommended for Phase 10 (not evaluated
+this phase): test whether confirmation-stage rejection-taxonomy variation (Layer 1/2) associates
+with the eventual E1 outcome (Layer 4) among executed trades, under the same non-causal,
+pre-registered discipline.

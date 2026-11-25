@@ -45,6 +45,7 @@ for _path in (LAB_ROOT, DETECTOR_ROOT, AUDIT_ROOT):
 import causal_intrabar as ci  # noqa: E402
 import run_c1_c2 as base  # noqa: E402
 from backtest.population import build_stage6_population  # noqa: E402
+from backtest.simulate import _resolve_exits  # noqa: E402
 from core.config import DetectorConfig  # noqa: E402
 from experimental.htf_trigger_1am_9am_backtest import SYMBOL_CONFIG, _find_csv  # noqa: E402
 from ingestion.loader import load_mt5_csv  # noqa: E402
@@ -55,7 +56,14 @@ from run_d1_d2_d3 import run_d_c2  # noqa: E402
 
 import config as lab_config  # noqa: E402
 from behavior.post_stop_metrics import compute_atr_at_event  # noqa: E402
+from control.sampling import period_bucket  # noqa: E402
+from extract.model1_rejection_diagnostics import run_d_c2_instrumented, _window_open_ts_from_stable_id  # noqa: E402
+from extract.stage6_attrition_diagnostics import (  # noqa: E402
+    build_stage6_population_instrumented, verify_population_cuts_are_zero,
+)
 from stats.bootstrap import median, quantiles  # noqa: E402
+
+PERIOD_BUCKETS = ("2015-2017", "2018-2020", "2021-2023", "2024-2026")
 
 
 def _load_symbol_data(symbol: str):
@@ -145,19 +153,23 @@ def reconstruct_for_symbol(symbol: str) -> dict:
     swings = detect_swings(m15, config.swing)
     key_levels = build_key_levels(h4, daily, config.fvg)
 
-    records_with_ids, counters = run_d_c2(
-        symbol, h4, m15, daily, config, m15_timestamps, None, swings, key_levels,
-        ANCHOR_SOURCE, WINDOWS_9AM, ARM_NAME, start_date=START_DATE,
+    records_with_ids, counters, rejection_diagnostics = run_d_c2_instrumented(
+        symbol, h4, m15, daily, config, m15_timestamps, key_levels,
+        WINDOWS_9AM, ARM_NAME, start_date=START_DATE,
     )
     aligned_records = [(rec, sid) for rec, sid in records_with_ids if rec.aligned is not None]
     aligned_signals = [rec.aligned for rec, _sid in aligned_records]
     model_by_sig = {rec.aligned.ltf_signal.signal_id: rec.model_name for rec, _sid in aligned_records}
+    stable_by_sig = {rec.aligned.ltf_signal.signal_id: sid for rec, sid in aligned_records}
     order_placed_by_sig = {rec.aligned.ltf_signal.signal_id: rec.order_placed_ts for rec, _sid in aligned_records}
     confirmation_idx_by_sig = {
         rec.aligned.ltf_signal.signal_id: rec.confirmation_index for rec, _sid in aligned_records
     }
 
-    population = build_stage6_population(aligned_signals, m15, config, swings=swings)
+    population, removed_by_model = build_stage6_population_instrumented(
+        aligned_signals, m15, config, swings=swings, model_by_sig=model_by_sig,
+    )
+    population_cuts_check = verify_population_cuts_are_zero(population)
     eligible, skipped = _eligible_and_skipped(
         population.candidates, m15.candles, m15_timestamps, order_placed_by_sig, confirmation_idx_by_sig,
     )
@@ -206,10 +218,58 @@ def reconstruct_for_symbol(symbol: str) -> dict:
         for model in ("1am", "9am")
     }
 
+    # Unit A: event-level identity. `_resolve_exits` is the SAME real,
+    # unmodified function `run_c1_c2.process_arm` calls -- reused here so
+    # the final `Trade.signal_id`/`entry_index`/`entry_price` reconciled
+    # against the real ledger are produced by the identical code path,
+    # never recomputed a different way.
+    trades = _resolve_exits(
+        filled, m15.candles, config.backtest.trading_cost_price, config.backtest.partial_fraction,
+        breakeven_after_partial=config.backtest.breakeven_after_partial,
+    )
+    reconstructed_identities = {
+        stable_by_sig.get(t.signal_id, t.signal_id): {
+            "signal_id": t.signal_id, "pair": symbol, "model": model_by_sig.get(t.signal_id, "unknown"),
+            "direction": t.direction, "entry_index": t.entry_index, "entry_price": t.entry_price,
+        }
+        for t in trades
+    }
+
+    # Unit B/C: Model-1 rejection taxonomy, by model, with the anchor probe.
+    rejection_taxonomy_by_model = {m: Counter() for m in ("1am", "9am")}
+    anchor_probe_by_model = {m: Counter() for m in ("1am", "9am")}
+    for diag in rejection_diagnostics.values():
+        if diag.model_name not in rejection_taxonomy_by_model:
+            continue
+        rejection_taxonomy_by_model[diag.model_name][diag.category] += 1
+        if diag.anchor_probe is not None:
+            key = "anchor_found_but_chain_exhausted" if diag.anchor_probe else "zero_anchors_ever"
+            anchor_probe_by_model[diag.model_name][key] += 1
+
+    # Period bucketing (all triggers with a Key Level, confirmed or not) --
+    # `window_open_ts` recovered from each record's own `stable_trigger_id`,
+    # the same value the real loop built it from, never guessed.
+    triggers_by_model_period = {m: Counter() for m in ("1am", "9am")}
+    confirmed_by_model_period = {m: Counter() for m in ("1am", "9am")}
+    for record, sid in records_with_ids:
+        if record.model_name not in triggers_by_model_period:
+            continue
+        bucket = period_bucket(_window_open_ts_from_stable_id(sid))
+        triggers_by_model_period[record.model_name][bucket] += 1
+        if record.aligned is not None:
+            confirmed_by_model_period[record.model_name][bucket] += 1
+
     return {
         "splits": splits, "pooled_check": pooled_check,
         "counters_by_model": {m: counters[m].to_dict() for m in ("1am", "9am")},
         "covariates": covariates,
+        "population_cuts_check": population_cuts_check,
+        "stage6_removed_by_model": removed_by_model,
+        "reconstructed_identities": reconstructed_identities,
+        "rejection_taxonomy_by_model": {m: dict(c) for m, c in rejection_taxonomy_by_model.items()},
+        "anchor_probe_by_model": {m: dict(c) for m, c in anchor_probe_by_model.items()},
+        "triggers_by_model_period": {m: dict(c) for m, c in triggers_by_model_period.items()},
+        "confirmed_by_model_period": {m: dict(c) for m, c in confirmed_by_model_period.items()},
     }
 
 
@@ -257,9 +317,11 @@ def verify_sweep_and_trigger_invariants(counters_by_model: dict) -> dict:
 
 def run() -> dict:
     out = {}
+    all_identities: dict[str, dict] = {}
     for symbol in SYMBOLS:
         result = reconstruct_for_symbol(symbol)
         verification = verify_against_pooled_counts(result)
+        all_identities.update(result["reconstructed_identities"])
         out[symbol] = {
             "splits": {m: s.__dict__ for m, s in result["splits"].items()},
             "pooled_check": result["pooled_check"],
@@ -267,7 +329,14 @@ def run() -> dict:
             "covariates": result["covariates"],
             "verification": verification,
             "sweep_and_trigger_invariants": verify_sweep_and_trigger_invariants(result["counters_by_model"]),
+            "population_cuts_check": result["population_cuts_check"],
+            "stage6_removed_by_model": result["stage6_removed_by_model"],
+            "rejection_taxonomy_by_model": result["rejection_taxonomy_by_model"],
+            "anchor_probe_by_model": result["anchor_probe_by_model"],
+            "triggers_by_model_period": result["triggers_by_model_period"],
+            "confirmed_by_model_period": result["confirmed_by_model_period"],
         }
+    out["_reconstructed_identities"] = all_identities
     return out
 
 
@@ -280,7 +349,10 @@ def main() -> dict:
     (artifacts_dir / "phase8_funnel_reconstruction.json").write_text(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )
-    print(json.dumps({s: result[s]["verification"] for s in result}, indent=2, default=str))
+    print(json.dumps(
+        {s: result[s]["verification"] for s in result if s != "_reconstructed_identities"},
+        indent=2, default=str,
+    ))
     return result
 
 
