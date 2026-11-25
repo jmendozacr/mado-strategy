@@ -67,8 +67,8 @@ uv run python ../research/loss-pattern-discovery/stats/visualize.py
 ## SHA
 
 - Base (Phase 3): `f040a47aa65e0fe69730b2efe03fa69c3973a998`.
-- This phase's commit: recorded in the commit that includes this document (see `git log` on
-  `research/loss-pattern-discovery`).
+- This phase's commit: `370d434` (fix + re-verification), this doc's own SHA recorded in the same
+  follow-up commit pattern used in Phase 3.
 
 ## Limitations carried forward
 
