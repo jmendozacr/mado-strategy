@@ -371,3 +371,77 @@ and a 5-seed sensitivity check showed the sign stays negative but the magnitude 
 -2.61pp with zero of five seeds reaching significance -- verdict `SENSITIVE_TO_CONTROL_DESIGN`. The
 recovery-to-entry primary endpoint moved from +1.66pp to +1.11pp, still crossing zero -- verdict
 `NO_DIFFERENTIAL_RECOVERY_EVIDENCE` confirmed, not reversed.
+
+## Phase 4 specs (S43+)
+
+- S43 (new question, verbatim): distinct from continuation/recovery -- do different FAILURE
+  MECHANISMS exist within losing trades, and what observable information characterizes them? Two
+  temporally-separated questions: A pre-entry (known before the trade began) vs. B during-the-trade
+  (the path from entry to SL) -- never use B to retroactively claim A was predictable. Descriptive
+  only this phase, no trading signals yet.
+- S44 (data audit first, verbatim): reuse `schema/events.py`, `extract/from_causal_lookahead_audit.py`,
+  `eligibility/stop_eligibility.py`, `behavior/post_stop_metrics.py`, `common/ny_time.py`; never
+  assume ledger timestamps equal an M15 bar's close (the exact mistake fixed for synthetic controls
+  in Phase 3.1 must not be reintroduced here); determine what is reconstructible at each of 6 stages
+  (signal activation, order placement, entry execution, open, SL confirmed, post-SL) and the last
+  available M15 datum at each.
+- S45 (pre-entry dataset, verbatim): both wins and losses, same extraction methodology on both (the
+  comparison is the point -- loss-only features tell nothing about specificity). Small, interpretable
+  variable set across identification/volatility/geometry/temporal/directional groups (never a huge
+  indicator catalog); each feature documented with name/formula/source/availability
+  instant/unit/missing-value treatment/causality test; continuous values preserved, never prematurely
+  bucketed; any CRT/Key-Level/anchor-dependent feature's provenance registered before use (none were
+  used this phase).
+- S46 (pre-SL trajectory reconstruction, verbatim): for every confirmed SL, reconstruct entry-to-SL
+  using the same causal conventions as prior phases. Fundamental caution: never reconstruct an
+  intrabar order M15 cannot observe; never attribute the entry or exit bar's own extremes to "before
+  the event" without flagging ambiguity; never confuse the planned SL price with the actual executed
+  (possibly gapped) price; never fabricate a zero MFE pre-SL when information is insufficient --
+  exclude or flag explicitly, keep alternate scenarios separate.
+- S47 (multidimensional taxonomy, verbatim): duration / favorable-excursion-before-SL / path-
+  integrity as INDEPENDENT dimensions, never 5 mutually-exclusive labels; threshold justification
+  required before computing anything, numeric cuts only with a defensible economic/technical
+  criterion (continuous distributions otherwise); never choose thresholds using future returns or
+  searching for the most profitable split.
+- S48 (win-vs-loss comparison, verbatim): two separate datasets, `pre_entry_features` and
+  `failure_path_features`; never use post-SL-only-known characteristics to retrospectively judge
+  which trades "could have been avoided"; comparison limited to EXECUTED trades (L1 selection-bias
+  limitation still open, not blocking, not presented as a claim about every CRT opportunity).
+- S49 (Atlas + stats, verbatim): answer the 10 questions in section 8 of the brief; reuse the 4
+  predeclared period buckets; visible sample sizes; one-way stratification only, no combinatorial
+  subgroup search; descriptive stats primarily (distributions/medians/quantiles/rates/uncertainty/
+  predeclared comparisons), no clustering/ML, no mass correlation search against future returns, no
+  win-rate-maximizing combination search.
+- S50 (Layer A/B/C separation, verbatim): Layer A (pre-entry) and Layer B (at-stop/failure-path) must
+  stay isolated from Layer C (post-stop) while designing/computing the taxonomy -- no post-SL MFE,
+  recovery, continuation, or future return may select a failure-mode group.
+- S51 (protection, unchanged): same read-only boundary and human-pilot protection as Phases 1-3.1.
+- S52 (15 required tests + full suite, verbatim): see `tests/test_phase4_requirements.py`'s coverage-
+  map docstring for the 1-15 requirement-to-test mapping.
+- S53 (deliverables, verbatim): A Pre-Entry Feature Audit; B Pre-Stop Trajectory Reconstruction; C
+  Failure Mode Taxonomy; D Failure Mode Atlas; E Research Findings (5 categories); F Phase-5
+  recommendation (one priority hypothesis, or an explicit statement that none is justified); G
+  Checkpoint. Commit and push to origin if correct; stop at the end -- no ML, no RR optimization, no
+  bots, no CRT modification.
+
+## Phase 4 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T29 | S44 | inline | done | `docs/22-phase4-design-and-pre-registration.md` |
+| T30 | S45 | inline | done | `features/pre_entry_features.py`; 6 tests; 100% coverage on 2047 trades |
+| T31 | S46 | inline | done | `behavior/pre_stop_trajectory.py`; 9 tests; 79.95%/12.76%/7.29% reconstructible/ambiguous/insufficient |
+| T32 | S47 | inline (depends on T31) | done | `failure_modes/taxonomy.py`; 5 tests |
+| T33 | S48,S49 (depends on T30-T32) | inline | done | `stats/failure_mode_atlas.py`; `docs/23-26` |
+| T34 | S52 | inline | done | `tests/test_phase4_requirements.py` (3 new); full suite 106 passed, lint-imports 11/11 |
+| T35 | S50,S53 | inline | done | `docs/27-28` |
+
+### Phase-4 headline
+
+71.7% of reconstructible confirmed stops (1009/1262) show at least partial (>=0.25R) favorable
+excursion before failing -- a straight slide to the stop is the minority pattern. 20.05% of confirmed
+stops cannot have a pre-SL path reconstructed at all (same/adjacent-bar entry-to-exit). No pre-entry
+feature shows a stark win/loss median separation. 1AM shows a markedly different failure-path
+integrity profile than 9AM (31.2% vs. 15.3% ambiguous/insufficient) -- a THIRD independent signal
+(after Phase 2/3's MAE and recovery findings) pointing at an unexplained 1AM/9AM mechanism, proposed
+as the priority Phase-5 hypothesis (not evaluated this phase).
