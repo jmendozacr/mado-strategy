@@ -306,3 +306,68 @@ leakage). T9 = final limitations/risks doc + the A-E report to the user.
 | T20 | S31,S32 | inline (depends on T18) | done | `behavior/recovery_analysis.py` + 5 tests; `docs/15-recovery-to-entry-analysis.md` |
 | T21 | S30 (denominator fix) | inline | done | `stats/eligibility_report.py` now reports both denominators explicitly |
 | T22 | S35 | inline | done | `docs/13-16`, this checkpoint |
+
+## Phase 3.1 specs (S36+)
+
+- S36 (premise, verbatim): independent review of published Phase-3 code found an additional causal
+  defect in the synthetic controls: `control_to_event_record`/`recovery_control_to_event_record` used
+  `bisect_left` to find the reference bar then took its `.close`, while attributing that price to an
+  event timestamped at `control.control_ts` (the bar's OWN OPEN) -- the close is only available 15
+  minutes later. Must confirm against both the D3/C2 ledger's own exit semantics and the M15 candle
+  convention before changing anything, define an explicit temporal contract (reference_bar_open,
+  reference_bar_close, reference_price_available_at, event_effective_at, first_actionable_at,
+  post_event_observation_start), choose Option A (close-referenced) or Option B (open-referenced)
+  on consistency grounds alone -- never by which produces better statistics -- and re-verify whether
+  Phase 3's findings survive.
+- S37 (fix verification, verbatim cautions): fixing the control's timestamp/price must not
+  accidentally exclude the first bar that truly begins after the reference price was available, nor
+  include the bar whose own data defined that price as if it were subsequent movement. Re-check NY
+  matching/ATR/exclusion/target-distance-vs-risk-distance still hold under the new contract; never
+  recalibrate tolerances to chase a more favorable result.
+- S38 (tests, verbatim 11 checks + 2 explicit boundary cases): RED reproduction with the exact
+  O/H/L/C=1.1000/1.1050/1.0990/1.1040 M15 10:00-10:15 bar showing the old code would use 1.1040 "at"
+  10:00; then GREEN checks for reference-price availability, no future closes, no reuse of the
+  reference bar as subsequent movement, no bisect off-by-one, correct 1h/4h/1d/3d boundaries
+  (including an exact-close boundary and a horizon ending mid-bar), correct NY/EST-EDT matching,
+  ATR using only available information, unchanged gap/weekly-closure treatment, determinism under a
+  fixed seed, and no contamination of original sources.
+- S39 (re-run, verbatim constraints): same 1262 eligible events (unless documented otherwise), same
+  0.25R threshold, same horizons, same statistical criteria, same seeds, same primary 24h recovery
+  endpoint, same 5pp relevance bar -- never tuned after seeing results. Mandatory 3-way comparison
+  table (Phase 2 `4aadf26` / Phase 3 `f040a47` / Phase 3.1) specifically for: continuation-vs-control
+  (Phase 3's ~-4.4pp from 4h onward -- does it persist?), recovery-to-entry 24h (Phase 3's +1.66pp,
+  95% CI [-1.67,+5.06] -- still inconclusive after the fix?), and the 1h/4h recovery descriptive diffs
+  (~+5.5pp -- do they change?) -- without promoting a secondary horizon to the new primary endpoint.
+- S40 (limited robustness, verbatim): explicitly exploratory seed-sensitivity check for the
+  continuation metric only, across multiple equally-valid control-sampling seeds, never presenting
+  only the best seed; report the range and sign stability with the rest of the design held fixed;
+  never interpret 4h/1d/3d as three independent confirmations when they share `first_move_direction`;
+  no subgroup search, no threshold optimization.
+- S41 (two independent verdicts, verbatim categories): A -- continuation vs. normal market:
+  `DIFFERENCE_PERSISTS_EXPLORATORY` / `DIFFERENCE_DISAPPEARS` / `SENSITIVE_TO_CONTROL_DESIGN` /
+  `INCONCLUSIVE`. B -- recovery to original entry: `NO_DIFFERENTIAL_RECOVERY_EVIDENCE` /
+  `EXPLORATORY_DIFFERENTIAL_RECOVERY` / `INCONCLUSIVE`. Never combined; neither alone proves
+  profitability; 2015-2026 remains previously-examined data, not genuine OOS.
+- S42 (protection/deliverables, unchanged from Phase 3's S34/S35): same read-only boundary and human-
+  pilot protection; Deliverables A-F as listed in section 10 of this phase's brief; commit on
+  `research/loss-pattern-discovery` and push to origin only if everything is correct; stop at the end.
+
+## Phase 3.1 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T23 | S36 | inline | done | confirmed via `detector/backtest/simulate.py:170` (`_resolve_level_exit`) that real events never had this defect; `docs/18-phase3.1-causal-contract-and-fix.md` |
+| T24 | S36,S37 | inline | done | `control/sampling.py` + `behavior/recovery_analysis.py`: `.close` -> `.open` at the reference bar |
+| T25 | S38 | inline | done | `tests/test_control_price_causality.py`, 6 tests (RED + 5 GREEN); full suite 83 passed, lint-imports 11/11 |
+| T26 | S39 (depends on T24) | inline | done | real-data re-run; `docs/19-phase3.1-results-comparison.md` |
+| T27 | S40 (depends on T26) | inline | done | `stats/seed_sensitivity.py`, 5 seeds; `docs/20-control-robustness-and-seed-sensitivity.md` |
+| T28 | S41,S42 | inline | done | `docs/21-verdict-and-checkpoint-phase3.1.md`: continuation `SENSITIVE_TO_CONTROL_DESIGN`, recovery `NO_DIFFERENTIAL_RECOVERY_EVIDENCE` |
+
+### Phase-3.1 headline
+
+Fixing the control's price-causality defect (close -> open at the reference bar) shrank Phase 3's
+continuation-vs-control gap from -4.4pp (CI excluding zero) to -2.6pp (CI crossing zero) at 4h/1d/3d,
+and a 5-seed sensitivity check showed the sign stays negative but the magnitude ranges -0.16pp to
+-2.61pp with zero of five seeds reaching significance -- verdict `SENSITIVE_TO_CONTROL_DESIGN`. The
+recovery-to-entry primary endpoint moved from +1.66pp to +1.11pp, still crossing zero -- verdict
+`NO_DIFFERENTIAL_RECOVERY_EVIDENCE` confirmed, not reversed.

@@ -10,10 +10,10 @@ conclusions.
 
 ## Status
 
-Phase 3 (control-group + post-stop-metric corrections, recovery-to-entry analysis) — see
-`../../odd/tasks/loss-pattern-discovery.md` for the live task list,
-`docs/06-limitations-and-decisions-log.md` for the running decision log, and
-`docs/17-verdict-and-checkpoint.md` for the current verdict (`NO_DIFFERENTIAL_RECOVERY_EVIDENCE`).
+Phase 3.1 (control price-causality fix) — see `../../odd/tasks/loss-pattern-discovery.md` for the
+live task list, `docs/06-limitations-and-decisions-log.md` for the running decision log, and
+`docs/21-verdict-and-checkpoint-phase3.1.md` for the current verdicts: continuation
+`SENSITIVE_TO_CONTROL_DESIGN`, recovery `NO_DIFFERENTIAL_RECOVERY_EVIDENCE`.
 
 ## Layout
 
@@ -37,7 +37,11 @@ research/loss-pattern-discovery/
     14-atlas-corrected-vs-original.md     Deliverable B (explicit before/after comparison)
     15-control-group-audit.md             Deliverable C (match-quality evidence)
     16-recovery-to-entry-analysis.md       Deliverable D (H1/H0, primary + secondary endpoints)
-    17-verdict-and-checkpoint.md          Deliverable E/F (verdict + checkpoint)
+    17-verdict-and-checkpoint.md          Deliverable E/F (verdict + checkpoint, Phase 3)
+    18-phase3.1-causal-contract-and-fix.md   control price-causality diagnosis + temporal contract
+    19-phase3.1-results-comparison.md        Phase 2 vs. 3 vs. 3.1 explicit comparison
+    20-control-robustness-and-seed-sensitivity.md  match-quality + 5-seed continuation check
+    21-verdict-and-checkpoint-phase3.1.md    current verdicts + checkpoint
   schema/      event dataclasses (features_pre_entry / features_at_stop / post_stop_outcomes)
   extract/     reproducible extractors from source experiments into the event schema
   eligibility/ stop-event eligibility classification (Phase 2, Unit A)

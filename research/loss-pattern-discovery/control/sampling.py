@@ -371,28 +371,43 @@ def control_to_event_record(control: ControlEvent, series: OHLCSeries) -> EventR
     (`behavior/recovery_analysis.py`) builds its own `target_distance`-based
     synthetic record instead, since that endpoint's whole point is the
     distance actually traveled to the real entry price, not the nominal
-    risk."""
+    risk.
+
+    Phase-3.1 fix: the reference price is the reference bar's OWN OPEN, not
+    its close. `control.control_ts` is that bar's open timestamp (the same
+    convention `exit_ts` uses for a real SL event); using its close here
+    would attribute a price not actually known until
+    `control_ts + M15_DURATION` to an event timestamped at `control_ts` --
+    exactly the Defect-B-shaped leak this module's own docstring warns
+    about elsewhere, just not yet applied to this one spot. A real event's
+    own `exit_price` is NEVER its exit bar's close either (see
+    `detector/backtest/simulate.py::_resolve_level_exit` -- it is the
+    pre-known stop/target level, or that bar's own OPEN under a gap): using
+    this bar's open keeps the control causally equivalent to a real event,
+    and needs no change to `compute_post_stop_behavior`'s existing
+    `_bisect_after` boundary, which already starts post-event measurement
+    at the NEXT bar for both groups identically."""
     timestamps = timestamps_for(series)
     idx = bisect.bisect_left(timestamps, control.control_ts)
-    close_at_control = series.candles[idx].close
+    open_at_control = series.candles[idx].open
     bullish = control.direction == "bullish"
     entry_price = (
-        close_at_control + control.risk_price if bullish else close_at_control - control.risk_price
+        open_at_control + control.risk_price if bullish else open_at_control - control.risk_price
     )
     take_profit = (
         entry_price + 2 * control.risk_price if bullish else entry_price - 2 * control.risk_price
     )
 
     identification = Identification(
-        event_id=control.control_id, source_path="control:sampled", source_version="v2",
+        event_id=control.control_id, source_path="control:sampled", source_version="v3",
         instrument=control.instrument, session_label=control.origin_model,
         config_id="control", original_direction=control.direction,
     )
     operation = OriginalOperation(
-        entry_price=entry_price, stop_loss=close_at_control, take_profit=take_profit,
+        entry_price=entry_price, stop_loss=open_at_control, take_profit=take_profit,
         risk_price=control.risk_price, activation_ts=None, order_placed_ts=None,
         entry_ts=control.control_ts - timedelta(hours=1), exit_ts=control.control_ts,
-        exit_price=close_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
+        exit_price=open_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
         exit_reason=None, exit_reason_basis=ExitReasonBasis.UNKNOWN,
         ambiguous_bar=False, gap_filled=False, has_partial_exit=False,
     )
@@ -402,7 +417,7 @@ def control_to_event_record(control: ControlEvent, series: OHLCSeries) -> EventR
         planned_risk_price=control.risk_price, planned_reward_price=2 * control.risk_price, planned_rr=2.0,
     )
     features_at_stop = FeaturesAtStop(
-        exit_ts=control.control_ts, exit_price=close_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
+        exit_ts=control.control_ts, exit_price=open_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
         speed_to_stop_s=None, ambiguous_bar=False, gap_filled=False,
     )
     return EventRecord(identification, operation, features_pre_entry, features_at_stop)

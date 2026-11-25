@@ -65,28 +65,33 @@ def recovery_control_to_event_record(control: ControlEvent, series: OHLCSeries) 
     away from the control's reference price -- not `risk_price` -- because
     this endpoint is specifically about the distance actually traveled to
     the real entry price, which a gap fill can make differ from the nominal
-    risk."""
+    risk.
+
+    Phase-3.1 fix: uses the reference bar's OWN OPEN, not its close -- see
+    `control.sampling.control_to_event_record`'s docstring for the full
+    causal-equivalence reasoning (a real event's own `exit_price` is never
+    its exit bar's close either)."""
     timestamps = timestamps_for(series)
     idx = bisect.bisect_left(timestamps, control.control_ts)
-    close_at_control = series.candles[idx].close
+    open_at_control = series.candles[idx].open
     bullish = control.direction == "bullish"
     entry_price = (
-        close_at_control + control.target_distance if bullish else close_at_control - control.target_distance
+        open_at_control + control.target_distance if bullish else open_at_control - control.target_distance
     )
     take_profit = (
         entry_price + 2 * control.target_distance if bullish else entry_price - 2 * control.target_distance
     )
 
     identification = Identification(
-        event_id=f"recovery:{control.control_id}", source_path="control:sampled", source_version="v2",
+        event_id=f"recovery:{control.control_id}", source_path="control:sampled", source_version="v3",
         instrument=control.instrument, session_label=control.origin_model,
         config_id="control", original_direction=control.direction,
     )
     operation = OriginalOperation(
-        entry_price=entry_price, stop_loss=close_at_control, take_profit=take_profit,
+        entry_price=entry_price, stop_loss=open_at_control, take_profit=take_profit,
         risk_price=control.target_distance, activation_ts=None, order_placed_ts=None,
         entry_ts=control.control_ts - dt.timedelta(hours=1), exit_ts=control.control_ts,
-        exit_price=close_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
+        exit_price=open_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
         exit_reason=None, exit_reason_basis=ExitReasonBasis.UNKNOWN,
         ambiguous_bar=False, gap_filled=False, has_partial_exit=False,
     )
@@ -97,7 +102,7 @@ def recovery_control_to_event_record(control: ControlEvent, series: OHLCSeries) 
         planned_rr=2.0,
     )
     features_at_stop = FeaturesAtStop(
-        exit_ts=control.control_ts, exit_price=close_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
+        exit_ts=control.control_ts, exit_price=open_at_control, outcome=Outcome.LOSS, r_multiple=-1.0,
         speed_to_stop_s=None, ambiguous_bar=False, gap_filled=False,
     )
     return EventRecord(identification, operation, features_pre_entry, features_at_stop)
