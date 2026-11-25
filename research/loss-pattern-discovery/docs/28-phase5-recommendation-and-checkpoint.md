@@ -82,8 +82,8 @@ uv run python ../research/loss-pattern-discovery/stats/failure_mode_atlas.py
 ## SHA
 
 - Base (Phase 3.1): `a030c449f0b65c30ab4b6cbaa620966c557ab169`.
-- This phase's commit: recorded in the same follow-up-commit pattern used in Phases 3/3.1 (see
-  `git log` on `research/loss-pattern-discovery`).
+- This phase's commit: `632e06b` (features + trajectory + taxonomy + Atlas), this doc's own SHA
+  recorded in the same follow-up-commit pattern used in Phases 3/3.1.
 
 ## Open limitations
 
