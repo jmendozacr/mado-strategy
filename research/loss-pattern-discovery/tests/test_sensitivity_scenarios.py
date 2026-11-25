@@ -79,6 +79,37 @@ def _build():
     return records, primary, timing_by_id, uncertainty_by_id
 
 
+def _build_both_models_ambiguous():
+    """Phase 7 correction fixture (requirement 3): BOTH models carry
+    NOT-verifiable same-bar events, with different counts/rates, so the
+    cross-model pairing bug (S2 using (min,min)/(max,max) instead of
+    (min,max)/(max,min)) is actually exercised -- the original fixture's
+    9AM had zero ambiguous E0 events, which masked the bug.
+
+    1am: e0v (verifiable), e0nv (not), e1, win -> n=4, rate_min=2/4=0.5, rate_max=3/4=0.75
+    9am: e0v, e0nv1, e0nv2, e1, win          -> n=5, rate_min=2/5=0.4, rate_max=4/5=0.8
+    Correct Gap_min = 0.5 - 0.8 = -0.30 ; Gap_max = 0.75 - 0.4 = +0.35
+    (The buggy pairing instead gave +0.10 / -0.05 -- even the wrong sign
+    relative to which is "lower" and which is "upper".)
+    """
+    records = [
+        _record("1am-e0v", "1am", TS, TS, entry_price=1.09, stop_loss=1.08),
+        _record("1am-e0nv", "1am", TS, TS, entry_price=1.10, stop_loss=1.09),
+        _record("1am-e1", "1am", TS, TS_NEXT, entry_price=1.10, stop_loss=1.09),
+        _record("1am-win", "1am", TS, TS, outcome=Outcome.WIN),
+        _record("9am-e0v", "9am", TS, TS, entry_price=1.09, stop_loss=1.08),
+        _record("9am-e0nv1", "9am", TS, TS, entry_price=1.10, stop_loss=1.09),
+        _record("9am-e0nv2", "9am", TS, TS, entry_price=1.10, stop_loss=1.09),
+        _record("9am-e1", "9am", TS, TS_NEXT, entry_price=1.10, stop_loss=1.09),
+        _record("9am-win", "9am", TS, TS, outcome=Outcome.WIN),
+    ]
+    series_by_instrument = _series()
+    timing_by_id = classify_all_timing(records, series_by_instrument)
+    uncertainty_by_id = classify_all_intrabar_uncertainty(records, timing_by_id, series_by_instrument)
+    primary = build_primary_population(records)
+    return records, primary, timing_by_id, uncertainty_by_id
+
+
 def test_s0_matches_hand_computed_rates():
     _, primary, timing_by_id, _ = _build()
     result = scenario_s0(primary, timing_by_id)
@@ -95,22 +126,17 @@ def test_s1_counts_only_next_bar_not_same_bar():
     assert result["rate_9am"] == pytest.approx(1 / 3)
 
 
-def test_s2_upper_bound_equals_s0_exactly():
-    # By construction: the upper bound keeps the engine's own convention for
-    # every category, including not-verifiable E0 -- identical to S0.
+def test_s2_per_model_rates_match_s0_when_no_ambiguity_in_that_model():
+    # 9am has no not-verifiable E0 at all in this fixture -- its own
+    # rate_min must equal its own rate_max exactly (no uncertainty to bound).
     _, primary, timing_by_id, uncertainty_by_id = _build()
+    s2 = scenario_s2(primary, timing_by_id, uncertainty_by_id)
+    assert s2["rate_9am_min"] == pytest.approx(s2["rate_9am_max"])
+    assert s2["rate_1am_min"] == pytest.approx(2 / 4)  # e0nv excluded from the numerator only
+    assert s2["rate_1am_max"] == pytest.approx(3 / 4)  # engine convention, == S0's rate_1am
     s0 = scenario_s0(primary, timing_by_id)
-    s2 = scenario_s2(primary, timing_by_id, uncertainty_by_id)
-    assert s2["upper_bound"] == s0
-
-
-def test_s2_lower_bound_never_exceeds_upper_bound():
-    _, primary, timing_by_id, uncertainty_by_id = _build()
-    s2 = scenario_s2(primary, timing_by_id, uncertainty_by_id)
-    assert s2["lower_bound"]["rate_1am"] <= s2["upper_bound"]["rate_1am"]
-    assert s2["lower_bound"]["rate_1am"] == pytest.approx(2 / 4)  # e0nv excluded from the numerator only
-    # 9am has no not-verifiable E0 at all -- bounds collapse to one point.
-    assert s2["lower_bound"]["rate_9am"] == pytest.approx(s2["upper_bound"]["rate_9am"])
+    assert s2["rate_1am_max"] == pytest.approx(s0["rate_1am"])
+    assert s2["rate_9am_max"] == pytest.approx(s0["rate_9am"])
 
 
 def test_s2_never_recodes_the_indeterminate_event_as_win_or_non_entry():
@@ -119,6 +145,73 @@ def test_s2_never_recodes_the_indeterminate_event_as_win_or_non_entry():
     indeterminate = next(r for r in records if r.identification.event_id == "1am-e0nv")
     assert indeterminate.operation.outcome is Outcome.LOSS
     assert indeterminate.operation.entry_ts is not None
+
+
+def test_s2_difference_bounds_use_cross_model_pairing_not_same_scenario_pairing():
+    # The regression this corrects: Gap_min must be rate_1am_min -
+    # rate_9am_MAX (not rate_9am_min), and Gap_max must be rate_1am_max -
+    # rate_9am_MIN (not rate_9am_max). Both models carry ambiguous events
+    # here, with different rates, so the wrong pairing gives a visibly
+    # different (and here, even wrong-signed-relative-order) answer --
+    # see red_check evidence in docs/46-phase6-sensitivity-correction.md.
+    _, primary, timing_by_id, uncertainty_by_id = _build_both_models_ambiguous()
+    s2 = scenario_s2(primary, timing_by_id, uncertainty_by_id)
+    assert s2["rate_1am_min"] == pytest.approx(0.5)
+    assert s2["rate_1am_max"] == pytest.approx(0.75)
+    assert s2["rate_9am_min"] == pytest.approx(0.4)
+    assert s2["rate_9am_max"] == pytest.approx(0.8)
+    assert s2["identified_interval"]["gap_min"] == pytest.approx(0.5 - 0.8)
+    assert s2["identified_interval"]["gap_max"] == pytest.approx(0.75 - 0.4)
+    # The buggy (same-scenario-pairing) computation would have produced
+    # +0.10 and -0.05 -- neither matches, and that pairing even inverts
+    # which one is larger.
+    wrong_lower = 0.5 - 0.4
+    wrong_upper = 0.75 - 0.8
+    assert s2["identified_interval"]["gap_min"] != pytest.approx(wrong_lower)
+    assert s2["identified_interval"]["gap_max"] != pytest.approx(wrong_upper)
+
+
+def test_s2_identified_interval_contains_every_extreme_combination():
+    # Requirement 4: the identified interval must contain the difference
+    # under ALL FOUR combinations of {1am at min/max} x {9am at min/max},
+    # not just the two combinations actually reported.
+    _, primary, timing_by_id, uncertainty_by_id = _build_both_models_ambiguous()
+    s2 = scenario_s2(primary, timing_by_id, uncertainty_by_id)
+    gap_min, gap_max = s2["identified_interval"]["gap_min"], s2["identified_interval"]["gap_max"]
+    combos = [
+        s2["rate_1am_min"] - s2["rate_9am_min"],
+        s2["rate_1am_min"] - s2["rate_9am_max"],
+        s2["rate_1am_max"] - s2["rate_9am_min"],
+        s2["rate_1am_max"] - s2["rate_9am_max"],
+    ]
+    for combo in combos:
+        assert gap_min - 1e-9 <= combo <= gap_max + 1e-9
+
+
+def test_s2_identified_interval_is_distinct_from_the_statistical_ci():
+    # Requirement 5: the point identification bounds and the CI around the
+    # identified set are reported as two separate things, never conflated.
+    _, primary, timing_by_id, uncertainty_by_id = _build_both_models_ambiguous()
+    s2 = scenario_s2(primary, timing_by_id, uncertainty_by_id)
+    assert "identified_interval" in s2 and "ci_for_identified_set" in s2
+    assert set(s2["identified_interval"].keys()) == {"gap_min", "gap_max"}
+    ci = s2["ci_for_identified_set"]
+    assert {"ci_low", "ci_high", "ci_level", "method"} <= set(ci.keys())
+    # The CI construction is explicitly documented as NOT simply reusing
+    # either individual scenario's own CI -- it is its own named method.
+    assert "outer-envelope" in ci["method"]
+
+
+def test_s2_statistical_ci_is_at_least_as_wide_as_the_identified_interval():
+    # Requirement 6: a CI meant to cover the whole identified SET can never
+    # be narrower than the identification bounds themselves -- it only adds
+    # sampling uncertainty on top.
+    _, primary, timing_by_id, uncertainty_by_id = _build_both_models_ambiguous()
+    s2 = scenario_s2(primary, timing_by_id, uncertainty_by_id)
+    ci = s2["ci_for_identified_set"]
+    identified = s2["identified_interval"]
+    assert ci["ci_low"] <= identified["gap_min"] + 1e-9
+    assert ci["ci_high"] >= identified["gap_max"] - 1e-9
 
 
 def test_s3_excludes_the_not_verifiable_e0_event_and_reports_it():

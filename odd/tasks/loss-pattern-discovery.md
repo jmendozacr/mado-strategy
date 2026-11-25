@@ -594,3 +594,105 @@ are under 1pp wide. Verdict: `NEXT_BAR_DIFFERENCE_PERSISTS` -- the 1AM/9AM assoc
 artifact of the engine's same-bar SL-wins-ties convention. The one verified structural difference
 between models (confirmation window timing, 2h vs. 1h30m) remains an untested candidate mechanism,
 proposed as the priority Phase-7 hypothesis (not evaluated this phase).
+
+## Phase 7 specs (S73+)
+
+- S73 (checkpoint + mandatory correction, verbatim): start from checkpoint `986f3be`. Before any
+  Phase 7 analysis: reproduce with a red test, then fix, Phase 6's S2 partial-identification bug
+  (pairing the same scenario on both models instead of the correct cross-model extrema
+  `Gap_min=rate_1am_min-rate_9am_max`, `Gap_max=rate_1am_max-rate_9am_min`); add tests for uncertain
+  events in BOTH models; verify the four extreme combinations are contained; separate point
+  identification bounds from a statistical CI on the identified set; never treat two single-
+  scenario CIs as automatically valid for the whole set; preserve `docs/40` unchanged as historical
+  reference; document the correction's impact on the Phase 6 verdict.
+- S74 (window reconstruction, verbatim): reconstruct `window_start_at`/`window_end_at`/
+  `confirmation_bar_open`/`confirmation_available_at`/`order_placed_at`/`entry_filled_at` from
+  `detector/causal/htf_trigger.py` + the ACTUAL causal pipeline that produced the ledger -- never
+  confuse `confirmation_bar_open` with `confirmation_available_at`, nor `order_placed_at` with
+  `entry_filled_at`; respect `fill_pass_c`'s existing causal corrections.
+- S75 (discovery during S74, not pre-specified in the brief): tracing the real generating script
+  (`run_d1_d2_d3.py`'s "D3" config) revealed the 9AM window Phase 6 documented (90min,
+  09:00-10:30 NY, from the static `MODEL_9AM` config) is NOT what generated this ledger -- the real
+  window is 240min (09:00-13:00 NY, `causal_anchor_v2.py::new_9am_window_fns`). 1AM is unaffected.
+  Corrected via a banner on `docs/41`, never a silent rewrite; verified against all 2043 real
+  events (0 violations after the fix, vs. 1080 before it).
+- S76 (temporal feature dataset, verbatim): `event_id`/`origin_model`/`instrument`/`direction`/
+  `period_bucket`; window fields; `confirmation_elapsed_minutes`/`remaining`/`relative_position`/
+  `bar_position`; `order_to_fill_minutes` (descriptive only, never a pre-entry predictor -- it
+  resolves at fill, after the window-position fact this phase studies); reused `risk_atr`/
+  `atr_m15_at_entry`/`risk_price`/`planned_rr` from Phase 4, unmodified. Every field's source/
+  formula/availability/unit/missing-treatment/causality-test documented before use.
+- S77 (distribution audit, verbatim): continuous distributions only, one FIXED pre-declared
+  30-minute bin width (never tuned on E1), by model/instrument/period, before any adjustment.
+- S78 (E1 endpoint, verbatim): same primary population/denominators as Phase 6; E1 =
+  `confirmed_stop AND duration_bars==1`, unconditional incidence among executed trades, never
+  framed as "P(SL at bar 1 | survived bar 0)" (a different estimand this phase does not compute).
+  Reproduce Phase 6's +5.38pp exactly before adjusting.
+- S79 (association models, verbatim): Model 0 baseline; Model 1 risk_atr-standardized (reusing
+  Phase 5's method); Model 2 timing-standardized, run TWICE (absolute minutes AND relative
+  position -- NOT equivalent, since window durations differ); Model 3 one-way by instrument/period
+  (never a joint grid), reusing the SAME global quintile cutpoints as Model 2 for every subgroup
+  (never re-derived per subgroup -- this is both a robustness fix for empty subgroups and a
+  methodological one, consistent with Phase 5's cutpoints-fixed-once discipline).
+- S80 (common support, verbatim): absolute-minutes and relative-position common support are
+  checked and reported SEPARATELY, never conflated; if either fails the pre-existing 30%-
+  unsupported threshold, that specific adjustment is not used as evidence either way.
+- S81 (window duration vs. market hour, verbatim): never present excluding late-window
+  confirmations from this descriptive/associative analysis as a contrafactual "what if the window
+  were shorter" backtest -- that would require a different, explicitly causal design this phase
+  does not attempt.
+- S82 (selection/candidate audit, read-only, verbatim): audit whether the source pipeline retains
+  candidate/non-executed-signal counts; `funnel_2015plus_run2.csv` does (model-specific
+  `windows_considered`/`triggers_with_key_level`/`model1_confirmed`/`never_filled` columns; a
+  caveat flagged, not resolved, on `candidates_built`/`filled` appearing pair- not model-level);
+  never re-generate it, never declare a global window-width effect proven from executed trades
+  alone.
+- S83 (statistics, verbatim): 95% CI on the primary endpoint; block bootstrap; explicit sample
+  sizes/denominators/missing-data treatment; one-way sensitivity only (instrument, period, absolute
+  vs. relative position, common-support exclusion), never a combinatorial search for the most
+  favorable subgroup; 2015-2026 remains previously-examined, not genuine OOS.
+- S84 (20 required tests + full suite, verbatim): see `tests/test_phase7_requirements.py`'s
+  coverage-map docstring for the 1-20 requirement-to-test mapping; re-run the existing 150 tests;
+  never hide or change a test just to get green.
+- S85 (deliverables, verbatim): A Phase 6 Sensitivity Correction; B Confirmation Window
+  Reconstruction; C Temporal Feature Dataset; D Confirmation Timing Distribution; E E1 Association
+  Analysis; F Support and Selection Audit; G Research Verdict -- classify into exactly one of
+  `TIMING_ASSOCIATION_EXPLAINS_MUCH_OF_GAP`, `TIMING_ASSOCIATION_PARTIALLY_REDUCES_GAP`,
+  `E1_DIFFERENCE_PERSISTS_AFTER_TIMING_ADJUSTMENT`, `INSUFFICIENT_TEMPORAL_OVERLAP`,
+  `INCONCLUSIVE`, with numeric justification, never converting a statistical reduction into a
+  causal demonstration; H Phase 8 Recommendation (one hypothesis, not evaluated); I Checkpoint.
+  Commit and push to origin if correct; stop at the end of Phase 7 -- no Phase 8 without explicit
+  authorization, no contrafactual window re-simulation, no RR/SL/TP/entry-parameter optimization,
+  no ML, no new strategies.
+
+## Phase 7 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T49 | S73 | inline | done | `stats/sensitivity_scenarios.py` (S2 fix); `tests/test_sensitivity_scenarios.py` (net +4); `docs/46` |
+| T50 | S74,S75 | inline | done | `features/confirmation_window_features.py`; `tests/test_confirmation_window_features.py` (12); `docs/47`; correction banner on `docs/41` |
+| T51 | S76 | inline | done | `stats/temporal_feature_dataset.py`; `tests/test_temporal_feature_dataset.py` (4); `docs/48` |
+| T52 | S77 | inline | done | `stats/confirmation_timing_distribution.py`; `tests/test_confirmation_timing_distribution.py` (4); `docs/49` |
+| T53 | S78,S79,S80 (depends on T50,T51) | inline | done | `stats/e1_timing_association.py`; `tests/test_e1_timing_association.py` (6); `docs/50` |
+| T54 | S82 | inline | done | `docs/51` (read-only, no new module) |
+| T55 | S84 | inline | done | `tests/test_phase7_requirements.py` (1); full suite 180 passed, lint-imports 11/11 |
+| T56 | S81,S85(G,H) | inline | done | `docs/52-53` |
+
+### Phase-7 headline
+
+A mandatory pre-analysis correction (S73) fixed a real bug in Phase 6's S2 bounds (cross-model
+pairing error) -- corrected identified interval [+8.22pp, +9.63pp], verdict unaffected. The main
+investigation's own Unit A then found that Phase 6's own Model Construction Audit was wrong about
+the 9AM window: the ledger-generating pipeline (`run_d1_d2_d3.py`'s "D3" config) actually uses a
+240-minute 9AM window (09:00-13:00 NY), not the 90-minute static config Phase 6 cited -- reversing
+the "1AM has the longer window" premise entirely (1AM's 120min is now the SHORTER one). Testing
+confirmation-window POSITION as an explanation for Phase 6's +5.38pp E1 gap: standardizing on
+absolute elapsed minutes FAILS common support (50.3% of 9AM has no 1AM counterpart, since 1AM's
+window structurally cannot reach past 120 minutes) -- confirming the brief's own section-9 concern
+empirically. Standardizing on RELATIVE position within each model's own window (full common
+support; both models share an identical median relative position of 0.625) leaves the gap
+unchanged: +5.42pp vs. +5.38pp unadjusted. Verdict: `E1_DIFFERENCE_PERSISTS_AFTER_TIMING_ADJUSTMENT`
+-- confirmation timing does not explain the gap either, joining `risk_atr` (Phases 5/6) as a
+tested-and-ruled-out candidate. `atr_m15_at_entry` and `cost_to_risk_ratio` remain the only
+untested candidates from Phase 5's original list, recommended for Phase 8 (not evaluated this
+phase).

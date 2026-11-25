@@ -1,5 +1,14 @@
 # Deliverable E — Model Construction Audit (Units E + F, read-only)
 
+> **CORRECTION (Phase 7, `docs/47-confirmation-window-reconstruction.md`): the 9AM confirmation
+> window duration stated below (1h30m, 09:00-10:30 NY) is WRONG.** It was read from
+> `detector/causal/htf_trigger.py::MODEL_9AM`'s static config, but the actual pipeline that produced
+> this lab's ledger (`run_d1_d2_d3.py`'s "D3" config) routes 9AM through a WIDENED window --
+> true 09:00-13:00 NY, 240 minutes, double 1AM's 120 minutes, not shorter than it. 1AM's figures
+> below are unaffected and remain correct. This document is preserved UNCHANGED below as historical
+> reference per the Phase 7 brief's own requirement; see `docs/47` for the corrected reconstruction
+> and verification against all 2043 real events (0 violations after the fix, vs. 1080 before it).
+
 Read-only inspection of `detector/causal/htf_trigger.py` and
 `audit/2026-11-17-causal-lookahead-audit/causal_intrabar.py`. No model rule is reimplemented,
 modified, or re-tuned here -- facts cited directly from source, nothing speculative presented as
