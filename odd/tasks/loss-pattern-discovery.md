@@ -523,3 +523,74 @@ H3 check (MAE/recovery) also fails to be explained by `risk_atr`. Verdict: `RESI
 only (origin_model is not randomly assigned; no causal mechanism claimed). `cost_to_risk_ratio` and
 `atr_m15_at_entry` (both markedly different between models) are untested candidate explanations for a
 future unit, not evaluated this phase.
+
+## Phase 6 specs (S64+)
+
+- S64 (checkpoint + engine audit, verbatim): start from checkpoint `8031cb2`. Read-only inspection
+  of `detector/backtest/simulate.py`'s fill/SL/TP resolution before implementing anything; document
+  what is observable vs. a simulator convention. Never assume same-bar SL is always impossible or
+  always executable -- base classification only on what the engine and data can actually
+  demonstrate.
+- S65 (correction to the brief's own premise, discovered during the audit): the brief names
+  `detector/backtest/simulate.py` as "the" engine, but this lab's actual source ledger was produced
+  by `audit/2026-11-17-causal-lookahead-audit/causal_intrabar.py`'s `fill_pass_c` (entry fill
+  eligibility REPLACED, floored at `first_fillable_index` strictly after Model-1's own confirmation
+  bar) + `_resolve_exits` imported UNMODIFIED from `simulate.py` (SL/TP/partial resolution
+  unchanged). Verified by reading both files directly, not assumed from the brief's own framing.
+- S66 (E0-E4 decomposition, verbatim): split Phase 5's `confirmed_stop AND duration_bars<=1`
+  endpoint into same-bar/next-bar/later-SL/other-exits/open-censored, same denominator as Phase 5,
+  same eligibility criteria, never recoding ambiguous events as confirmed. Identity
+  `Gap_early == Gap_E0 + Gap_E1` verified by test, not assumed.
+- S67 (intrabar uncertainty taxonomy, verbatim): independent dimensions, not one exclusive label --
+  sequence-verifiable, engine-conservative-same-bar, same-bar-multi-level-ambiguity, gap-affected,
+  insufficient-evidence. One OHLC-based partial-identification criterion derived and used (fill
+  candle's own open vs. entry price, by price-path continuity) -- never an invented intrabar order
+  beyond that one geometric fact.
+- S68 (sensitivity scenarios S0-S3, verbatim): S0 baseline (motor original, unmodified); S1
+  next-bar alone (never framed as a conditional "survived bar 0" probability); S2 same-bar
+  indeterminate events as partial-identification bounds (never recoded as wins or non-entries); S3
+  verifiable subset only, with exclusion count/reason/selection-bias check reported explicitly.
+- S69 (model construction audit, verbatim, read-only): inspect `causal/htf_trigger.py`'s
+  `MODEL_1AM`/`MODEL_9AM` for verified structural differences (never invent mechanisms); evaluate
+  alternative explanations (trading cost, risk_atr, instrument) without re-optimizing anything.
+- S70 (statistical rigor, unchanged): same primary population/denominators/horizons/blocks/95% CI/
+  eligibility criteria/periods/seeds as Phase 5; one-way sensitivity only; no combinatorial grid; no
+  significance-chasing; 2015-2026 remains previously-examined, not genuine OOS.
+- S71 (18 required tests + full suite, verbatim): see `tests/test_phase6_requirements.py`'s
+  coverage-map docstring for the 1-18 requirement-to-test mapping; re-run the existing 121 tests;
+  never hide or change a test just to get green.
+- S72 (deliverables, verbatim): A Execution Semantics Audit; B Early-Stop Decomposition; C Intrabar
+  Uncertainty Report; D Sensitivity Analysis; E Model Construction Audit; F Research Verdict --
+  classify into exactly one of `MOSTLY_SAME_BAR_ENGINE_DEPENDENT`, `NEXT_BAR_DIFFERENCE_PERSISTS`,
+  `MIXED_ENGINE_AND_MARKET_ASSOCIATION`, `INSUFFICIENT_INTRABAR_INFORMATION`,
+  `NO_ROBUST_EARLY_STOP_DIFFERENCE`, with numeric justification; G Recommendation for Phase 7 (one
+  hypothesis, not evaluated); H Technical Checkpoint. Commit and push to origin if correct; stop at
+  the end of Phase 6 -- no Phase 7 without explicit authorization, no RR/SL/TP/entry-parameter
+  optimization, no ML, no new strategies.
+
+## Phase 6 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T42 | S64,S65 | inline | done | `docs/37-phase6-design-and-pre-registration.md` |
+| T43 | S66 | inline | done | `eligibility/stop_timing_decomposition.py`; `stats/stop_timing_decomposition.py`; `docs/38` |
+| T44 | S67 | inline | done | `eligibility/intrabar_ambiguity.py`; `stats/intrabar_uncertainty_report.py`; `docs/39` |
+| T45 | S68 (depends on T43,T44) | inline | done | `stats/sensitivity_scenarios.py`; `docs/40` |
+| T46 | S69 | inline | done | `docs/41` |
+| T47 | S71 | inline | done | `tests/test_stop_timing_decomposition.py` (10), `tests/test_intrabar_ambiguity.py` (11), `tests/test_sensitivity_scenarios.py` (7), `tests/test_phase6_requirements.py` (1); full suite 150 passed, lint-imports 11/11 |
+| T48 | S72(F,G) | inline | done | `docs/42-43` |
+
+### Phase-6 headline
+
+The brief's own premise needed one correction first: this lab's actual ledger comes from the causal
+audit's `fill_pass_c` + `simulate.py`'s UNMODIFIED `_resolve_exits`, not a raw `simulate()` call --
+verified before anything else. Decomposing Phase 5's +9.35pp early-stop gap: same-bar (`Gap_E0`,
++3.97pp) falls just BELOW the 5pp relevance bar on its own, while next-bar (`Gap_E1`, +5.38pp) --
+which has ZERO same-bar intrabar ambiguity by construction -- independently clears both the
+statistical and relevance bars. Within same-bar events, 84-92% have their entry-before-stop
+sequence verifiable from OHLC alone (price-path continuity from the fill candle's own open), not
+genuinely ambiguous; sensitivity bounds on the small remaining ambiguous subset (11 of 2043 events)
+are under 1pp wide. Verdict: `NEXT_BAR_DIFFERENCE_PERSISTS` -- the 1AM/9AM association is not an
+artifact of the engine's same-bar SL-wins-ties convention. The one verified structural difference
+between models (confirmation window timing, 2h vs. 1h30m) remains an untested candidate mechanism,
+proposed as the priority Phase-7 hypothesis (not evaluated this phase).

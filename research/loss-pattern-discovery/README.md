@@ -10,13 +10,14 @@ conclusions.
 
 ## Status
 
-Phase 5 (1AM vs. 9AM Failure Mechanism Analysis) — see
+Phase 6 (Early Stop-Loss Execution & Intrabar Ambiguity Audit) — see
 `../../odd/tasks/loss-pattern-discovery.md` for the live task list,
 `docs/06-limitations-and-decisions-log.md` for the running decision log, and
-`docs/35-research-verdict-and-checkpoint-phase5.md` for the current checkpoint. Verdict:
-`RESIDUAL_MODEL_ASSOCIATION` — the 1AM/9AM early-stop gap (+9.35pp unadjusted) does not shrink after
-standardizing for `risk_atr` (+9.93pp standardized); association, not causation (origin_model is not
-randomly assigned).
+`docs/42-research-verdict-phase6.md` for the current checkpoint. Verdict:
+`NEXT_BAR_DIFFERENCE_PERSISTS` — the component of the early-stop gap with ZERO same-bar intrabar
+ambiguity (next-bar SL alone, +5.38pp, 95% CI [2.52, 8.26]) is itself relevant and robust, so the
+1AM/9AM association from Phase 5 is not an artifact of the engine's same-bar SL-wins-ties
+convention. Still an association, not a causal or tradable claim.
 
 ## Layout
 
@@ -59,9 +60,18 @@ research/loss-pattern-discovery/
     33-failure-mechanism-explanation.md       Deliverable D (is the integrity gap mechanical?)
     34-secondary-behavioral-analysis.md       Deliverable E (H3, limited)
     35-research-verdict-and-checkpoint-phase5.md  Deliverable F (Phase 5 verdict + checkpoint)
+    36-phase5-commit-record.md                 Phase 5 commit SHA
+    37-phase6-design-and-pre-registration.md   Deliverable A (execution semantics audit) + S0-S3/taxonomy pre-registration
+    38-early-stop-decomposition.md             Deliverable B (E0/E1/E2/E3/E4 by model + instrument)
+    39-intrabar-uncertainty-report.md          Deliverable C (sequence-verifiable vs. ambiguous within E0)
+    40-sensitivity-analysis.md                 Deliverable D (S0-S3 scenario comparison)
+    41-model-construction-audit.md             Deliverable E (1AM/9AM structural differences + ruled-out explanations)
+    42-research-verdict-phase6.md              Deliverable F (Phase 6 verdict + checkpoint)
+    43-phase7-recommendation.md                Deliverable G (next hypothesis, not evaluated)
   schema/      event dataclasses (features_pre_entry / features_at_stop / post_stop_outcomes)
   extract/     reproducible extractors from source experiments into the event schema
-  eligibility/ stop-event eligibility classification (Phase 2, Unit A)
+  eligibility/ stop-event eligibility classification (Phase 2, Unit A); `stop_timing_decomposition.py`
+               (E0-E4) + `intrabar_ambiguity.py` (sequence-verifiability taxonomy), Phase 6
   features/    pre-entry (Layer A) feature extraction (Phase 4)
   behavior/    post-stop-loss (Layer C) + pre-stop (Layer B) behavior metrics, recovery_analysis.py
   failure_modes/  multidimensional failure-mode classification (Phase 4, Layer B)
@@ -70,7 +80,8 @@ research/loss-pattern-discovery/
                conversion; `trade_timing.py` bar-index-based duration/endpoint, Phase 5)
   validate/    integrity, chronology, causality and provenance validators
   stats/       descriptive statistics, bootstrap, Atlas orchestration scripts, visualizations,
-               Phase-5 early-stop hypothesis + population audit + secondary behavioral adjustment
+               Phase-5 early-stop hypothesis + population audit + secondary behavioral adjustment;
+               Phase-6 stop-timing decomposition + intrabar-uncertainty report + sensitivity scenarios
   tests/       pytest suite for every module above
   artifacts/   regenerable derived datasets + figures (gitignored — never commit generated files here)
   config.py    read-only pointer to the main worktree's gitignored `data/` directory
@@ -80,7 +91,7 @@ research/loss-pattern-discovery/
 
 ```bash
 cd detector && uv sync --extra dev   # once, per worktree
-uv run python -m pytest ../research/loss-pattern-discovery/tests   # 121 tests
+uv run python -m pytest ../research/loss-pattern-discovery/tests   # 150 tests
 uv run python ../research/loss-pattern-discovery/stats/eligibility_report.py   # Phase 2 Deliverable A
 uv run python ../research/loss-pattern-discovery/stats/atlas.py               # Phase 2/3 Deliverables B/C + recovery analysis
 uv run python ../research/loss-pattern-discovery/stats/seed_sensitivity.py    # Phase 3.1 Deliverable D (continuation seed check)
@@ -88,6 +99,9 @@ uv run python ../research/loss-pattern-discovery/stats/failure_mode_atlas.py  # 
 uv run python ../research/loss-pattern-discovery/stats/model_population_audit.py        # Phase 5 Deliverables A, B
 uv run python ../research/loss-pattern-discovery/stats/early_stop_hypothesis.py         # Phase 5 Deliverables C, D
 uv run python ../research/loss-pattern-discovery/stats/secondary_behavioral_adjustment.py  # Phase 5 Deliverable E
+uv run python ../research/loss-pattern-discovery/stats/stop_timing_decomposition.py      # Phase 6 Deliverable B
+uv run python ../research/loss-pattern-discovery/stats/intrabar_uncertainty_report.py    # Phase 6 Deliverable C
+uv run python ../research/loss-pattern-discovery/stats/sensitivity_scenarios.py          # Phase 6 Deliverable D
 uv run python ../research/loss-pattern-discovery/stats/visualize.py           # figures
 ```
 
