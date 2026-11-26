@@ -1,5 +1,11 @@
 # Results — Raza Close-Back-Inside Rule Applied to the 9AM D3/C2 Reference Candle
 
+> **Correction (2026-11-26)**: Section E's framing and Section F's claim that a prospective
+> variant "necessarily requires a wider confirmation window" are corrected and narrowed in
+> `docs/05-correction-2026-11-26.md`. No count below was changed -- only the interpretation of the
+> order-placement-vs-entry-bar timing and the composition of the `INSIDE` group. Read that
+> correction alongside this report.
+
 Checkpoint, source paths, and protocol: `docs/00-checkpoint-handoff.md`, `docs/01-protocol.md`.
 Source material: `docs/raza-crt-thread.md` (full transcription of the attached PDF). All numbers
 below come from `artifacts/raza_9am_funnel_and_outcome_report.json`, produced by
