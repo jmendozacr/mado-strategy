@@ -10,20 +10,20 @@ conclusions.
 
 ## Status
 
-Phase 9 (Confirmation Rejection & Candidate Attrition Audit) — see
+Phase 10 (Confirmation Path & Early-Stop Association) — see
 `../../odd/tasks/loss-pattern-discovery.md` for the live task list,
 `docs/06-limitations-and-decisions-log.md` for the running decision log, and
-`docs/77-phase9-technical-checkpoint.md` for the current checkpoint. Verdicts (two independent
-dimensions, never collapsed): Integrity = `PARTIAL_IDENTITY_RECONCILIATION` (the true primary key
-`stable_id` reconciles exactly, 2047/2047, zero mismatches; 3 explained cross-instrument
-`signal_id` collisions keep this short of the strict zero-duplicates bar); Selection =
-`MULTIPLE_SELECTION_MECHANISMS` (Model-1 confirmation-stage rejection dominates in absolute count
-removed for both models, AND the Stage-6 RR floor independently removes a material share — 60.2%
-of 1AM's confirmed signals, 45.5% of 9AM's — neither mechanism alone explains the full 1AM/9AM
-selection picture). Key structural findings: `"model1_pending_or_invalidated"` is a misnomer — it
-is always PENDING, never a terminal INVALIDATED, in this pipeline; 100% of Stage-6 attrition for
-both models is the RR floor alone (zero dedup, zero kill-zone). Still associations, not causal or
-tradable claims.
+`docs/89-phase10-technical-checkpoint.md` for the current checkpoint. Verdict:
+`MODEL_SPECIFIC_ASSOCIATION` — signals that confirm Model-1 directly (zero internal
+invalidations) show a higher E1 rate than signals needing at least one internal restart, but this
+is statistically distinguishable from zero only within 9AM (95% CI [+0.83pp, +5.97pp]), not within
+1AM (CI includes zero), despite both pointing the same direction, and consistently so across all
+three instruments. Neither model's point difference clears this lab's own 5pp relevance bar.
+Standardizing the persistent 1AM/9AM E1 gap by this same variable leaves it essentially unchanged
+(+5.11pp vs. +5.38pp unadjusted) — the gap is not explained by confirmation-path complexity.
+Registered, but explicitly NOT executed: a Phase 11 proposal to investigate whether the Stage-6 RR
+floor (100% of Stage-6 attrition, Phase 9) discards economic value or correctly filters
+unfavorable setups (`docs/87`). Still associations, not causal or tradable claims.
 
 ## Layout
 
@@ -106,8 +106,20 @@ research/loss-pattern-discovery/
     73-causal-availability-dictionary.md       Deliverable F: Layer 1-4 variable availability dictionary
     74-e1-interpretation-update.md             Deliverable G: E1 read in light of Phase 9 (no historical numbers changed)
     75-phase9-research-verdict.md              Deliverable H: both verdict dimensions, pre-registered criteria applied
-    76-phase10-recommendation.md               Deliverable I: next hypothesis, not evaluated
-    77-phase9-technical-checkpoint.md          Deliverable J: checkpoint
+    76-phase10-recommendation.md               Phase 9's own Deliverable I: next hypothesis, not evaluated
+    77-phase9-technical-checkpoint.md          Phase 9 Deliverable J: checkpoint
+    78-phase9-commit-record.md                 Phase 9 commit SHA
+    79-phase10-design-and-pre-registration.md  state-machine facts from source + pre-registered H1/H2/H3 + verdict criteria (Phase 10)
+    80-confirmation-state-machine-audit.md     Deliverable A: the 10-question answer set, restated as its own deliverable
+    81-confirmation-path-diagnostic.md         Deliverable B: instrumentation design, equivalence proofs, synthetic cases
+    82-event-identity-and-causal-availability-audit.md  Deliverable C: stable_id reconciliation + no-lookahead proof
+    83-confirmation-path-distribution.md       Deliverable D: path-complexity distribution by model/instrument/period
+    84-e1-association-analysis.md              Deliverable E: the pre-registered contrast's E1 results
+    85-robustness-and-selection-limitations.md Deliverable F: support, heterogeneity, selection caveats
+    86-phase10-research-verdict.md             Deliverable G: verdict, criteria applied mechanically
+    87-phase11-rr-filter-counterfactual-proposal.md  Deliverable H: Phase 11 proposal, registered, NOT executed
+    88-phase10-recommendation.md               Deliverable I: Phase 11 prioritized over further path-association validation
+    89-phase10-technical-checkpoint.md         Deliverable J: checkpoint
   schema/      event dataclasses (features_pre_entry / features_at_stop / post_stop_outcomes)
   extract/     reproducible extractors from source experiments into the event schema;
                `funnel_reconstruction.py` (read-only diagnostic adapter reconstructing the
@@ -116,7 +128,12 @@ research/loss-pattern-discovery/
                `model1_rejection_diagnostics.py` (Phase 9: anchor-probe + rejection-category
                diagnostics, `run_d_c2_instrumented`); `stage6_attrition_diagnostics.py` (Phase 9:
                per-rule Stage-6 removal attribution, `build_stage6_population_instrumented`);
-               `event_identity_reconciliation.py` (Phase 9: ledger identity reader + comparator)
+               `event_identity_reconciliation.py` (Phase 9: ledger identity reader + comparator);
+               `confirmation_path_diagnostics.py` (Phase 10: traced retry-loop mirror,
+               `confirm_in_ltf_window_v2_traced`, `run_d_c2_with_confirmation_paths`);
+               `confirmation_path_reconstruction.py` (Phase 10: per-symbol orchestration, one
+               process per symbol); `confirmation_path_identity_audit.py` (Phase 10: merges
+               per-symbol path artifacts, reconciles against the real ledger by `stable_id`)
   eligibility/ stop-event eligibility classification (Phase 2, Unit A); `stop_timing_decomposition.py`
                (E0-E4) + `intrabar_ambiguity.py` (sequence-verifiability taxonomy), Phase 6
   features/    pre-entry (Layer A) feature extraction (Phase 4); `confirmation_window_features.py`
@@ -132,7 +149,9 @@ research/loss-pattern-discovery/
                Phase-6 stop-timing decomposition + intrabar-uncertainty report + sensitivity scenarios
                (S2 corrected in Phase 7); Phase-7 temporal feature dataset + confirmation timing
                distribution + E1 timing association; Phase-8 funnel reconciliation report;
-               Phase-9 event identity reconciliation report
+               Phase-9 event identity reconciliation report; Phase-10 confirmation path
+               distribution + E1 association (`confirmation_path_distribution.py`,
+               `confirmation_path_e1_association.py`)
   tests/       pytest suite for every module above
   artifacts/   regenerable derived datasets + figures (gitignored — never commit generated files here)
   config.py    read-only pointer to the main worktree's gitignored `data/` directory
@@ -142,7 +161,7 @@ research/loss-pattern-discovery/
 
 ```bash
 cd detector && uv sync --extra dev   # once, per worktree
-uv run python -m pytest ../research/loss-pattern-discovery/tests   # 223 tests
+uv run python -m pytest ../research/loss-pattern-discovery/tests   # 251 tests
 uv run python ../research/loss-pattern-discovery/stats/eligibility_report.py   # Phase 2 Deliverable A
 uv run python ../research/loss-pattern-discovery/stats/atlas.py               # Phase 2/3 Deliverables B/C + recovery analysis
 uv run python ../research/loss-pattern-discovery/stats/seed_sensitivity.py    # Phase 3.1 Deliverable D (continuation seed check)
@@ -159,6 +178,9 @@ uv run python ../research/loss-pattern-discovery/stats/e1_timing_association.py 
 uv run python ../research/loss-pattern-discovery/extract/funnel_reconstruction.py        # Phase 8/9 (heavy, ~20-30min/symbol; run per-symbol if memory-constrained)
 uv run python ../research/loss-pattern-discovery/stats/funnel_reconciliation_report.py    # Phase 8 Deliverables B/C/D
 uv run python ../research/loss-pattern-discovery/stats/event_identity_reconciliation_report.py  # Phase 9 Deliverable A
+uv run python ../research/loss-pattern-discovery/extract/confirmation_path_reconstruction.py <SYMBOL>  # Phase 10 Deliverable B (one process per symbol, same OOM workaround)
+uv run python ../research/loss-pattern-discovery/stats/confirmation_path_distribution.py  # Phase 10 Deliverable D (run after all 3 symbols above)
+uv run python ../research/loss-pattern-discovery/stats/confirmation_path_e1_association.py  # Phase 10 Deliverable E
 uv run python ../research/loss-pattern-discovery/stats/visualize.py           # figures
 ```
 

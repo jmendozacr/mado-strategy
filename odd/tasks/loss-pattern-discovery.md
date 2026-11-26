@@ -876,3 +876,107 @@ interpreted as comparing two comparably-selected samples. Recommended for Phase 
 this phase): test whether confirmation-stage rejection-taxonomy variation (Layer 1/2) associates
 with the eventual E1 outcome (Layer 4) among executed trades, under the same non-causal,
 pre-registered discipline.
+
+## Phase 10 specs (S108+)
+
+- S108 (checkpoint, verbatim): start from checkpoint `4b3e9c1`. Audit the real internal
+  confirmation-attempt path (anchor restarts, internal invalidations) for Model-1 signals that
+  CONFIRM -- Phase 9 found `confirm_in_ltf_window_v2` never returns terminal INVALIDATED, but
+  never reconstructed the full internal retry trajectory for confirmed signals.
+- S109 (hypotheses, verbatim): H1 confirmation-path complexity is associated with E1 incidence;
+  H2 this association may differ between 1AM and 9AM; H3 the 1AM/9AM E1 gap may change when
+  descriptively standardized against the path-complexity contrast. No directional prediction
+  registered. Observational only, never causal, never profitability.
+- S110 (state-machine audit, verbatim): reconstruct from source exactly when an attempt begins,
+  what constitutes a new anchor (never a fresh search -- the invalidating candle's own index,
+  reused), what constitutes an internal invalidation, when a retry is allowed, when the search
+  limit is reached, how the final anchor is selected, when engulf/retest confirm, what information
+  is available at each M15 close, and when the order is finally placed. Never interpret an
+  internal invalidation as a Stop Loss exit.
+- S111 (instrumentation, verbatim): isolated diagnostic within `research/loss-pattern-discovery/`
+  only; never modifies the original state machine; distinguishes OBSERVED attempts from
+  hypothetical ones; never reads candles after `confirmation_available_at`; equivalence verified
+  by comparing sets/identities (stable_id, signal_id within instrument, confirmation_index,
+  candidates, fills), never counts alone.
+- S112 (identity, verbatim): `stable_id`/`event_id` remains the primary key; no global join on
+  `signal_id` alone; cross-instrument collisions never mix histories; the 4 censored trades keep
+  their identity; unreconstructable events reported explicitly.
+- S113 (descriptive audit before E1, verbatim): describe attempt/invalidation/restart counts,
+  confirmation duration, % confirming without vs. with prior invalidations, coverage, by
+  instrument and period, BEFORE inspecting any E1 rate. Primary contrast
+  `internal_invalidation_count == 0` vs. `>= 1`, pre-declared; if degenerate or unidentifiable,
+  stop and document why rather than substituting a result-maximizing threshold. Never promote every
+  correlated counter into an independent hypothesis.
+- S114 (E1 endpoint, verbatim): E1 = `CONFIRMED_STOP AND duration_bars == 1`, reproduced exactly
+  (72/619 = 11.63% for 1AM, 89/1424 = 6.25% for 9AM, gap +5.38pp) before any new feature is added.
+  Never assign E1 to a signal that never executed; preserve winners in the denominator; never
+  silently drop unreconstructable cases from the reported population.
+- S115 (primary analysis, verbatim): `P(E1 | ..., internal_invalidation_count == 0)` vs.
+  `P(E1 | ..., >= 1)`, WITHIN each model; composition comparison between models (no causal
+  attribution to window duration); descriptive standardization of the model gap by the same
+  contrast, compared to +5.38pp, never reported as a causal decomposition.
+- S116 (robustness, verbatim): reuse only pre-order-available controls; never post-fill
+  information (atr_m15_at_entry if post-order, fill timing, MFE/MAE, exit result, rejected-
+  confirmation futures); small-N discipline (72/89 E1 events) -- simple comparison, predeclared
+  limited controls, report insufficient evidence rather than an unstable model; block bootstrap per
+  the lab's own established methodology; separate-by-instrument consistency check, never hiding
+  AUDUSD heterogeneity if present.
+- S117 (interpretation, verbatim): distinguish Asociación consistente / Asociación heterogénea /
+  Sin asociación robusta / Evidencia insuficiente. Never claim invalidations cause E1, that direct
+  confirmation is better, that a feature improves profitability, that a result-based filter is
+  operable, or that out-of-sample validation occurred.
+- S118 (Phase 11 RR proposal, verbatim): register, but do NOT execute, a proposal to investigate
+  the Stage-6 RR floor (`min_risk_reward=2.0`, 100% of Stage-6 attrition per Phase 9, 2,592
+  confirmed signals discarded). The 2,592 signals are not 2,592 lost trades -- no invented
+  executions, no profitability figure for them without an authorized, reproducible counterfactual
+  simulation. No change to `min_risk_reward` anywhere; no new RR backtest run.
+- S119 (24 required tests + full suite, verbatim): see `tests/test_phase10_requirements.py`'s
+  coverage-map docstring for the 1-24 requirement-to-test mapping; re-run the existing 223 tests;
+  synthetic cases required: zero/one/multiple restarts, direct confirmation, window exhaustion
+  (engulfed-then-pending, never-engulfed), no-anchor-at-all; never weaken an existing test.
+- S120 (deliverables, verbatim): A Confirmation State Machine Audit; B Confirmation Path
+  Diagnostic; C Event Identity & Causal Availability Audit; D Confirmation Path Distribution; E
+  E1 Association Analysis; F Robustness & Selection Limitations; G Research Verdict --
+  `CONFIRMATION_PATH_ASSOCIATION_FOUND`/`MODEL_SPECIFIC_ASSOCIATION`/
+  `NO_ROBUST_CONFIRMATION_PATH_ASSOCIATION`/`INSUFFICIENT_PATH_RECONSTRUCTION`/
+  `INSUFFICIENT_STATISTICAL_EVIDENCE`/`INCONCLUSIVE`, criteria fixed before inspecting E1; H Phase
+  11 RR Filter Research Proposal (registered, not run); I Recommendation (prioritize one single
+  next unit); J Checkpoint. Run full suite + lint-imports; review with the usual harness; commit
+  and push to origin if correct; stop at the end of Phase 10 -- no automatic advance to Phase 11.
+
+## Phase 10 tasks
+
+| ID | Linked S# | Route | Status | Commit |
+|----|-----------|-------|--------|--------|
+| T76 | S108,S110 | inline | done | `docs/79-phase10-design-and-pre-registration.md`, `docs/80` |
+| T77 | S111 (depends on T76) | inline | done | `extract/confirmation_path_diagnostics.py`; `tests/test_confirmation_path_diagnostics.py` (10); `docs/81` |
+| T78 | S111 (orchestration, depends on T77) | inline | done | `extract/confirmation_path_reconstruction.py`; `tests/test_confirmation_path_reconstruction.py` (2) |
+| T79 | S112 | inline | done | `extract/confirmation_path_identity_audit.py`; `tests/test_confirmation_path_identity_audit.py` (5); `docs/82` |
+| T80 | S113 (depends on T78) | inline | done | `stats/confirmation_path_distribution.py`; `tests/test_confirmation_path_distribution.py` (3); `docs/83` |
+| T81 | S114,S115 (depends on T79,T80) | inline | done | `stats/confirmation_path_e1_association.py`; `tests/test_confirmation_path_e1_association.py` (4); `docs/84` |
+| T82 | S116,S117 | inline | done | `docs/85-86` |
+| T83 | S118 | inline | done | `docs/87` (proposal only, no code) |
+| T84 | S119 | inline | done | `tests/test_phase10_requirements.py` (4 + coverage map); full suite 251 passed, lint-imports 11/11 |
+| T85 | S120(I,J) | inline | done | `docs/88-89` |
+
+### Phase-10 headline
+
+Reconstructed the full internal confirmation-attempt trajectory (anchor restarts, internal
+invalidations) for every one of the 5,116 confirmed Model-1 signals across all 3 pairs, with
+100% coverage and zero unreconstructable events -- proven equivalent to the real, unmodified
+`confirm_in_ltf_window_v2`/`_track_anchor` by two dedicated tests comparing full identity, not
+just counts. 9AM's confirmed population needs at least one internal invalidation nearly twice as
+often as 1AM's (43.9% vs. 27.0%), stable across all instruments and periods. The pre-registered
+primary contrast (`internal_invalidation_count == 0` vs. `>= 1`, within each model) found that
+signals confirming directly show a HIGHER E1 rate than signals needing a restart -- statistically
+distinguishable from zero only in 9AM (+3.39pp, 95% CI [+0.83pp, +5.97pp]), not in 1AM (+1.11pp,
+CI includes zero), though both point the same direction and every per-instrument check (AUDUSD
+included) agrees in sign. Verdict: `MODEL_SPECIFIC_ASSOCIATION`. Standardizing the persistent
+1AM/9AM E1 gap by this same variable leaves it essentially unchanged (+5.11pp vs. +5.38pp
+unadjusted) -- confirmation-path complexity does not explain that gap, joining `risk_atr` and
+confirmation-window timing as tested-and-ruled-out candidates. Neither model's own point
+difference clears this lab's 5pp relevance bar, so this finding is reported as real but small.
+Registered, NOT executed: a Phase 11 proposal to investigate whether the Stage-6 RR floor
+(100% of Stage-6 attrition, 2,592 confirmed signals discarded, Phase 9) discards economic value --
+recommended as the single highest-priority next unit, ahead of further validating this phase's
+own (smaller-magnitude) association.
